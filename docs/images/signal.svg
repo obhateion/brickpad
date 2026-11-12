@@ -1,0 +1,78 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="560" viewBox="0 0 1280 560" font-family="Consolas, 'DejaVu Sans Mono', 'Courier New', monospace">
+  <defs>
+    <marker id="o" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#ff8c1a"/></marker>
+    <marker id="c" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#4cc4dc"/></marker>
+    <marker id="g" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#8a8a8a"/></marker>
+  </defs>
+  <rect width="1280" height="560" fill="#1c1c1c"/>
+  <text x="40" y="52" fill="#f0f0f0" font-size="28" font-weight="700">SIGNAL PATH</text>
+  <text x="250" y="52" fill="#8a8a8a" font-size="18">one pad, times twelve, into the master</text>
+
+  <!-- pad lane -->
+  <rect x="24" y="84" width="1232" height="250" fill="none" stroke="#333" stroke-dasharray="6 5"/>
+  <text x="40" y="108" fill="#5a5a5a" font-size="15">PAD 1..12</text>
+
+  <g font-size="18" font-weight="700" text-anchor="middle">
+    <rect x="40" y="150" width="170" height="90" fill="#262626" stroke="#3c3c3c"/>
+    <text x="125" y="186" fill="#f0f0f0">CLIP</text><text x="125" y="212" fill="#8a8a8a" font-size="13" font-weight="400">steps or roll,</text><text x="125" y="228" fill="#8a8a8a" font-size="13" font-weight="400">follow actions</text>
+
+    <rect x="260" y="150" width="190" height="90" fill="#ff8c1a"/>
+    <text x="355" y="186" fill="#1c1c1c">ENGINE</text><text x="355" y="212" fill="#1c1c1c" font-size="13" font-weight="400">SAMPLER  GRAND</text><text x="355" y="228" fill="#1c1c1c" font-size="13" font-weight="400">ACID  CLOUD</text>
+
+    <rect x="500" y="150" width="140" height="90" fill="#262626" stroke="#ff8c1a" stroke-width="2"/>
+    <text x="570" y="190" fill="#f0f0f0">INSERT 1</text><text x="570" y="214" fill="#8a8a8a" font-size="13" font-weight="400">11 types</text>
+    <rect x="670" y="150" width="140" height="90" fill="#262626" stroke="#ff8c1a" stroke-width="2"/>
+    <text x="740" y="190" fill="#f0f0f0">INSERT 2</text><text x="740" y="214" fill="#8a8a8a" font-size="13" font-weight="400">11 types</text>
+
+    <rect x="860" y="150" width="200" height="90" fill="#262626" stroke="#3c3c3c"/>
+    <text x="960" y="182" fill="#f0f0f0">STRIP</text><text x="960" y="206" fill="#8a8a8a" font-size="13" font-weight="400">DUCK · pan · fader</text><text x="960" y="224" fill="#8a8a8a" font-size="13" font-weight="400">mute · solo</text>
+
+    <rect x="1100" y="132" width="140" height="56" fill="#262626" stroke="#4cc4dc" stroke-width="2"/>
+    <text x="1170" y="158" fill="#4cc4dc" font-size="15">SEND A</text><text x="1170" y="176" fill="#8a8a8a" font-size="12" font-weight="400">reverb</text>
+    <rect x="1100" y="202" width="140" height="56" fill="#262626" stroke="#4cc4dc" stroke-width="2"/>
+    <text x="1170" y="228" fill="#4cc4dc" font-size="15">SEND B</text><text x="1170" y="246" fill="#8a8a8a" font-size="12" font-weight="400">tempo delay</text>
+  </g>
+  <g stroke="#ff8c1a" stroke-width="3" fill="none">
+    <path d="M212 195H254" marker-end="url(#o)"/><path d="M452 195H494" marker-end="url(#o)"/><path d="M642 195H664" marker-end="url(#o)"/><path d="M812 195H854" marker-end="url(#o)"/>
+  </g>
+  <g stroke="#4cc4dc" stroke-width="2" fill="none">
+    <path d="M1062 180L1094 162" marker-end="url(#c)"/><path d="M1062 210L1094 228" marker-end="url(#c)"/>
+  </g>
+
+  <!-- freeze -->
+  <path d="M355 248V290H740V248" fill="none" stroke="#4cc4dc" stroke-width="2" stroke-dasharray="6 4"/>
+  <text x="548" y="314" fill="#4cc4dc" font-size="15" text-anchor="middle">FREEZE: this part is rendered to audio once and played back</text>
+
+  <!-- modulation -->
+  <g font-size="14" fill="#8a8a8a">
+    <text x="260" y="128">LFOs · automation</text>
+    <path d="M355 134V146" stroke="#8a8a8a" stroke-width="1.5" marker-end="url(#g)"/>
+    <text x="500" y="128">key from a pad</text>
+    <path d="M570 134V146" stroke="#8a8a8a" stroke-width="1.5" marker-end="url(#g)"/>
+    <text x="860" y="128">notes, sound or tempo</text>
+    <path d="M960 134V146" stroke="#8a8a8a" stroke-width="1.5" marker-end="url(#g)"/>
+  </g>
+
+  <!-- master -->
+  <g stroke="#ff8c1a" stroke-width="3" fill="none">
+    <path d="M960 242V400H990" marker-end="url(#o)"/>
+    <path d="M1170 260V380" stroke="#4cc4dc" stroke-width="2" marker-end="url(#c)"/>
+  </g>
+  <g font-size="18" font-weight="700" text-anchor="middle">
+    <rect x="996" y="384" width="244" height="40" fill="#262626" stroke="#3c3c3c"/>
+    <text x="1118" y="410" fill="#f0f0f0">MASTER BUS</text>
+    <rect x="996" y="440" width="114" height="40" fill="#262626" stroke="#ff8c1a" stroke-width="2"/>
+    <text x="1053" y="466" fill="#f0f0f0" font-size="15">COMP</text>
+    <rect x="1126" y="440" width="114" height="40" fill="#262626" stroke="#ff8c1a" stroke-width="2"/>
+    <text x="1183" y="466" fill="#f0f0f0" font-size="15">LIMITER</text>
+    <rect x="1126" y="500" width="114" height="40" fill="#ff8c1a"/>
+    <text x="1183" y="526" fill="#1c1c1c" font-size="15">OUT</text>
+  </g>
+  <g stroke="#ff8c1a" stroke-width="3" fill="none">
+    <path d="M1053 426V436" marker-end="url(#o)"/><path d="M1112 460H1122" marker-end="url(#o)"/><path d="M1183 482V496" marker-end="url(#o)"/>
+  </g>
+  <text x="40" y="396" fill="#bdbdbd" font-size="16">Sidechain three ways: a compressor keyed by another pad, the DUCK curve started</text>
+  <text x="40" y="420" fill="#bdbdbd" font-size="16">by notes, by sound or by the tempo grid, and LFOs started by notes of any pad.</text>
+  <text x="40" y="460" fill="#bdbdbd" font-size="16">The insert limit follows the measured cost of each effect: up to 40 % of the CPU.</text>
+  <text x="40" y="484" fill="#bdbdbd" font-size="16">A frozen pad costs almost nothing; volume, pan, sends, mute and duck stay live.</text>
+</svg>

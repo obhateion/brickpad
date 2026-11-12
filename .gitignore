@@ -1,0 +1,6 @@
+build/
+*.log
+state.bin*
+frozen/
+samples/
+release/

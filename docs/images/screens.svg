@@ -1,0 +1,68 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="640" viewBox="0 0 1280 640" font-family="Consolas, 'DejaVu Sans Mono', 'Courier New', monospace">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#8a8a8a"/></marker>
+    <marker id="o" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#ff8c1a"/></marker>
+  </defs>
+  <rect width="1280" height="640" fill="#1c1c1c"/>
+  <text x="40" y="52" fill="#f0f0f0" font-size="28" font-weight="700">SCREENS</text>
+  <text x="200" y="52" fill="#8a8a8a" font-size="18">F1 / F2 step through the four main screens · F1+F2 opens PROJECT</text>
+
+  <!-- main row -->
+  <g font-size="22" font-weight="700" text-anchor="middle">
+    <rect x="40" y="110" width="250" height="80" fill="#ff8c1a"/><text x="165" y="158" fill="#1c1c1c">GRID</text>
+    <rect x="360" y="110" width="250" height="80" fill="#262626" stroke="#ff8c1a" stroke-width="2"/><text x="485" y="158" fill="#f0f0f0">INSTRUMENT</text>
+    <rect x="680" y="110" width="250" height="80" fill="#262626" stroke="#ff8c1a" stroke-width="2"/><text x="805" y="158" fill="#f0f0f0">FX</text>
+    <rect x="1000" y="110" width="240" height="80" fill="#262626" stroke="#ff8c1a" stroke-width="2"/><text x="1120" y="158" fill="#f0f0f0">MIXER</text>
+  </g>
+  <g stroke="#ff8c1a" stroke-width="2" fill="none">
+    <path d="M292 150H356" marker-end="url(#o)" marker-start="url(#o)"/>
+    <path d="M612 150H676" marker-end="url(#o)" marker-start="url(#o)"/>
+    <path d="M932 150H996" marker-end="url(#o)" marker-start="url(#o)"/>
+  </g>
+  <g fill="#bdbdbd" font-size="14" text-anchor="middle">
+    <text x="324" y="138">F1/F2</text><text x="644" y="138">F1/F2</text><text x="964" y="138">F1/F2</text>
+  </g>
+  <g fill="#8a8a8a" font-size="15" text-anchor="middle">
+    <text x="165" y="214">12 pads, clips, groups</text>
+    <text x="485" y="214">steps or roll + engine panel</text>
+    <text x="805" y="214">two inserts per pad, sends</text>
+    <text x="1120" y="214">strips, returns, master</text>
+  </g>
+
+  <!-- windows -->
+  <g stroke="#5a5a5a" stroke-width="1.5" fill="none" stroke-dasharray="5 4">
+    <path d="M165 226V288" marker-end="url(#a)"/>
+    <path d="M430 226V288" marker-end="url(#a)"/><path d="M485 226V420" marker-end="url(#a)"/><path d="M540 226V288" marker-end="url(#a)"/>
+    <path d="M805 226V288" marker-end="url(#a)"/>
+    <path d="M1120 226V288" marker-end="url(#a)"/>
+  </g>
+  <g font-size="17" font-weight="700" fill="#f0f0f0" text-anchor="middle">
+    <rect x="40" y="292" width="250" height="110" fill="#262626" stroke="#3c3c3c"/>
+    <text x="165" y="322">MENU</text>
+    <text x="165" y="352" fill="#4cc4dc">PADS</text><text x="165" y="380" fill="#4cc4dc">KEYS</text>
+
+    <rect x="330" y="292" width="200" height="110" fill="#262626" stroke="#3c3c3c"/>
+    <text x="430" y="322">PATTERN</text><text x="430" y="346" font-size="14" font-weight="400" fill="#8a8a8a">16 patterns,</text><text x="430" y="366" font-size="14" font-weight="400" fill="#8a8a8a">FOLLOW actions</text>
+
+    <rect x="545" y="292" width="110" height="110" fill="#262626" stroke="#3c3c3c"/>
+    <text x="600" y="322">DEEP</text><text x="600" y="346" font-size="14" font-weight="400" fill="#8a8a8a">hidden</text><text x="600" y="366" font-size="14" font-weight="400" fill="#8a8a8a">controls</text>
+
+    <rect x="680" y="292" width="250" height="110" fill="#262626" stroke="#3c3c3c"/>
+    <text x="805" y="322">MOD (Y)</text><text x="805" y="346" font-size="14" font-weight="400" fill="#8a8a8a">four LFOs per pad,</text><text x="805" y="366" font-size="14" font-weight="400" fill="#8a8a8a">any knob as target</text>
+
+    <rect x="1000" y="292" width="240" height="110" fill="#262626" stroke="#3c3c3c"/>
+    <text x="1120" y="322">DUCK</text><text x="1120" y="346" font-size="14" font-weight="400" fill="#8a8a8a">EDIT on a DK row:</text><text x="1120" y="366" font-size="14" font-weight="400" fill="#8a8a8a">16-point volume curve</text>
+
+    <rect x="330" y="424" width="325" height="110" fill="#262626" stroke="#3c3c3c"/>
+    <text x="492" y="454">ROLL · RANDOM · PRESETS</text>
+    <text x="492" y="478" font-size="14" font-weight="400" fill="#8a8a8a">piano roll per pattern, pattern</text>
+    <text x="492" y="498" font-size="14" font-weight="400" fill="#8a8a8a">generator, factory and own presets,</text>
+    <text x="492" y="518" font-size="14" font-weight="400" fill="#8a8a8a">sample browser and slice editor</text>
+  </g>
+
+  <!-- project -->
+  <rect x="40" y="560" width="1200" height="56" fill="#262626" stroke="#4cc4dc" stroke-width="2"/>
+  <text x="64" y="596" fill="#4cc4dc" font-size="22" font-weight="700">PROJECT</text>
+  <text x="200" y="596" fill="#bdbdbd" font-size="17">SONG · PLAY · RECORD · FILE open, save, export · SYSTEM themes, library</text>
+  <text x="1240" y="548" fill="#8a8a8a" font-size="14" text-anchor="end">F1+F2 from any screen</text>
+</svg>
