@@ -15,7 +15,7 @@ clips start and stop on the bar (the LAUNCH quantum) and loop until stopped or u
 | D-pad | move the cursor |
 | EDIT (B) | tap: act on what is under the cursor. Hold + d-pad: change its value (left/right fine, up/down coarse) |
 | OPTION | listen to the pad. OPTION+EDIT: clear, or back to the default |
-| PLAY | GRID: start every clip / stop everything. Other screens: the selected pad's clip on or off; hold: stop everything |
+| PLAY | GRID: a tap starts every clip, the next tap stops everything. Other screens: a tap turns the selected pad's clip on or off; only there a hold stops everything |
 | F1 / F2 | previous / next screen. F1+F2: PROJECT |
 | SHIFT | a second layer: see each screen |
 | X, Y | per screen: icon, mute, DEEP page, back |

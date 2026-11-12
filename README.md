@@ -131,7 +131,7 @@ replace `BrickPad.sh` and `brickpad/brickpad` only; to remove BrickPad, delete b
 | D-pad | move the cursor |
 | EDIT (B) | tap: act on what is under the cursor; hold + d-pad: change its value (left/right fine, up/down coarse) |
 | OPTION (A) | listen to the pad; OPTION+EDIT: clear, or back to the default |
-| PLAY | GRID: start every clip / stop everything; other screens: the selected pad's clip on or off; hold: stop everything |
+| PLAY | GRID: a tap starts every clip, the next tap stops everything. Other screens: a tap turns the selected pad's clip on or off; only there a hold stops everything |
 | F1 / F2 | previous / next screen; F1+F2: PROJECT |
 | SHIFT | the second layer of every button |
 | X, Y | per screen: icon, solo, mute, DEEP page, back |

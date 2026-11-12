@@ -58,7 +58,7 @@
   <g stroke="#5a5a5a" stroke-width="1.2" fill="none">
     <path d="M794 525H908"/><path d="M725 546V456H908"/>
     <path d="M839 570H908"/><path d="M794 615H908"/>
-    <path d="M668 694V740H908"/><path d="M725 683H900V700H908"/>
+    <path d="M640 694V740H908"/><path d="M725 683H900V700H908"/>
   </g>
   <g font-size="16" fill="#f0f0f0">
     <text x="916" y="461" font-weight="700" fill="#ff8c1a">Y</text><text x="946" y="461">mute · DEEP page · back</text>
@@ -69,7 +69,8 @@
     <text x="916" y="586" fill="#8a8a8a" font-size="14">OPTION+EDIT: clear or default</text>
     <text x="916" y="612" font-weight="700" fill="#ff8c1a">B</text><text x="946" y="612">EDIT: act · hold + d-pad: value</text>
     <text x="916" y="632" fill="#8a8a8a" font-size="14">left/right fine, up/down coarse</text>
-    <text x="916" y="696" font-weight="700" fill="#ff8c1a">PLAY</text><text x="976" y="696">clips · hold: stop all</text>
-    <text x="916" y="736" font-weight="700" fill="#ff8c1a">MENU</text><text x="976" y="736">PADS / KEYS · hold 3 s: quit</text>
+    <text x="916" y="696" font-weight="700" fill="#ff8c1a">PLAY</text><text x="976" y="696">GRID: all clips on / all off</text>
+    <text x="916" y="714" fill="#8a8a8a" font-size="14">other screens: the pad's clip on / off</text>
+    <text x="916" y="744" font-weight="700" fill="#ff8c1a">MENU</text><text x="976" y="744">PADS / KEYS · hold 3 s: quit</text>
   </g>
 </svg>
