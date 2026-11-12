@@ -611,20 +611,15 @@ static void transport_toggle(void) {
 // Running: inside a pad it starts or stops this pad's clip as EDIT does on GRID, the count goes on; elsewhere it stops.
 // 2026-11-11: PLAY launches and stops the selected pad's clip, the same as EDIT on GRID, on every screen. The first
 // clip started is the clock: the count begins with it. During a take PLAY still ends everything (the take is kept);
-// on an armed take it starts the count. PLAY held stops everything (play_hold_tick).
+// on an armed take it starts the count. PLAY has no hold (2026-11-12, user: the old PLAY everywhere, no hold).
 static int has_sound(int s);
-// PLAY held for 0.7 s stops everything at once, on every screen (2026-11-11, user: "stop all on holding PLAY and that
-// is it"; OPTION+PLAY is gone). The tap has already done its work on the press; the hold then stops all the same.
+// 2026-11-12 (user): PLAY has no hold on any screen. A tap acts at once on the press: GRID all on / all off, other
+// screens the selected pad's clip. play_hold_tick and play_release stay as no-ops for the call sites.
 static Uint32 play_down;
 static int play_pend;                    // a PLAY tap waits for the release (2026-11-12): a hold then only stops everything, it never toggles first
 static void play_release(void) { if (!play_pend) return; play_pend = 0; if (has_sound(sel)) clip_toggle(sel); }
 static void play_hold_tick(void) {
-    if (!play_down) return;
-    if (!held[K_PLAY]) { play_down = 0; return; }
-    if (ms_since(SDL_GetTicks(), play_down) < 700) return;
-    play_down = 0; play_pend = 0;
-    if (engine_playing() || engine_counting() >= 0) transport_toggle(); else engine_stop_all();
-    toast("ALL STOPPED");
+    play_down = 0;                       // no hold any more: nothing to time
 }
 // PADS (2026-11-11, the user: no separate LIVE mode, PADS is both): a pad whose pattern has notes is a clip, its button
 // starts and stops it on the quantum (a clip slot in Ableton, a cued chain in the M8's live mode); a pad with an empty
@@ -841,7 +836,7 @@ static void play_key(void) {
         transport_toggle(); return;
     }
     if (!has_sound(sel)) { toast("EMPTY PAD: NOTHING TO PLAY"); return; }
-    play_pend = 1;                           // the pad's clip on or off on the release, on the launch quantum (clip_toggle)
+    clip_toggle(sel);                        // the pad's clip on or off at once, on the launch quantum
 }
 static void listen(int s) { engine_trig(s, 1.f, 0, -1); flash[s] = SDL_GetTicks(); }
 
@@ -3593,7 +3588,7 @@ static void draw_grid(void) {
     } else
     { int x = GX + (sel % 4) * CW, y = GY + (sel / 4) * CH; frame(x, y, CW + (sel % 4 == 3 ? 0 : 1), CH + 1, 2, perform ? C_DIM : C_ORANGE); }
     char missing[96]; snprintf(missing, sizeof missing, "MISSING %.32s  %s", file_base(slot_want[sel]), engine_sample(sel) ? "EDIT CLIP" : "EDIT LOAD");
-    draw_footer(perform ? "PAD CLIP/HIT  SHIFT+PAD OTHER  HOLD PLAY STOP ALL"
+    draw_footer(perform ? "PAD CLIP/HIT  SHIFT+PAD OTHER  PLAY PAD CLIP"
                         : gsel_on() ? "EDIT/PLAY ALL SELECTED  Y MUTE  SHIFT+Y FREEZE  ARROW ENDS IT"
                         : slot_want[sel][0] ? missing
                         : has_sound(sel) ? "EDIT CLIP  PLAY ALL  Y MUTE  SHIFT+Y FREEZE  SHIFT+DPAD SEL"
