@@ -33,6 +33,7 @@ static int len_hi(void) { return NSTEP; }
 enum { K_UP, K_DOWN, K_LEFT, K_RIGHT, K_OPT, K_EDIT, K_X, K_Y, K_L1, K_L2, K_R1, K_R2, K_MENU, K_PLAY, K_SHIFT, K_F1, K_F2, K_N };
 static const char *pad_label[K_N] = {"UP", "DOWN", "LEFT", "RIGHT", "A", "B", "X", "Y", "L1", "L2", "R1", "R2"};
 static const int cell_key[NSLOT] = {K_L2, K_L1, K_R1, K_R2, K_LEFT, K_UP, K_Y, K_X, K_DOWN, K_RIGHT, K_EDIT, K_OPT};
+#include "input.h"
 
 typedef struct { Uint8 r, g, b; } Col;
 // Colours come from the current theme. C_WHITE is the text colour and C_ORANGE the accent, whatever they are in a theme.
@@ -87,8 +88,8 @@ static int iconing, ic_cur, fig_open;
 static int ducking;                      // the DUCK window is open (below, with the mixer)
 static int tap_bpm(Uint32 *t, int *n);
 static void naming_pad(void);
-static int tab = T_GRID, browsing, slicing, theming, perform, sel = 5, held[K_N], used[K_N], undo_armed;
-static Uint32 menu_down, flash[NSLOT], rep_at[4];
+static int tab = T_GRID, browsing, slicing, theming, perform, sel = 5, undo_armed;
+static Uint32 menu_down, flash[NSLOT];
 static char msg[80]; static Uint32 msg_t;
 
 static void logmsg(const char *fmt, ...) {
@@ -3140,8 +3141,7 @@ static int asking, naming, exporting; static void ask_key(int k, int down); stat
 static void key_event(int k, int down) {
     if (k < 0) return;
     if (k == K_PLAY && !down) play_release();
-    held[k] = down;
-    if (down) used[k] = 0;
+    input_key(k, down);
     if (k == K_OPT && !down && opt_gate) { opt_gate = 0; engine_release(); }
     if (k == K_EDIT && !down) undo_armed = 0;
     if (k == K_EDIT && !down && paint_anchor >= 0 && tab == T_SEQ) {   // a drag that erased steps: they forget their values too
@@ -3149,8 +3149,7 @@ static void key_event(int k, int down) {
     }
     if (k == K_EDIT && !down && gb_heard) { gb_heard = 0; engine_release_key(GB_TAG); }
     if (k == K_EDIT && down) paint_anchor = -1;
-    if (down && held[K_EDIT] && k != K_EDIT && k != K_SHIFT) used[K_EDIT] = 1;   // any combo: its release is no tap
-    if (down && held[K_X] && k != K_X) used[K_X] = 1;
+    input_combo(k, down);
     if (down && k != K_X) x_tap_t = 0;   // X, another key, X is not a double tap
     seq_clamp();
     if (learning && learn_key(k, down)) return;
@@ -5631,14 +5630,6 @@ static void draw(void) {
     draw_present_ms += (SDL_GetPerformanceCounter() - tp) * 1000.0 / SDL_GetPerformanceFrequency();
 }
 
-static int map_button(int b) {   // Brick joystick buttons; EDIT = B, OPTION = A (as in the m8c profile)
-    switch (b) {
-    case 5: return K_OPT; case 4: return K_EDIT; case 7: return K_X; case 6: return K_Y;
-    case 8: return K_L1; case 9: return K_R1; case 10: return K_L2; case 11: return K_R2;
-    case 12: return K_MENU; case 13: return K_PLAY; case 14: return K_SHIFT; case 15: return K_F1; case 16: return K_F2;
-    }
-    return -1;
-}
 static void screenshot(const char *path) {
     SDL_Surface *sf = SDL_CreateRGBSurfaceWithFormat(0, W, H, 32, SDL_PIXELFORMAT_ARGB8888);
     SDL_RenderReadPixels(R, NULL, SDL_PIXELFORMAT_ARGB8888, sf->pixels, sf->pitch);
@@ -5713,7 +5704,7 @@ int main(int argc, char **argv) {
                 for (int d = 0; d < 4; d++)
                     if ((e.jhat.value ^ hat) & bit[d]) {
                         int dn = !!(e.jhat.value & bit[d]);
-                        rep_at[d] = dn ? SDL_GetTicks() + 300 : 0;
+                        input_arrow(d, dn, SDL_GetTicks());
                         key_event(K_UP + d, dn);
                     }
                 hat = e.jhat.value; break;
@@ -5722,7 +5713,7 @@ int main(int argc, char **argv) {
         }
         Uint32 now = SDL_GetTicks();
         for (int d = 0; d < 4; d++)   // arrow auto-repeat (not in PERFORM: arrows are pads there)
-            if (rep_at[d] && now >= rep_at[d] && !perform) { rep_at[d] = now + 50; key_event(K_UP + d, 1); }
+            if (!perform && input_repeat(d, now)) key_event(K_UP + d, 1);
         if (menu_down && now - menu_down > 3000) run = 0;
         combo_tick(now);
         browse_tick(now);
