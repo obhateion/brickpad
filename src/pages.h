@@ -155,7 +155,7 @@ static void draw_lfo2(void) {
         if (r == LR_DEPTH) { lo = -100; hi = 100; v = L->depth; } else if (r == LR_PHASE) { hi = 100; v = L->phase; } else if (r == LR_RATE && !L->sync) { hi = 100; v = L->rate; }
         if (hi > lo) { rect(x + 20, y + 58, 433, 8, C_LINE, 1); rect(x + 20, y + 58, 433 * (v - lo) / (hi - lo), 8, ec, 1); }
     }
-    draw_footer(lrow == LR_TARGET ? "EDIT POINT AT A KNOB  EDIT+<> TARGET  L1/R1 LFO  Y BACK  OPT+EDIT UNLINK" : "EDIT+ARROWS VALUE  L1/R1 LFO  Y BACK  OPT+EDIT LFO OFF");
+    draw_footer(lrow == LR_TARGET ? "EDIT PICK ON SOUND  EDIT+<> TARGET  L1/R1 LFO  Y BACK  OPT+EDIT UNLINK" : "EDIT+ARROWS VALUE  L1/R1 LFO  Y BACK  OPT+EDIT LFO OFF");
 }
 
 // ---- MOD > AUTOMATION (A19): A1-A4 as tabs (L1/R1; UP: the tab, EDIT+<> its target), the lane over the whole pattern ----
@@ -191,7 +191,7 @@ static void draw_auto2(void) {
     ftext(26, 664, FT_M, C_DIM, b);
     if (st >= 0) { if (al->v[st] != AUTO_EMPTY) snprintf(b, sizeof b, "step %d \004 %d%%", st + 1, al->v[st]); else snprintf(b, sizeof b, "step %d", st + 1);
         ftext(997 - ftext_w(FT_M, b), 664, FT_M, C_WHITE, b); }
-    draw_footer(srow == 0 ? "EDIT+<> TARGET  EDIT POINT AT A KNOB  Y BACK" : "EDIT POINT  Y+ARROWS BEND  Y BACK  EDIT+^v VALUE  L1/R1 LANE  OPT+EDIT CLEAR");
+    draw_footer(srow == 0 ? "EDIT+<> TARGET  EDIT PICK ON SOUND  Y BACK" : "EDIT POINT  Y+ARROWS BEND  Y BACK  EDIT+^v VALUE  L1/R1 LANE  OPT+EDIT CLEAR");
 }
 
 // ---- MIX of a pad: its strip of the mixer as cards (the 1.2 rows: mrow, the column mcol = the pad) ----
@@ -358,4 +358,21 @@ static void draw_prj2(void) {
         ftext(970 - ftext_w(f, b), y + 10, f, i == J_PROJ && prj_dirty() ? C_ORANGE : C_WHITE, b);
         if (i == J_MASTER && ch >= 70) { rect(320, y + ch - 26, 650, 8, C_LINE, 1); rect(320, y + ch - 26, 650 * song.master / 100, 8, ec, 1); } }
     draw_footer(!jcol ? "EDIT ENTER  F1+F2 BACK  ^v SECTION" : "EDIT+<> VALUE  EDIT DO IT  < SECTIONS  F1+F2 BACK");
+}
+
+// ---- MIXER > RETURN A / RETURN B / MASTER: every parameter of the unit as cards (the 1.2 cursor: fcol the column, frow the row) ----
+static int v2_unit(void) { return tab == T_FX && fx_unit >= NSLOT; }
+static void draw_unit2(void) {
+    int u = fx_unit, n = unit_nparams(u), half = (n + 1) / 2; Col ec = u == NSLOT + 2 ? th_cur[TC_SMP] : C_CAT(PC_MIX);
+    static const char *const un[3] = {"A \003 REVERB", "B \003 DELAY", "MASTER"};
+    for (int i = 0; i < 3; i++) { int x = 26 + i * 324, on = NSLOT + i == u; if (on) rrect(x, 70, 314, 34, 8, ec);
+        ftext(x + 157 - ftext_w(FT_MB, un[i]) / 2, 75, FT_MB, on ? C_BG : C_DIM, un[i]); }
+    int h = half <= 4 ? 136 : 108, dy = h + 12;
+    for (int k = 0; k < n; k++) { int c = k >= half, r = c ? k - half : k, x = c ? 518 : 32, y = 118 + r * dy, on = fcol == c && frow == r, lo, hi, def; char b[16];
+        int v = *unit_param(u, k, &lo, &hi, &def); unit_pstr(u, k, v, b);
+        const char *nm = u == NSLOT ? rv_name[k] : u == NSLOT + 1 ? dl_name[k] : ms_name[k];
+        if (on) rframe(x, y, 473, h, 8, 4, ec, C_CELL); else rrect(x, y, 473, h, 8, C_CELL);
+        ftext(x + 20, y + 12, FT_M, C_DIM, nm); ftext(x + 453 - ftext_w(FT_XB, b), y + 10, FT_XB, C_WHITE, b);
+        if (hi - lo > 1) { rect(x + 20, y + h - 26, 433, 8, C_LINE, 1); rect(x + 20, y + h - 26, 433 * clampi(v - lo, 0, hi - lo) / (hi - lo), 8, ec, 1); } }
+    draw_footer("EDIT+ARROWS VALUE  L1/R1 UNIT  Y BACK  EDIT ON/OFF  OPT+EDIT DEFAULT");
 }

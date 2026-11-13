@@ -244,7 +244,8 @@ static void draw_sound2(void) {
     for (int i = first * 2; i < c && i < (first + vis) * 2; i++)
         snd_card(i & 1 ? 518 : 32, y0 + (i / 2 - first) * dy, 473, h, l[i], i == sp_cur, ec);
     if (rows > vis) { int th = (vis * dy - 8) * vis / rows, ty = y0 + (vis * dy - 8 - th) * first / (rows - vis); rect(1004, y0, 4, vis * dy - 8, C_CELL, 1); rect(1004, ty, 4, th, C_DIM, 1); }   // more below
-    if (sp_cur < 0) draw_footer(pg->gfx == GF_SLICES ? "EDIT SLICE EDITOR  L1/R1 PAGE  Y BACK  EDIT+ARROWS SLICES  OPT LISTEN"
+    if (learning) draw_footer("EDIT TAKE THIS PARAMETER  L1/R1 PAGE  Y CANCEL");
+    else if (sp_cur < 0) draw_footer(pg->gfx == GF_SLICES ? "EDIT SLICE EDITOR  L1/R1 PAGE  Y BACK  EDIT+ARROWS SLICES  OPT LISTEN"
                               : is_synth(sel) && song.t[sel].type != 3 ? "EDIT PRESETS  L1/R1 PAGE  Y BACK  OPT LISTEN"
                               : "EDIT FILE  L1/R1 PAGE  Y BACK  EDIT+<> NEXT FILE  OPT LISTEN");
     else draw_footer("EDIT+ARROWS VALUE  L1/R1 PAGE  Y BACK  OPT LISTEN  OPT+EDIT DEFAULT  OPT+ARROWS LISTEN NOTE  EDIT HEAR IT");

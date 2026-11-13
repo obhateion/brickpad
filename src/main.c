@@ -104,7 +104,7 @@ static int scening;                      // HOME > SCENES (A02) is on screen, ov
 static int modmenu, mm_cur;              // MOD's own list (LFO, AUTOMATION, DUCK), as PATTERN's
 static int patmenu, pm_cur;              // PATTERN's own list (STEPS or ROLL, SELECT, RECORD) is on screen; its cursor, kept
 static int recpage;                      // PATTERN > RECORD is on screen
-static int v2_mix(void), v2_mixer(void), v2_fx(void), v2_lfo(void), v2_auto(void), mixer2_tap(void); static void mixer2_arrow(int k);   // UI v2 step 5 pages (pages.h)
+static int v2_unit(void), v2_mix(void), v2_mixer(void), v2_fx(void), v2_lfo(void), v2_auto(void), mixer2_tap(void); static void mixer2_arrow(int k);   // UI v2 step 5 pages (pages.h)
 static int v2_steps(void);               // the rebuilt STEPS page is the screen now (below, before seq_clamp)
 static Uint32 menu_down, flash[NSLOT];
 static char msg[80]; static Uint32 msg_t;
@@ -1803,25 +1803,26 @@ static int auto_bind_target(int p) {     // the LT_* code a panel control is aut
 }
 static void learn_start(void) {
     learning = 1; learn_lane = lane; int tg = cur_aut()->target, n; const GbCtl *c;
-    srow = 3; scol = 0; gb_cur = 1;      // on the panel: the knob it has now, else the first one
+    srow = 3; scol = 0; gb_cur = 1; ui_cat = PC_SOUND; toast("POINT AT A PARAMETER: EDIT TAKES IT");   // UI v2: on the cards of SOUND
     c = pctl(&n); for (int i = 0; i < n; i++) if (tg && auto_bind_target(c[i].p) == tg) { gb_cur = i; break; }
     if (gb_cur >= n) gb_cur = 0;
     seq_clamp();
 }
 static int fx_page; static int lcol, lrow; static int fx_unit; static void set_tab(int t);
 static void learn_end(void) {
+    ui_cat = PC_MOD;                     // UI v2: the cards of SOUND were shown for the pointing
     if (learn_lfo >= 0) { int j = learn_lfo; learn_lfo = -1; set_tab(T_FX); fx_unit = sel; fx_page = 1; lcol = j; lrow = 0; learning = 0; return; }   // back on the MOD page
     learning = 0; lane = learn_lane; srow = 0; scol = 4;
 }
 static void learn_lfo_start(int u, int j) {   // EDIT on an LFO's TARGET: point at a knob on the pad's panel
-    sel = u; set_tab(T_SEQ); learn_lane = lane; learning = 1; learn_lfo = j; int tg = song.lfo[u][j].target, n;
+    sel = u; set_tab(T_SEQ); ui_cat = PC_SOUND; toast("POINT AT A PARAMETER: EDIT TAKES IT"); learn_lane = lane; learning = 1; learn_lfo = j; int tg = song.lfo[u][j].target, n;
     srow = 3; scol = 0; gb_cur = 1; const GbCtl *c = pctl(&n); for (int i = 0; i < n; i++) if (tg && auto_bind_target(c[i].p) == tg) { gb_cur = i; break; }
     if (gb_cur >= n) gb_cur = 0;
     seq_clamp();
 }
 static int learn_key(int k, int down) {   // keys while LEARN waits; 1 = used
     if (tab != T_SEQ || browsing || slicing || rolling) { learning = 0; return 0; }
-    if (k == K_OPT) { if (down) { learn_end(); toast("LEARN CANCELLED"); } return 1; }
+    if (k == K_OPT || k == K_Y) { if (down) { used[k] = 1; learn_end(); toast("NO TARGET TAKEN"); } return 1; }
     if (k == K_EDIT) {
         if (!down && !used[K_EDIT]) {
             int pr = cur_par(), tg = auto_bind_target(pr); char b[48];
@@ -1833,8 +1834,8 @@ static int learn_key(int k, int down) {   // keys while LEARN waits; 1 = used
         }
         return 1;
     }
-    if (down && (k == K_UP || k == K_DOWN || k == K_LEFT || k == K_RIGHT)) { move_cursor(k); if (srow < 3) { learn_end(); toast("LEARN CANCELLED"); } return 1; }
-    return 0;                            // Y (the deep pages), PLAY and the rest as usual
+    if (down && (k == K_UP || k == K_DOWN || k == K_LEFT || k == K_RIGHT)) { move_cursor(k); if (srow < 3) { learn_end(); toast("NO TARGET TAKEN"); } return 1; }
+    return 0;                            // L1/R1 (the pages), PLAY and the rest as usual
 }
 static void pt_tap(int j) {               // PATCH: EDIT on an output carries a cable from it; on an input plugs it (or picks its cable up)
     uint8_t (*gp)[2] = song.gp[sel];
@@ -3430,11 +3431,14 @@ static void key_event(int k, int down) {
     if (v2_fx() && (k == K_L1 || k == K_R1)) { fx2_slot ^= 1; fx2_cur = -1; fx2_sync(); return; }   // UI v2 (A17): the other insert
     if (tab == T_FX && (k == K_L1 || k == K_R1)) { fx_unit_step(k == K_R1 ? 1 : -1); return; }
     if (tab == T_FX && k == K_Y && fx_unit < NSLOT) { fx_page = !fx_page; return; }   // FX <> MOD
+    if (v2_mix() && (k == K_L1 || k == K_R1)) return;   // MIX of a pad: one page
+    if (v2_unit() && (k == K_L1 || k == K_R1)) { fx_unit = NSLOT + (fx_unit - NSLOT + (k == K_R1 ? 1 : 2)) % 3; frow = fcol = 0; return; }
+    if (v2_unit() && k == K_Y) { int u = fx_unit; set_tab(T_MIX); mx_pg = 1; mcol = u; mx_r = 0; mrow = MX_VOL; return; }   // back to RETURNS
     if (v2_mixer() && (k == K_L1 || k == K_R1)) { mixer2_page(k == K_R1 ? 1 : -1); return; }   // UI v2: PADS, RETURNS, FREEZE
     if (tab == T_MIX && (k == K_L1 || k == K_R1)) { mcol = k == K_R1 ? (mcol < NSLOT ? (mcol / 4 + 1) * 4 : 0) : (mcol < 4 ? NSLOT : mcol <= NSLOT ? (mcol - 1) / 4 * 4 : NSLOT); if (mcol > NSLOT + 2) mcol = 0; if (mcol < NSLOT) sel = mcol; return; }
     if (ui_cat == PC_SOUND && tab == T_SEQ && (k == K_L1 || k == K_R1)) { sound_page_step(k == K_R1 ? 1 : -1); return; }   // SOUND: the page
-    if (tab == T_SEQ && (k == K_L1 || k == K_R1)) {   // the pad's own lanes, round
-        int l[L_N], n = lane_list(l), i = 0; while (i < n && l[i] != lane) i++;
+    if (tab == T_SEQ && (k == K_L1 || k == K_R1)) {   // the pad's own lanes, round (PATTERN: without A1-A4, they are MOD's)
+        int l[L_N], n = lane_list(l), i = 0; if (ui_cat == PC_PATTERN) n -= NAUTO; while (i < n && l[i] != lane) i++;
         lane = l[((i < n ? i : 0) + (k == K_R1 ? 1 : n - 1)) % n]; return; }
 }
 
@@ -5757,7 +5761,7 @@ static void draw(void) {
     SDL_SetRenderDrawColor(R, C_BG.r, C_BG.g, C_BG.b, 255);
     SDL_RenderClear(R);
     ui_v2 = !exporting && !naming && !(browsing && bmode) && !randing && !theming && !iconing
-            && (ducking || browsing || presetting || slicing || rolling || picking || hubbing || patmenu || recpage || modmenu || scening || (tab == T_PRJ && !perform) || v2_mix() || v2_mixer() || v2_lfo() || v2_auto() || v2_steps() || v2_sound() || v2_fx() || tab == T_PAT || (tab == T_GRID && perform != 2));   // the screens rebuilt after the mockups so far
+            && (ducking || browsing || presetting || slicing || rolling || picking || hubbing || patmenu || recpage || modmenu || scening || v2_unit() || (tab == T_PRJ && !perform) || v2_mix() || v2_mixer() || v2_lfo() || v2_auto() || v2_steps() || v2_sound() || v2_fx() || tab == T_PAT || (tab == T_GRID && perform != 2));   // the screens rebuilt after the mockups so far
     if (ui_v2) ui2_header(); else draw_header();
     if (exporting) draw_export();
     else if (naming) draw_naming();
@@ -5781,6 +5785,7 @@ static void draw(void) {
     else if (v2_lfo()) draw_lfo2();
     else if (v2_auto()) draw_auto2();
     else if (v2_mix()) draw_mix2();
+    else if (v2_unit()) draw_unit2();
     else if (v2_mixer()) draw_mixer2();
     else switch (tab) {
     case T_GRID: draw_grid(); break; case T_SEQ: draw_seq(); break; case T_PAT: draw_pat(); break; case T_PRJ: if (ui_v2) draw_prj2(); else draw_prj(); break;

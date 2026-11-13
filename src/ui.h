@@ -39,7 +39,7 @@ static void rframe(int x, int y, int w, int h, int r, int t, Col c, Col inside) 
 }
 static int v2_fx(void); static int fx2_slot; static int scene_count(void); static int v2_mixer(void); static int mx_pg; static int v2_lfo(void); static int v2_auto(void); static void modmenu_open(void); static void ui_path(char *b, int n); static const char *snd_page_name(void); static void snd_page_count(char *b, int n);   // sound.h
 static int in_pad(void); static int ui_window(void);
-static int scening_window(void) { return picking || exporting || naming || theming || iconing || browsing; }   // a window over a HOME screen
+static int scening_window(void) { return picking || exporting || naming || theming || iconing || browsing || tab == T_FX || tab == T_SEQ || tab == T_PAT; }   // a window over a HOME screen
 static void ui2_header(void) {           // NEON > PADS on the left, the transport and the tempo on the right
     int strip = ui_strip != STRIP_HIDDEN && in_pad() && !picking, hh = strip ? 48 : V2_HEAD;   // inside a pad: the pads under the path (L2)
     rect(0, 0, W, hh, C_CELL, 1);
@@ -110,7 +110,7 @@ static void ui_path(char *b, int n) {    // NEON > INSTRUMENT > 06 GRAND > DEEP
     if (picking) { snprintf(b + l, l < n ? n - l : 0, " > %02d -", sel + 1); return; }   // the empty pad (A03)
     int inpad = hubbing || ui_cat >= 0;
     if (perform) UI_ADD("%s", perform == 2 ? "KEYS" : "PADS");
-    else if (!inpad) UI_ADD("%s", tab == T_GRID ? (scening ? "SCENES" : "PADS") : tab_name[tab == T_PAT ? T_SEQ : tab]);
+    else if (!inpad) UI_ADD("%s", tab == T_GRID ? (scening ? "SCENES" : "PADS") : tab == T_FX ? "MIXER" : tab_name[tab == T_PAT ? T_SEQ : tab]);
     int pad = inpad || perform || tab == T_SEQ || tab == T_PAT ? sel : tab == T_FX && fx_unit < NSLOT ? fx_unit : -1;
     if (pad >= 0) UI_ADD("%02d %.14s", pad + 1, slot_name(pad) ? slot_name(pad) : "EMPTY");
     else if (tab == T_FX) UI_ADD("%s", fx_unit == NSLOT ? "RETURN A" : fx_unit == NSLOT + 1 ? "RETURN B" : "MASTER");
@@ -224,10 +224,11 @@ static void ui_popup(void) {
 // HOME), F1/F2 the next pad on the same page, SHIFT+arrow jumps: UP PATTERN, RIGHT SOUND, DOWN FX, LEFT MIX.
 // Until steps 4-5 rebuild them, the categories open the screens of 1.2 for this pad.
 static void hub_open(void) { set_tab(T_GRID); hubbing = 1; }
-static void patmenu_open(void) { set_tab(T_SEQ); ui_cat = hub_cur = PC_PATTERN; patmenu = 1; }
+static void patmenu_open(void) { set_tab(T_SEQ); ui_cat = hub_cur = PC_PATTERN; patmenu = 1; if (is_auto(lane)) lane = lane_first(); }
 static void cat_open(int c) {
     set_tab(c == PC_PATTERN || c == PC_SOUND ? T_SEQ : c == PC_MIX ? T_MIX : T_FX);
     hub_cur = c; ui_cat = c;
+    if (c == PC_PATTERN && is_auto(lane)) lane = lane_first();
     if (c == PC_PATTERN && (srow < 1 || srow > 2)) { srow = 1; scol = 0; }
     if (c == PC_PATTERN && pm_cur == 1) pat_open();   // the page it was left on
     else if (c == PC_PATTERN && pm_cur == 2) recpage = 1;
