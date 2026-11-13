@@ -4,7 +4,6 @@
 #pragma once
 
 enum { STRIP_HIDDEN, STRIP_THIN, STRIP_BIG };
-enum { PC_PATTERN, PC_SOUND, PC_FX, PC_MOD, PC_MIX, PC_N };   // inside a pad (the hub, below)
 static const char *const cat_name[PC_N] = {"PATTERN", "SOUND", "FX", "MOD", "MIX"};
 static void draw_footer(const char *hint);
 static int ui_strip = STRIP_THIN;        // PROJECT > SYSTEM > INTERFACE (step 6)
@@ -18,6 +17,7 @@ static int ftext(int x, int y, int f, Col c, const char *s) {   // y: the top of
     SDL_SetTextureColorMod(t, c.r, c.g, c.b);
     for (; *s; s++, x += v->w) {
         int ch = (unsigned char)*s, g = ch >= 32 && ch <= 127 ? ch - 32 : ch == 1 ? 96 : ch == 2 ? 97 : -1;
+        if (ch == 3) g = 98;             // the middle dot
         if (g <= 0) continue;
         SDL_Rect src = {g * v->w, 0, v->w, v->h}, dst = {x, y, v->w, v->h}; SDL_RenderCopy(R, t, &src, &dst);
     }
@@ -47,7 +47,9 @@ static void ui2_header(void) {           // NEON > PADS on the left, the transpo
         if (!e) break;
         x += ftext(x, y, FT_M, C_DIM, " \177 "); p = e + 3;
     }
-    char t[16]; snprintf(t, sizeof t, "%c %d", engine_playing() ? 1 : 2, (int)(song.tempo * tempo_mul + 0.5f));
+    char t[16];
+    if (v2_steps()) { snprintf(t, sizeof t, "P%02d", song.t[sel].cur + 1); ftext(W - 20 - ftext_w(FT_MB, t), y, FT_MB, C_ORANGE, t); return; }   // A05: the pattern
+    snprintf(t, sizeof t, "%c %d", engine_playing() ? 1 : 2, (int)(song.tempo * tempo_mul + 0.5f));
     ftext(W - 20 - ftext_w(FT_MB, t), y, FT_MB, engine_playing() ? th_cur[TC_SMP] : C_DIM, t);
 }
 static void ui2_footer(const char *h) {  // at most three key chips: the key in the accent, what it does after it
@@ -59,7 +61,9 @@ static void ui2_footer(const char *h) {  // at most three key chips: the key in 
         if (k > n) k = n;
         snprintf(b, sizeof b, "%.*s", k, h); int kw = ftext_w(FT_MB, b) + 24;
         rrect(x, y, kw, 32, 6, C_SELBG); ftext(x + 12, y + 4, FT_MB, C_ORANGE, b); x += kw + 10;
-        snprintf(b, sizeof b, "%.*s", n - k > 0 ? n - k - 1 : 0, h + k + (n > k)); x += ftext(x, y + 4, FT_M, mix(C_WHITE, C_DIM, 70), b) + 36;
+        snprintf(b, sizeof b, "%.*s", n - k > 0 ? n - k - 1 : 0, h + k + (n > k));
+        for (char *q = b; *q; q++) if (*q >= 'A' && *q <= 'Z') *q += 32;   // the mockups write what a key does in small letters
+        x += ftext(x, y + 4, FT_M, mix(C_WHITE, C_DIM, 70), b) + 36;
         if (!e) break;
         h = e; while (*h == ' ') h++;
     }
@@ -82,6 +86,7 @@ static void ui_path(char *b, int n) {    // NEON > INSTRUMENT > 06 GRAND > DEEP
     else if (slicing) UI_ADD("SLICES"); else if (rolling) UI_ADD("ROLL"); else if (randing) UI_ADD("RANDOM");
     else if (picking) UI_ADD("ENGINE"); else if (presetting) UI_ADD("PRESETS"); else if (theming) UI_ADD("THEME");
     else if (iconing) UI_ADD("ICON"); else if (ducking) UI_ADD("DUCK");
+    else if (v2_steps()) UI_ADD("PATTERN > STEPS");
     else if (ui_cat >= 0 && !(tab == T_PAT) && !(ui_cat == PC_SOUND && cl_deep)) UI_ADD("%s", cat_name[ui_cat]);
     else if (tab == T_PAT) UI_ADD("PATTERN > PATTERNS");
     else if (tab == T_SEQ && srow >= 3 && cl_deep) UI_ADD("%s%s", ui_cat == PC_SOUND ? "SOUND > " : "", song.t[sel].type == 1 && cl_deep == 2 ? "PATCH" : "DEEP");
@@ -168,10 +173,12 @@ static void ui_popup(void) {
 // Until steps 4-5 rebuild them, the categories open the screens of 1.2 for this pad.
 #define C_CAT(c) th_cur[TC_PAT + (c)]
 static void hub_open(void) { set_tab(T_GRID); hubbing = 1; }
+static void patmenu_open(void) { set_tab(T_SEQ); ui_cat = hub_cur = PC_PATTERN; patmenu = 1; }
 static void cat_open(int c) {
     set_tab(c == PC_PATTERN || c == PC_SOUND ? T_SEQ : c == PC_MIX ? T_MIX : T_FX);
     hub_cur = c; ui_cat = c;
     if (c == PC_PATTERN && (srow < 1 || srow > 2)) { srow = 1; scol = 0; }
+    if (c == PC_PATTERN && pm_cur == 1) pat_open();   // the page it was left on
     if (c == PC_SOUND) { srow = 3; scol = 0; cl_deep = 0; gb_cur = 0; }
     if (c == PC_FX || c == PC_MOD) { fx_unit = sel; fx_page = c == PC_MOD; }
     if (c == PC_MIX) mcol = sel;
@@ -185,7 +192,7 @@ static void pad_step(int d) {             // F1/F2 inside a pad: the next pad, t
 }
 static int jump_cat(int k) { return k == K_UP ? PC_PATTERN : k == K_RIGHT ? PC_SOUND : k == K_DOWN ? PC_FX : PC_MIX; }
 static void hub_key(int k, int down) {
-    if (!down) { if (k == K_EDIT && !used[K_EDIT]) cat_open(hub_cur); return; }
+    if (!down) { if (k == K_EDIT && !used[K_EDIT]) { if (hub_cur == PC_PATTERN) patmenu_open(); else cat_open(hub_cur); } return; }
     if (k == K_Y) { hubbing = 0; return; }   // back to HOME
     if (k == K_PLAY) { play_key(); return; }
     if (k == K_OPT) { act_listen(sel); return; }
@@ -214,4 +221,76 @@ static void draw_hub(void) {              // the cards of A03: stripe, name in t
         hub_line(c, b, sizeof b); ftext(CX + 38, y + 56, FT_M, on ? C_WHITE : C_DIM, b);
     }
     draw_footer("EDIT OPEN  F1/F2 PAD  Y BACK");
+}
+
+// PATTERN (UI v2): its pages as a list, STEPS (the roll when the pattern is one) and SELECT; RECORD comes with A04.
+static void patmenu_key(int k, int down) {
+    if (!down) { if (k == K_EDIT && !used[K_EDIT]) { patmenu = 0; if (pm_cur == 1) pat_open(); else { srow = 1; scol = 0; seq_clamp(); } } return; }
+    if (k == K_Y) { hub_open(); hub_cur = PC_PATTERN; return; }
+    if (k == K_PLAY) { play_key(); return; }
+    if (k == K_OPT) { act_listen(sel); return; }
+    if (k == K_UP || k == K_DOWN || k == K_LEFT || k == K_RIGHT) pm_cur ^= 1;
+}
+static void draw_patmenu(void) {
+    enum { CX = 122, CWD = 778, CHT = 104, DY = 122, Y0 = 82 };
+    const Track *t = &song.t[sel]; const Pattern *p = cur_pat(sel); int used = 0; for (int q = 0; q < NPAT; q++) used += pat_used(&t->pat[q]);
+    for (int c = 0; c < 2; c++) {
+        int y = Y0 + c * DY, on = c == pm_cur; Col cc = C_CAT(PC_PATTERN); char b[96];
+        rrect(CX, y, CWD, CHT, 8, on ? mix(C_SELBG, C_DIM, 40) : C_CELL);
+        rect(CX, y, 9, CHT, cc, 1);
+        ftext(CX + 38, y + 12, FT_LB, cc, c ? "SELECT" : p->mode ? "ROLL" : "STEPS");
+        if (c) snprintf(b, sizeof b, "P%02d of %d used \3 length \3 division \3 what plays after", t->cur + 1, used);
+        else snprintf(b, sizeof b, "%d steps \3 %s", p->len, div_name[p->div % 6]);
+        ftext(CX + 38, y + 56, FT_M, on ? C_WHITE : C_DIM, b);
+    }
+    draw_footer("EDIT OPEN  F1/F2 PAD  Y BACK");
+}
+
+// PATTERN > STEPS (mockup A05): the lanes as tabs (L1/R1), sixteen steps in two rows, the pages follow the cursor.
+static void slice_label(char *b, const Pattern *p, int i, int ns);   // main.c, below
+static const char *lane_full(int ln) {
+    switch (ln) { case L_TRIG: return song.t[sel].type == 0 ? "PITCH" : "NOTE"; case L_VEL: return "VEL"; case L_PROB: return "CHANCE";
+                  case L_REP: return "REPEAT"; case L_SLICE: return "SLICE"; case L_ACC: return "ACC"; case L_SLD: return "SLIDE"; }
+    return lane_name[ln];
+}
+static void step_value(const Pattern *p, int i, int ln, int nsl, char *b) {   // what a lit step shows on this lane
+    switch (ln) {
+    case L_TRIG: if (nsl) slice_label(b, p, i, nsl); else note_str((uint8_t)(p->note[i] == NOTE_NONE ? clampi(roll_base(sel), 0, 127) : p->note[i]), b); break;
+    case L_SLICE: slice_label(b, p, i, nsl); break;
+    case L_VEL: snprintf(b, 8, "%d", p->vel[i]); break;
+    case L_PROB: snprintf(b, 8, "%d%%", p->prob[i]); break;
+    case L_REP: snprintf(b, 8, "x%d", p->rep[i]); break;
+    case L_ACC: case L_SLD: snprintf(b, 8, "%s", p->slice[i] >= 0 && (p->slice[i] & (ln == L_ACC ? ACID_ACCENT : ACID_SLIDE)) ? (ln == L_ACC ? "ACC" : "SLD") : "-"); break;
+    default: b[0] = 0;
+    }
+}
+static void draw_steps2(void) {
+    const Pattern *p = cur_pat(sel); Col ec = C_ENG(song.t[sel].type); int nsl = track_nslices(sel);
+    int l[L_N], n = lane_list(l), nt = 0;
+    for (int i = 0; i < n; i++) if (!is_auto(l[i])) {   // the tabs; A1-A4 follow them on L1/R1 (their own page comes with MOD)
+        int cx = 90 + nt++ * 138, on = l[i] == lane; const char *nm = lane_full(l[i]);
+        if (on) rrect(cx - 65, 74, 130, 38, 8, ec);
+        ftext(cx - ftext_w(FT_MB, nm) / 2, 81, FT_MB, on ? C_BG : C_DIM, nm);
+    }
+    int cs = cur_step(), page = cs / 16, play = song.t[sel].on ? engine_step(sel) : -1; char b[64];
+    for (int v = 0; v < 16; v++) {
+        int i = page * 16 + v, x = 29 + (v % 8) * 243 / 2, y = 127 + (v / 8) * 265, on = i < p->len && p->trig[i];
+        if (i >= p->len) { rframe(x, y, 108, 252, 8, 2, C_CELL, C_BG); continue; }   // past the end of the pattern
+        if (i == cs) rframe(x - 4, y - 4, 116, 260, 11, 3, C_WHITE, C_BG);
+        int flag = on && (lane == L_ACC || lane == L_SLD) && p->slice[i] >= 0 && (p->slice[i] & (lane == L_ACC ? ACID_ACCENT : ACID_SLIDE));
+        rrect(x, y, 108, 252, 8, flag ? mix(C_BG, ec, 130) : on ? mix(C_BG, ec, 46) : C_CELL);
+        snprintf(b, sizeof b, "%d", i + 1); ftext(x + 10, y + 6, FT_S, C_DIM, b);
+        if (on) step_value(p, i, lane, nsl, b); else snprintf(b, sizeof b, "\3");
+        ftext(x + 54 - ftext_w(FT_LB, b) / 2, y + 126 - fv2[FT_LB].h / 2, FT_LB, on ? ec : C_DIM, b);
+        if (i == play) rect(x, y + 244, 108, 8, C_WHITE, 1);   // the step that plays
+    }
+    int pages = (p->len + 15) / 16;
+    if (pages > 1) snprintf(b, sizeof b, "%d steps \3 %s \3 page %d/%d", p->len, div_name[p->div % 6], page + 1, pages);
+    else snprintf(b, sizeof b, "%d steps \3 %s", p->len, div_name[p->div % 6]);
+    ftext(26, 660, FT_M, C_DIM, b);
+    if (cs < p->len && p->trig[cs]) { char nb[12]; step_value(p, cs, L_TRIG, nsl, nb); snprintf(b, sizeof b, "step %d \3 %s \3 vel %d", cs + 1, nb, p->vel[cs]); }
+    else snprintf(b, sizeof b, "step %d", cs + 1);
+    ftext(W - 28 - ftext_w(FT_M, b), 660, FT_M, C_WHITE, b);
+    draw_footer(lane == L_TRIG || lane == L_SLICE ? "EDIT NOTE  L1/R1 LANE  Y BACK  EDIT+ARROWS VALUE  OPT LISTEN  OPT+EDIT DELETE  XX DOUBLE CLIP  SHIFT+X RANDOM"
+                                                  : "EDIT+ARROWS VALUE  L1/R1 LANE  Y BACK  OPT LISTEN  OPT+EDIT DEFAULT  XX DOUBLE CLIP  SHIFT+X RANDOM");
 }

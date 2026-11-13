@@ -99,6 +99,9 @@ static int tap_bpm(Uint32 *t, int *n);
 static void naming_pad(void);
 static int tab = T_GRID, browsing, slicing, theming, perform, sel = 5, undo_armed;
 static int hubbing, hub_cur, ui_cat = -1;   // UI v2: the pad hub is on screen; the category opened from it (-1 none), ui.h
+enum { PC_PATTERN, PC_SOUND, PC_FX, PC_MOD, PC_MIX, PC_N };   // the categories inside a pad
+static int patmenu, pm_cur;              // PATTERN's own list (STEPS, SELECT) is on screen; its cursor, kept
+static int v2_steps(void);               // the rebuilt STEPS page is the screen now (below, before seq_clamp)
 static Uint32 menu_down, flash[NSLOT];
 static char msg[80]; static Uint32 msg_t;
 
@@ -130,9 +133,9 @@ static void font_init(void) {
         SDL_SetTextureBlendMode(font_sc[sc], SDL_BLENDMODE_BLEND);
         free(px);
     }
-    for (int f = 0; f < FT_N; f++) {     // UI v2 fonts: 98 glyphs in a row
-        const FontV2 *v = &fv2[f]; int w = 98 * v->w; Uint32 *px = calloc((size_t)w * v->h, 4);
-        for (int g = 0; g < 98; g++) for (int i = 0; i < v->w * v->h; i++) {
+    for (int f = 0; f < FT_N; f++) {     // UI v2 fonts: 99 glyphs in a row
+        const FontV2 *v = &fv2[f]; int w = 99 * v->w; Uint32 *px = calloc((size_t)w * v->h, 4);
+        for (int g = 0; g < 99; g++) for (int i = 0; i < v->w * v->h; i++) {
             int a = v->px[g * v->per + i / 2] >> ((i & 1) ? 0 : 4) & 15;
             px[(i / v->w) * w + g * v->w + i % v->w] = (Uint32)(a * 17) << 24 | 0xFFFFFF;
         }
@@ -1404,8 +1407,11 @@ static void par_focus(int p) {
     { int i = gb_find(p); if (i >= 0) { if (par_visible(p)) { gb_cur = i; srow = 3; scol = 0; } return; } }   // every pad has a panel; a hidden control keeps the cursor where it is
     for (int c = 0; c < 2; c++) for (int r = 0; r < PROWS; r++) if (par_col[c][r] == p) { scol = c; srow = 3 + par_row_near(c, r); return; }
 }
+static int v2_steps(void) { return ui_cat == PC_PATTERN && tab == T_SEQ && !hubbing && !patmenu && !perform && !cur_pat(sel)->mode && !is_auto(lane); }
 static void seq_clamp(void) {            // slot change or undo may hide the parameter under the cursor
     if (spage > last_page()) spage = last_page();   // first: the panel returns early below
+    if (v2_steps() && (srow < 1 || srow > 2)) { srow = 1; scol = 0; }   // STEPS (UI v2): only the steps
+    if (v2_steps() && cur_step() >= cur_pat(sel)->len) set_step(cur_pat(sel)->len ? cur_pat(sel)->len - 1 : 0);
     if (srow >= 1 && srow <= 2 && cur_pat(sel)->mode && !is_auto(lane)) { srow = 1; scol = 0; }   // ROLL: the mini roll is one place (its automation lanes are steps)
     if (srow >= 3) { srow = 3; scol = 0; gb_cur = clampi(gb_cur, 0, GB_N - 1);   // scol has no meaning on the panel
         { int n; const GbCtl *c = pctl(&n); if (!par_visible(c[gb_cur].p)) gb_cur = gb_find(P_WARP) >= 0 ? gb_find(P_WARP) : 0; }   // a control the mode hides
@@ -1669,7 +1675,7 @@ static void seq_edit_arrow(int k) {     // EDIT + arrows
         if (st >= p->len) { toast("PAST THE CLIP LENGTH"); return; }
         if (lane == L_TRIG && paint_anchor >= 0) {   // drag: fill (or erase) anchor..cursor, both directions
             edit_begin();
-            int c = st + (k == K_RIGHT) - (k == K_LEFT) + 16 * ((k == K_DOWN) - (k == K_UP));
+            int c = st + (k == K_RIGHT) - (k == K_LEFT) + (v2_steps() ? 8 : 16) * ((k == K_DOWN) - (k == K_UP));
             c = clampi(c, 0, p->len - 1); set_step(c);
             int lo = paint_anchor < c ? paint_anchor : c, hi = paint_anchor < c ? c : paint_anchor;
             for (int i = 0; i < NSTEP; i++) { p->trig[i] = i >= lo && i <= hi ? paint_val : paint_snap[i];
@@ -1694,6 +1700,11 @@ static void seq_edit_arrow(int k) {     // EDIT + arrows
     }
 }
 static void seq_move(int k) {
+    if (v2_steps()) {                    // STEPS (UI v2): two rows of eight, the pages follow the cursor
+        int len = cur_pat(sel)->len, d = k == K_RIGHT ? 1 : k == K_LEFT ? -1 : k == K_DOWN ? 8 : -8, n = cur_step() + d;
+        if (n >= 0 && n < len) set_step(n);
+        return;
+    }
     if (srow >= 1 && srow <= 2 && cur_pat(sel)->mode && !is_auto(lane)) {   // the mini roll: up to MODE, down to the parameters
         if (k == K_UP) { srow = 0; scol = 3; }
         else if (k == K_DOWN) { srow = 3; scol = 0; gb_cur = 0; seq_clamp(); }
@@ -2357,7 +2368,7 @@ static void step_listen(int st) {        // only this step's slice, with its not
     flash[sel] = SDL_GetTicks();
     rec_hit(sel, sl, note);
 }
-static void set_tab(int t) { leave_screen(); if (browsing) browse_close(); slicing = 0; roll_leave(); randing = 0; learning = 0; learn_lfo = -1; pt_pick = 0; if (picking) pick_close(); if (presetting) preset_close(1); theming = 0; iconing = 0; ducking = 0; perform = 0; tab = t; hubbing = 0; if (t == T_GRID || t == T_PRJ) ui_cat = -1; }
+static void set_tab(int t) { leave_screen(); if (browsing) browse_close(); slicing = 0; roll_leave(); randing = 0; learning = 0; learn_lfo = -1; pt_pick = 0; if (picking) pick_close(); if (presetting) preset_close(1); theming = 0; iconing = 0; ducking = 0; perform = 0; tab = t; hubbing = 0; patmenu = 0; if (t == T_GRID || t == T_PRJ) ui_cat = -1; }
 // KEYS: the pad gets its own tonality, the project's stays. Coming back to the project's value means following the project again.
 static void pad_tonality(int k) {
     Track *t = &song.t[sel]; char b[48];
@@ -3274,8 +3285,9 @@ static void key_event(int k, int down) {
     if (ducking) { duck_key(k, down); return; }
     if (in_pad() && down && held[K_SHIFT] && k <= K_RIGHT) { used[K_SHIFT] = 1; cat_open(jump_cat(k)); return; }   // the jump
     if (hubbing) { hub_key(k, down); return; }
+    if (patmenu) { patmenu_key(k, down); return; }
     if (ui_cat >= 0 && k == K_Y && tab != T_PAT && !pt_pick) {   // UI v2: Y goes back to the pad's hub, on release (Y+arrows BEND)
-        if (!down && !used[K_Y]) { int c = ui_cat; hub_open(); hub_cur = c; return; }
+        if (!down && !used[K_Y]) { int c = ui_cat; if (c == PC_PATTERN) patmenu_open(); else { hub_open(); hub_cur = c; } return; }
         if (!down || !(tab == T_SEQ && srow >= 1 && srow <= 2)) return;
     }
     if (!down) {                         // taps fire on release when no combo was used
@@ -5652,7 +5664,7 @@ static void draw(void) {
     SDL_SetRenderDrawColor(R, C_BG.r, C_BG.g, C_BG.b, 255);
     SDL_RenderClear(R);
     ui_v2 = !exporting && !naming && !browsing && !slicing && !rolling && !randing && !presetting && !theming && !iconing && !ducking
-            && (picking || hubbing || (tab == T_GRID && perform != 2));   // the screens rebuilt after the mockups so far
+            && (picking || hubbing || patmenu || v2_steps() || (tab == T_GRID && perform != 2));   // the screens rebuilt after the mockups so far
     if (ui_v2) ui2_header(); else draw_header();
     if (exporting) draw_export();
     else if (naming) draw_naming();
@@ -5666,6 +5678,8 @@ static void draw(void) {
     else if (iconing) draw_icons();
     else if (ducking) draw_duck();
     else if (hubbing) draw_hub();
+    else if (patmenu) draw_patmenu();
+    else if (v2_steps()) draw_steps2();
     else switch (tab) {
     case T_GRID: draw_grid(); break; case T_SEQ: draw_seq(); break; case T_PAT: draw_pat(); break; case T_PRJ: draw_prj(); break;
     case T_MIX: draw_mixer(); break; case T_FX: draw_fx(); break;
