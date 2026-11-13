@@ -2256,6 +2256,8 @@ static void move_cursor(int k) {
     case T_FX: fx_move(k); break;
     }
 }
+static int mcol;
+#include "actions.h"
 static void edit_arrow(int k) {
     if (tab == T_SEQ) seq_edit_arrow(k);
     else if (tab == T_PRJ) prj_edit_arrow(k);
@@ -2263,13 +2265,13 @@ static void edit_arrow(int k) {
     else if (tab == T_PAT && pfol) fol_value(k == K_RIGHT || k == K_UP ? 1 : -1, k == K_UP || k == K_DOWN);
     else if (tab == T_FX) fx_value(k == K_RIGHT || k == K_UP ? 1 : -1, k == K_UP || k == K_DOWN);
     else if (tab == T_GRID && (k == K_LEFT || k == K_RIGHT)) {   // slot volume
-        Track *t = &song.t[sel]; edit_begin(); t->vol = clampi(t->vol + (k == K_RIGHT ? 5 : -5), 0, 100);
-        char b[32]; snprintf(b, sizeof b, "VOLUME %d", t->vol); toast(b);
+        act_pad_volume_step(sel, k == K_RIGHT ? 5 : -5);
+        char b[32]; snprintf(b, sizeof b, "VOLUME %d", song.t[sel].vol); toast(b);
     }
 }
 static void edit_tap(void) {
     switch (tab) {
-    case T_GRID: if (gsel_launch()) break; if (has_sound(sel)) clip_toggle(sel); else pick_open(); break;   // an empty slot has nothing to play: choose an instrument
+    case T_GRID: if (gsel_launch()) break; if (has_sound(sel)) act_clip_toggle(sel); else pick_open(); break;   // an empty slot has nothing to play: choose an instrument
     case T_SEQ: seq_tap(); break;
     case T_PAT: pat_tap(); break;
     case T_PRJ: prj_tap(); break;
@@ -2279,52 +2281,24 @@ static void edit_tap(void) {
 }
 static void delete_action(void) {   // OPTION + EDIT
     switch (tab) {
-    case T_GRID: { edit_begin(); Track *t = &song.t[sel]; Pattern *p = cur_pat(sel);   // only the steps of the pattern on the pad: the sample stays
-        int l = p->len, dv = p->div, md = p->mode; pattern_clear(p); p->len = l; p->div = dv; p->mode = md;
-        char b[24]; snprintf(b, sizeof b, "P%d CLEARED", t->cur + 1); toast(b); break; }
+    case T_GRID: act_steps_clear(sel); break;
     case T_SEQ: seq_delete(); break;
-    case T_PAT: if (pfol) { edit_begin(); memset(song.fol[sel][fol_pat()], 0, 6); toast("FOLLOW: LOOP"); break; }
-        if (pcur >= NPAT) break; edit_begin(); pattern_clear(&song.t[sel].pat[pcur]); toast("PATTERN CLEARED"); break;
+    case T_PAT: if (pfol) { act_follow_loop(sel, fol_pat()); break; }
+        if (pcur >= NPAT) break; act_pattern_clear(sel, pcur); break;
     case T_MIX: mix_delete(); break;
     case T_FX: fx_delete(); break;
     }
 }
-static Track copy_slot; static Cuts copy_cut; static int have_slot; static Pattern clip_board; static int have_clip;
-static void clip_double(void) {          // X twice on SEQ+INST: the clip plays twice as long, the same notes twice, ready for a variation
-    Pattern *p = cur_pat(sel); int n = p->len, m = n * 2 > len_hi() ? len_hi() : n * 2; char b[32];
-    if (n >= len_hi()) { toast(len_hi() < NSTEP ? "MAX LENGTH (PROJECT)" : "CLIP IS FULL"); return; }
-    push_undo();
-    memcpy(p->trig + n, p->trig, (size_t)(m - n)); memcpy(p->note + n, p->note, (size_t)(m - n)); memcpy(p->vel + n, p->vel, (size_t)(m - n));
-    memcpy(p->prob + n, p->prob, (size_t)(m - n)); memcpy(p->rep + n, p->rep, (size_t)(m - n)); memcpy(p->slice + n, p->slice, (size_t)(m - n));
-    { int st = rl_d32[p->div % 6] * RT, T = n * st, T2 = m * st, cnt = 0, src[NNOTE];   // notes as the steps: hidden ones past the old length give way
-      for (int i = 0; i < NNOTE; i++) if (p->roll[i].len && p->roll[i].start >= T && p->roll[i].start < T2) roll_del(p, i);
-      for (int i = 0; i < NNOTE; i++) if (p->roll[i].len && p->roll[i].start < T2 - T) src[cnt++] = i;
-      for (int j = 0; j < cnt; j++) { Note x = p->roll[src[j]]; int ln = x.start + T + x.len > T2 ? T2 - x.start - T : x.len;
-          int k = -1; for (int q = 0; q < NNOTE; q++) if (!p->roll[q].len) { k = q; break; }
-          if (k < 0) { toast("ROLL IS FULL (96 NOTES)"); break; }
-          Note *y = &p->roll[k]; y->start = (uint16_t)(x.start + T); y->note = x.note; y->vel = x.vel; y->prob = x.prob; y->flags = x.flags & NF_ACC;
-          __atomic_store_n(&y->len, (uint16_t)ln, __ATOMIC_RELEASE); } }
-    for (int a = 0; a < NAUTO; a++) { AutoLane *al = &song.aut[sel][song.t[sel].cur][a]; memcpy(al->v + n, al->v, (size_t)(m - n)); int8_t *bc = song.acurve[sel][song.t[sel].cur][a]; memcpy(bc + n, bc, (size_t)(m - n)); }
-    p->len = (uint8_t)m;                 // last: the audio thread never plays steps that are not there yet
-    snprintf(b, sizeof b, "CLIP %d > %d STEPS", n, m); toast(b);
-}
-static int8_t copy_cx[16], copy_ax[16], copy_gx[32]; static uint8_t copy_gp[16];   // the DEEP pages travel with a copied slot
-static int mcol; static PadMix strip_board; static int8_t strip_vol, strip_pan, strip_mbx[NINS][6]; static int have_strip;
-static void copy_paste(int paste) {   // SHIFT+OPTION copy, SHIFT+EDIT paste
-    if (tab == T_GRID) {
-        if (!paste) { copy_slot = song.t[sel]; copy_cut = song.cut[sel]; memcpy(copy_cx, song.cx[sel], 16); memcpy(copy_ax, song.ax[sel], 16); memcpy(copy_gx, song.gx[sel], 32); memcpy(copy_gp, song.gp[sel], 16); have_slot = 1; toast("SLOT COPIED"); }
-        else if (have_slot) { push_undo(); int on = song.t[sel].on; song.t[sel] = copy_slot; song.cut[sel] = copy_cut;
-            memcpy(song.cx[sel], copy_cx, 16); memcpy(song.ax[sel], copy_ax, 16); memcpy(song.gx[sel], copy_gx, 32); memcpy(song.gp[sel], copy_gp, 16);
-            song.t[sel].on = on; song.t[sel].queued = -1; sync_samples(); toast("SLOT PASTED"); }
-    } else if ((tab == T_MIX && mcol < NSLOT) || (tab == T_FX && fx_unit < NSLOT)) {   // a mixer strip: inserts, sends, VOL, PAN (2026-11-10)
+static void clip_double(void) { act_clip_double(sel); }   // X twice on SEQ+INST
+static void copy_paste(int paste) {   // SHIFT+OPTION copy, SHIFT+EDIT paste: what is under the cursor
+    if (tab == T_GRID) { if (!paste) act_pad_copy(sel); else act_pad_paste(sel); }
+    else if ((tab == T_MIX && mcol < NSLOT) || (tab == T_FX && fx_unit < NSLOT)) {
         int s = tab == T_MIX ? mcol : fx_unit;
-        if (!paste) { strip_board = song.mix.pad[s]; memcpy(strip_mbx, song.mbx[s], sizeof strip_mbx); strip_vol = song.t[s].vol; strip_pan = song.t[s].pan; have_strip = 1; toast("STRIP COPIED"); }
-        else if (have_strip) { push_undo(); uint8_t solo = song.mix.pad[s].solo; song.mix.pad[s] = strip_board; memcpy(song.mbx[s], strip_mbx, sizeof strip_mbx); song.mix.pad[s].solo = solo; song.t[s].vol = strip_vol; song.t[s].pan = strip_pan; toast("STRIP PASTED"); }
+        if (!paste) act_strip_copy(s); else act_strip_paste(s);
     } else if (tab == T_SEQ || tab == T_PAT) {
         if (tab == T_PAT && pcur >= NPAT) return;
         Pattern *p = tab == T_PAT ? &song.t[sel].pat[pcur] : cur_pat(sel);
-        if (!paste) { clip_board = *p; have_clip = 1; toast("PATTERN COPIED"); }
-        else if (have_clip) { push_undo(); *p = clip_board; toast("PATTERN PASTED"); }
+        if (!paste) act_pattern_copy(p); else act_pattern_paste(p);
     }
 }
 
@@ -3188,7 +3162,6 @@ static void listen_name(int s, char *b) {   // the listening note by name where 
     else snprintf(b, 8, n ? "%+d ST" : "0 ST", n);
 }
 static int asking, naming, exporting; static void ask_key(int k, int down); static void nm_key(int k, int down); static void export_key(int k, int down);
-#include "actions.h"
 static void key_event(int k, int down) {
     if (k < 0) return;
     if (k == K_PLAY && !down) play_release();
