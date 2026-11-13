@@ -116,6 +116,8 @@ static float clampf1(float v) { return v < -1 ? -1 : v > 1 ? 1 : v; }
 // every layout keeps its places; scale 4 and up stays the dot-matrix of 8x8 (big readouts).
 #include "fontmono.h"
 static SDL_Texture *font_sc[4];          // white glyphs, alpha from the font, at scales 1..3
+#include "fontv2.h"
+static SDL_Texture *font_v2[FT_N];      // the mockups' sizes, natural spacing (ftext in ui.h)
 static void font_init(void) {
     for (int sc = 1; sc <= 3; sc++) {
         int c = 8 * sc, w = 95 * c; Uint32 *px = calloc((size_t)w * c, 4); const unsigned char *g = fm_glyph[sc];
@@ -127,6 +129,15 @@ static void font_init(void) {
         SDL_UpdateTexture(font_sc[sc], NULL, px, w * 4);
         SDL_SetTextureBlendMode(font_sc[sc], SDL_BLENDMODE_BLEND);
         free(px);
+    }
+    for (int f = 0; f < FT_N; f++) {     // UI v2 fonts: 98 glyphs in a row
+        const FontV2 *v = &fv2[f]; int w = 98 * v->w; Uint32 *px = calloc((size_t)w * v->h, 4);
+        for (int g = 0; g < 98; g++) for (int i = 0; i < v->w * v->h; i++) {
+            int a = v->px[g * v->per + i / 2] >> ((i & 1) ? 0 : 4) & 15;
+            px[(i / v->w) * w + g * v->w + i % v->w] = (Uint32)(a * 17) << 24 | 0xFFFFFF;
+        }
+        font_v2[f] = SDL_CreateTexture(R, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STATIC, w, v->h);
+        SDL_UpdateTexture(font_v2[f], NULL, px, w * 4); SDL_SetTextureBlendMode(font_v2[f], SDL_BLENDMODE_BLEND); free(px);
     }
 }
 static void text(int x, int y, int sc, Col c, const char *s) {
@@ -3498,6 +3509,7 @@ static void draw_hint(const char *h) {   // same width as plain text: the cap gr
 }
 static void draw_footer(const char *hint) {
     snprintf(ui_hint, sizeof ui_hint, "%s", hint);
+    if (ui_v2) { ui2_footer(hint); return; }   // a rebuilt screen: the mockups' footer
     Uint32 now = SDL_GetTicks();
     rect(16, H - 73, 992, 32, C_BG, 1);   // a window drawn over a screen replaces its hints, never mixes with them
     rect(16, H - 74, 992, 1, C_LINE, 1);
@@ -3542,54 +3554,55 @@ static void draw_keys(void) {
       text(1008 - 9 * 16, 630, 2, C_DIM, "MENU EXIT"); }
     draw_footer("PADS PLAY  SHIFT+<> SCALE  SHIFT+L1/R1 KEY  SHIFT+^v OCT");
 }
-// HOME > PADS (UI v2, mockup A01): twelve tiles, the engine's stripe and tag, the name, where the pattern goes, the clip's
-// progress. EDIT opens the pad, an empty one asks for an engine; single clips start in PADS (MENU).
+// HOME > PADS (UI v2, mockup A01): twelve cards, the engine's stripe, number, name, engine, the clip's bar; the pattern's
+// route and FRZ / M / ! marks small (user, 2026-11-13). EDIT opens the pad, an empty one asks for an engine; single clips
+// start in PADS (MENU).
 static void draw_grid(void) {
     Uint32 now = SDL_GetTicks();
     if (perform == 2) { draw_keys(); return; }
-    enum { GX = 16, GY = 94, GAP = 8, CW = (992 - 3 * GAP) / 4, CH = (590 - 2 * GAP) / 3 };
-    static const char *const eng_tag[4] = {"SMP", "GRD", "ACD", "CLD"};
+    enum { GX = 26, GY = 86, CW = 230, CH = 193, DX = 247, DY = 210 };
+    static const char *const eng_tag[4] = {"SMP", "GRAND", "ACID", "CLOUD"};   // as the mockup writes them
     for (int i = 0; i < NSLOT; i++) {
-        int x = GX + (i % 4) * (CW + GAP), y = GY + (i / 4) * (CH + GAP);
+        int x = GX + (i % 4) * DX, y = GY + (i / 4) * DY;
         Track *t = &song.t[i]; Uint32 age = now - flash[i]; int snd = has_sound(i);
         Col ec = C_ENG(t->type), ink = t->mute ? C_DIM : C_WHITE;
         if (!snd) {                      // empty: a dark place with a plus, or the file it misses
-            rect(x, y, CW, CH, C_BG, 1); frame(x, y, CW, CH, 1, C_LINE);
-            textf(x + 16, y + 14, 1, C_GREY, "%02d", i + 1);
-            if (slot_want[i][0]) { text(x + 16, y + 40, 2, C_RED, "MISSING"); textf(x + 16, y + 66, 2, C_DIM, "%.13s", file_base(slot_want[i])); }
-            else text(x + CW / 2 - 12, y + CH / 2 - 12, 3, C_GREY, "+");
+            if (i == sel) rframe(x - 4, y - 4, CW + 8, CH + 8, 11, 3, perform ? C_DIM : C_WHITE, C_BG);
+            rframe(x, y, CW, CH, 8, 2, C_LINE, C_BG);
+            if (slot_want[i][0]) { ftext(x + 25, y + 60, FT_MB, C_RED, "MISSING"); char b[16]; snprintf(b, sizeof b, "%.12s", file_base(slot_want[i])); ftext(x + 25, y + 92, FT_S, C_DIM, b); }
+            else ftext(x + CW / 2 - fv2[FT_LB].w / 2, y + CH / 2 - fv2[FT_LB].h / 2, FT_LB, C_GREY, "+");
         } else {
-            Col bg = flash[i] && age < 180 ? mix(C_CELL, ec, 140 - (int)age * 140 / 180) : gsel_in(i) && i != sel ? C_SELBG : C_CELL;
-            rect(x, y, CW, CH, bg, 1);
-            rect(x, y, 6, CH, t->mute ? mix(ec, C_BG, 150) : ec, 1);   // the engine's stripe
-            textf(x + 20, y + 14, 1, C_DIM, "%02d", i + 1);
-            icon(track_icon(t) > 0 ? track_icon(t) - 1 : slot_icon(i), x + CW - 46, y + 12, track_icon(t) > 0 ? C_DIM : C_GREY);
-            const char *nm = slot_name(i); int n = (int)strlen(nm);
-            if (n <= 7) text(x + 20, y + 32, 3, ink, nm); else textf(x + 20, y + 36, 2, ink, "%.10s", nm);   // clear of the icon
-            text(x + 20, y + 66, 2, t->mute ? C_DIM : ec, eng_tag[t->type & 3]);
-            int ex = draw_route(x + 20, y + CH - 58, i, t->on ? C_WHITE : C_DIM, C_ORANGE, 0);   // the pattern and where it goes
+            if (i == sel) rframe(x - 4, y - 4, CW + 8, CH + 8, 11, 3, perform ? C_DIM : C_WHITE, C_BG);   // the selected card: a white rounded outline
+            Col bg = flash[i] && age < 180 ? mix(C_CELL, ec, 120 - (int)age * 120 / 180) : gsel_in(i) && i != sel ? C_SELBG : C_CELL;
+            rrect(x, y, CW, CH, 8, bg);
+            rect(x, y, 9, CH, t->mute ? mix(ec, C_BG, 150) : ec, 1);   // the engine's stripe
+            char b[24]; snprintf(b, sizeof b, "%02d", i + 1); ftext(x + 25, y + 12, FT_M, C_DIM, b);
+            snprintf(b, sizeof b, "%.10s", slot_name(i)); ftext(x + 25, y + 42, FT_XB, ink, b);
+            ftext(x + 25, y + 94, FT_M, t->mute ? C_DIM : ec, eng_tag[t->type & 3]);
+            { char r[24]; const Pattern *p0 = &t->pat[t->cur]; (void)p0;   // where the pattern goes, small
+              int tg = t->queued >= 0 ? t->queued : -9; if (tg >= 0) snprintf(r, sizeof r, "P%d \177 P%d", t->cur + 1, tg + 1); else snprintf(r, sizeof r, "P%d", t->cur + 1);
+              ftext(x + 25, y + 132, FT_S, t->on ? C_WHITE : C_DIM, r); }
+            int fx = x + CW - 14;            // marks, top right
+            if (slot_bad[i]) { fx -= 22; rrect(fx, y + 12, 22, 24, 4, C_RED); ftext(fx + 6, y + 13, FT_S, C_BG, "!"); fx -= 6; }
+            if (t->mute) { fx -= 22; rrect(fx, y + 12, 22, 24, 4, C_RED); ftext(fx + 6, y + 13, FT_S, C_BG, "M"); fx -= 6; }
+            if (frozen(i)) { fx -= 42; rrect(fx, y + 12, 42, 24, 4, frz_have[i] ? th_cur[TC_CLD] : C_LINE); ftext(fx + 6, y + 13, FT_S, C_BG, "FRZ"); }
             { int w = engine_playing() ? engine_want(i) : -1;   // the clip plays (blinks while it waits for the quantum)
-              if ((t->on && w != 0) || (w >= 0 && (now / 250) % 2)) chevrons(ex + 10, y + CH - 56, 12, 2, C_PLAY); }
-            int fx = x + CW - 12;            // marks on the right of that line
-            if (slot_bad[i]) fx -= tag(fx - 28, y + CH - 62, C_RED, C_BG, "!") + 6;
-            if (t->mute) { fx -= 28; tag(fx, y + CH - 62, C_RED, C_BG, "M"); fx -= 6; }
-            if (frozen(i)) { fx -= 60; tag(fx, y + CH - 62, frz_have[i] ? th_cur[TC_CLD] : C_GREY, C_BG, "FRZ"); }
-            rect(x + 20, y + CH - 22, CW - 40, 6, C_LINE, 1);   // the clip's progress
+              if ((t->on && w != 0) || (w >= 0 && (now / 250) % 2)) ftext(x + CW - 34, y + 128, FT_M, C_PLAY, "\1"); }
+            rect(x + 25, y + 160, 180, 9, C_LINE, 1);   // the clip's progress
             const Pattern *p = cur_pat(i); int st = t->on ? engine_step(i) : -1;
-            if (st >= 0 && p->len > 0) rect(x + 20, y + CH - 22, (CW - 40) * (st % p->len + 1) / p->len, 6, t->mute ? C_DIM : ec, 1);
+            if (st >= 0 && p->len > 0) rect(x + 25, y + 160, 180 * (st % p->len + 1) / p->len, 9, t->mute ? C_DIM : ec, 1);
         }
     }
     if (gsel_on()) {                         // one frame round the whole selection
         int c0 = gsel_a % 4, c1 = sel % 4, r0 = gsel_a / 4, r1 = sel / 4, tt;
         if (c0 > c1) { tt = c0; c0 = c1; c1 = tt; } if (r0 > r1) { tt = r0; r0 = r1; r1 = tt; }
-        frame(GX + c0 * (CW + GAP) - 4, GY + r0 * (CH + GAP) - 4, (c1 - c0 + 1) * (CW + GAP) - GAP + 8, (r1 - r0 + 1) * (CH + GAP) - GAP + 8, 2, C_ORANGE);
+        frame(GX + c0 * DX - 6, GY + r0 * DY - 6, (c1 - c0) * DX + CW + 12, (r1 - r0) * DY + CH + 12, 2, C_ORANGE);
     }
-    { int x = GX + (sel % 4) * (CW + GAP), y = GY + (sel / 4) * (CH + GAP); frame(x - 2, y - 2, CW + 4, CH + 4, 2, perform ? C_DIM : C_WHITE); }
     char missing[96]; snprintf(missing, sizeof missing, "MISSING %.32s  %s", file_base(slot_want[sel]), engine_sample(sel) ? "EDIT OPEN" : "EDIT LOAD");
     draw_footer(perform ? "PAD CLIP/HIT  SHIFT+PAD OTHER  PLAY PAD CLIP"
                         : gsel_on() ? "PLAY ALL SELECTED  Y MUTE  SHIFT+Y FREEZE  ARROW ENDS IT"
                         : slot_want[sel][0] ? missing
-                        : has_sound(sel) ? "EDIT OPEN  PLAY ALL  Y MUTE  SHIFT+Y FREEZE  SHIFT+DPAD SEL"
+                        : has_sound(sel) ? "EDIT OPEN  PLAY START  SHIFT MORE  Y MUTE  SHIFT+Y FREEZE  SHIFT+DPAD SEL"
                                              : "EDIT CHOOSE ENGINE  X ICON  MENU PADS");
 }
 static void slice_label(char *b, const Pattern *p, int i, int ns) {   // "16+": the step also plays what follows slice 16
@@ -5155,18 +5168,18 @@ static void pick_key(int k, int down) {
 }
 // The empty pad (UI v2, mockup A03): "what goes here?", the four engines as cards in their colours.
 static void draw_pick(void) {
-    char b[48]; snprintf(b, sizeof b, "PAD %02d IS EMPTY. WHAT GOES HERE?", sel + 1);
-    text(W / 2 - (int)strlen(b) * 8, 120, 2, C_WHITE, b);
-    enum { CX = 160, CWD = 704, CHT = 104, GAP = 18, Y0 = 170 };
+    static const char *const what[4] = {"sample or loop", "synth: chords, pads", "bass line 303", "granular textures"};
+    const char *q = "Empty pad. What goes here?";
+    ftext(W / 2 - ftext_w(FT_LB, q) / 2, 84, FT_LB, C_WHITE, q);
+    enum { CX = 122, CWD = 778, CHT = 126, DY = 142, Y0 = 130 };
     for (int i = 0; i < 4; i++) {
-        int y = Y0 + i * (CHT + GAP), on = i == pk_cur; Col ec = C_ENG(i);
-        rect(CX, y, CWD, CHT, on ? C_SELBG : C_CELL, 1);
-        rect(CX, y, 8, CHT, ec, 1);
-        if (on) frame(CX - 2, y - 2, CWD + 4, CHT + 4, 2, ec);
-        text(CX + 32, y + 22, 3, ec, pick_name[i]);
-        text(CX + 32, y + 66, 2, on ? C_WHITE : C_DIM, pick_what[i]);
+        int y = Y0 + i * DY, on = i == pk_cur; Col ec = C_ENG(i);
+        rrect(CX, y, CWD, CHT, 8, on ? mix(C_SELBG, C_DIM, 40) : C_CELL);
+        rect(CX, y, 9, CHT, ec, 1);
+        ftext(CX + 38, y + 10, FT_LB, ec, pick_name[i]);
+        ftext(CX + CWD - 26 - ftext_w(FT_M, what[i]), y + 14, FT_M, on ? C_WHITE : C_DIM, what[i]);
     }
-    draw_footer("EDIT CHOOSE  UP/DOWN ENGINE  Y BACK");
+    draw_footer("EDIT CHOOSE  Y BACK");
 }
 // ---------- projects (2026-11-09) ----------
 // state.bin stays the working copy (autosave). A project is projects/NAME.bpp, the same bytes; project.cfg remembers
@@ -5638,7 +5651,9 @@ static void draw(void) {
       last = scr; }
     SDL_SetRenderDrawColor(R, C_BG.r, C_BG.g, C_BG.b, 255);
     SDL_RenderClear(R);
-    draw_header();
+    ui_v2 = !exporting && !naming && !browsing && !slicing && !rolling && !randing && !presetting && !theming && !iconing && !ducking
+            && (picking || hubbing || (tab == T_GRID && perform != 2));   // the screens rebuilt after the mockups so far
+    if (ui_v2) ui2_header(); else draw_header();
     if (exporting) draw_export();
     else if (naming) draw_naming();
     else if (browsing) draw_browse();

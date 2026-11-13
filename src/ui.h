@@ -9,6 +9,61 @@ static const char *const cat_name[PC_N] = {"PATTERN", "SOUND", "FX", "MOD", "MIX
 static void draw_footer(const char *hint);
 static int ui_strip = STRIP_THIN;        // PROJECT > SYSTEM > INTERFACE (step 6)
 static char ui_hint[256];                // this frame's whole footer hint: the cheat sheet shows all of it
+static int ui_v2;                        // this frame draws a rebuilt screen: the mockups' header and footer (draw())
+
+// ---- the kit of the mockups: text in their sizes, rounded cards, the header and the footer ----
+enum { V2_HEAD = 60, V2_FOOT = 718 };    // the header ends, the footer starts
+static int ftext(int x, int y, int f, Col c, const char *s) {   // y: the top of the line; returns the width
+    const FontV2 *v = &fv2[f]; SDL_Texture *t = font_v2[f]; int x0 = x;
+    SDL_SetTextureColorMod(t, c.r, c.g, c.b);
+    for (; *s; s++, x += v->w) {
+        int ch = (unsigned char)*s, g = ch >= 32 && ch <= 127 ? ch - 32 : ch == 1 ? 96 : ch == 2 ? 97 : -1;
+        if (g <= 0) continue;
+        SDL_Rect src = {g * v->w, 0, v->w, v->h}, dst = {x, y, v->w, v->h}; SDL_RenderCopy(R, t, &src, &dst);
+    }
+    return x - x0;
+}
+static int ftext_w(int f, const char *s) { return (int)strlen(s) * fv2[f].w; }
+static void rrect(int x, int y, int w, int h, int r, Col c) {   // a filled rounded box
+    SDL_SetRenderDrawColor(R, c.r, c.g, c.b, 255);
+    for (int i = 0; i < h; i++) {
+        int d = i < r ? r - i : i >= h - r ? i - (h - r - 1) : 0, in = 0;
+        if (d) { float e = r - sqrtf((float)(r * r - (d - 0.5f) * (d - 0.5f))); in = (int)(e + 0.5f); }
+        SDL_RenderDrawLine(R, x + in, y + i, x + w - 1 - in, y + i);
+    }
+}
+static void rframe(int x, int y, int w, int h, int r, int t, Col c, Col inside) {   // a rounded outline t thick
+    rrect(x, y, w, h, r, c); rrect(x + t, y + t, w - 2 * t, h - 2 * t, r > t ? r - t : 1, inside);
+}
+static void ui_path(char *b, int n);
+static void ui2_header(void) {           // NEON > PADS on the left, the transport and the tempo on the right
+    rect(0, 0, W, V2_HEAD, C_CELL, 1);
+    char b[160]; ui_path(b, sizeof b);
+    int x = 20, y = (V2_HEAD - fv2[FT_M].h) / 2;
+    for (const char *p = b; *p; ) {
+        const char *e = strstr(p, " > "); int n = e ? (int)(e - p) : (int)strlen(p); char w[64];
+        snprintf(w, sizeof w, "%.*s", n, p);
+        x += ftext(x, y, e ? FT_M : FT_MB, e ? C_DIM : C_WHITE, w);
+        if (!e) break;
+        x += ftext(x, y, FT_M, C_DIM, " \177 "); p = e + 3;
+    }
+    char t[16]; snprintf(t, sizeof t, "%c %d", engine_playing() ? 1 : 2, (int)(song.tempo * tempo_mul + 0.5f));
+    ftext(W - 20 - ftext_w(FT_MB, t), y, FT_MB, engine_playing() ? th_cur[TC_SMP] : C_DIM, t);
+}
+static void ui2_footer(const char *h) {  // at most three key chips: the key in the accent, what it does after it
+    rect(0, V2_FOOT, W, H - V2_FOOT, C_CELL, 1);
+    int x = 18, y = V2_FOOT + 10, left = 3;
+    if (msg_t && SDL_GetTicks() - msg_t < 1500) { int w = ftext_w(FT_MB, msg) + 24; rrect(x, y, w, 32, 6, C_ORANGE); ftext(x + 12, y + 4, FT_MB, C_BG, msg); return; }
+    while (*h && left--) {
+        const char *e = strstr(h, "  "); int n = e ? (int)(e - h) : (int)strlen(h), k = (int)strcspn(h, " "); char b[64];
+        if (k > n) k = n;
+        snprintf(b, sizeof b, "%.*s", k, h); int kw = ftext_w(FT_MB, b) + 24;
+        rrect(x, y, kw, 32, 6, C_SELBG); ftext(x + 12, y + 4, FT_MB, C_ORANGE, b); x += kw + 10;
+        snprintf(b, sizeof b, "%.*s", n - k > 0 ? n - k - 1 : 0, h + k + (n > k)); x += ftext(x, y + 4, FT_M, mix(C_WHITE, C_DIM, 70), b) + 36;
+        if (!e) break;
+        h = e; while (*h == ' ') h++;
+    }
+}
 
 static int ui_window(void) {             // a window over the screens: no popup, the path names it
     return exporting || naming || browsing || slicing || rolling || randing || picking || presetting || theming || iconing || ducking;
@@ -16,6 +71,7 @@ static int ui_window(void) {             // a window over the screens: no popup,
 static void ui_path(char *b, int n) {    // NEON > INSTRUMENT > 06 GRAND > DEEP
     int l = snprintf(b, n, "%s", prj_cur[0] ? prj_cur : "UNTITLED");
 #define UI_ADD(...) (l += snprintf(b + l, l < n ? n - l : 0, " > " __VA_ARGS__))
+    if (picking) { snprintf(b + l, l < n ? n - l : 0, " > %02d -", sel + 1); return; }   // the empty pad (A03)
     int inpad = hubbing || ui_cat >= 0;
     if (perform) UI_ADD("%s", perform == 2 ? "KEYS" : "PADS");
     else if (!inpad) UI_ADD("%s", tab == T_GRID ? "PADS" : tab_name[tab == T_PAT ? T_SEQ : tab]);
@@ -146,17 +202,16 @@ static void hub_line(int c, char *b, int n) {   // what is inside, in a few word
     case PC_MIX: snprintf(b, n, "VOL %d  PAN %d  SEND A %d  B %d%s", t->vol, t->pan, pm->send_a, pm->send_b, frozen(sel) ? "  FROZEN" : ""); break;
     }
 }
-static void draw_hub(void) {
-    enum { CX = 120, CWD = 784, CHT = 96, GAP = 14, Y0 = 108 };
+static void draw_hub(void) {              // the cards of A03: stripe, name in the category's colour, what is inside
+    enum { CX = 122, CWD = 778, CHT = 104, DY = 122, Y0 = 82 };
+    static const char *const jump[PC_N] = {"SHIFT+UP", "SHIFT+RIGHT", "SHIFT+DOWN", "", "SHIFT+LEFT"};
     for (int c = 0; c < PC_N; c++) {
-        int y = Y0 + c * (CHT + GAP), on = c == hub_cur; Col cc = C_CAT(c); char b[96];
-        rect(CX, y, CWD, CHT, on ? C_SELBG : C_CELL, 1);
-        rect(CX, y, 8, CHT, cc, 1);
-        if (on) frame(CX - 2, y - 2, CWD + 4, CHT + 4, 2, cc);
-        text(CX + 32, y + 18, 3, cc, cat_name[c]);
-        hub_line(c, b, sizeof b); text(CX + 32, y + 58, 2, on ? C_WHITE : C_DIM, b);
-        static const char *const jump[PC_N] = {"SHIFT+UP", "SHIFT+RIGHT", "SHIFT+DOWN", "", "SHIFT+LEFT"};
-        text(CX + CWD - 16 - (int)strlen(jump[c]) * 8, y + 24, 1, C_GREY, jump[c]);
+        int y = Y0 + c * DY, on = c == hub_cur; Col cc = C_CAT(c); char b[96];
+        rrect(CX, y, CWD, CHT, 8, on ? mix(C_SELBG, C_DIM, 40) : C_CELL);
+        rect(CX, y, 9, CHT, cc, 1);
+        ftext(CX + 38, y + 12, FT_LB, cc, cat_name[c]);
+        ftext(CX + CWD - 26 - ftext_w(FT_S, jump[c]), y + 16, FT_S, C_DIM, jump[c]);
+        hub_line(c, b, sizeof b); ftext(CX + 38, y + 56, FT_M, on ? C_WHITE : C_DIM, b);
     }
-    draw_footer("EDIT OPEN  F1/F2 PAD  Y HOME");
+    draw_footer("EDIT OPEN  F1/F2 PAD  Y BACK");
 }
