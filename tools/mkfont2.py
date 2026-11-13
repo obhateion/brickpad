@@ -30,6 +30,21 @@ for name, ttf, size in FONTS:
         out.append('    ' + ','.join(str(b) for b in data[i:i + 40]) + ',')
     out.append('};')
     heads.append('    {%d, %d, %d, %d, %s_px},' % (w, h, top, per, name.lower()))
+# big digits for counters (RECORD's count-in): 0-9 and the dot, 96 px bold
+f = ImageFont.truetype(D + 'DejaVuSansMono-Bold.ttf', 96)
+w = int(round(f.getlength('0'))); asc, desc = f.getmetrics(); h = asc + desc; top = asc + f.getbbox('0', anchor='ls')[1]
+data = bytearray()
+for ch in '0123456789.':
+    im = Image.new('L', (w, h), 0)
+    ImageDraw.Draw(im).text((0, asc), ch, font=f, fill=255, anchor='ls')
+    px = list(im.getdata()) + [0]
+    for i in range(0, w * h, 2):
+        data.append((px[i] >> 4) << 4 | px[i + 1] >> 4)
+out.append('enum { FD_W = %d, FD_H = %d, FD_TOP = %d, FD_CAP = %d, FD_PER = %d };   // the big digits: 0-9 and the dot' % (w, h, top, asc - top, (w * h + 1) // 2))
+out.append('static const unsigned char fd_px[%d] = {' % len(data))
+for i in range(0, len(data), 40):
+    out.append('    ' + ','.join(str(b) for b in data[i:i + 40]) + ',')
+out.append('};')
 out.append('typedef struct { int w, h, top, per; const unsigned char *px; } FontV2;')
 out.append('static const FontV2 fv2[FT_N] = {')
 out += heads

@@ -48,8 +48,14 @@ static void ui2_header(void) {           // NEON > PADS on the left, the transpo
         x += ftext(x, y, FT_M, C_DIM, " \177 "); p = e + 3;
     }
     char t[16];
+    if (rec) {                           // a take: the count, waiting for the first note, or how long it runs (A04: REC)
+        if (engine_counting() >= 0) snprintf(t, sizeof t, "REC %d", engine_counting());
+        else if (rec_wait) snprintf(t, sizeof t, "REC WAIT");
+        else { int q = (int)((engine_posf() - rec_from) * 10 / bar32()); snprintf(t, sizeof t, "REC %d.%d", q / 10, q % 10); }
+        ftext(W - 20 - ftext_w(FT_MB, t), y, FT_MB, C_RED, t); return;
+    }
     if (tab == T_PAT && !perform) return;   // A07: nothing on the right
-    if (v2_steps()) { snprintf(t, sizeof t, "P%02d", song.t[sel].cur + 1); ftext(W - 20 - ftext_w(FT_MB, t), y, FT_MB, C_ORANGE, t); return; }   // A05: the pattern
+    if (v2_steps() || rolling) { snprintf(t, sizeof t, "P%02d", song.t[sel].cur + 1); ftext(W - 20 - ftext_w(FT_MB, t), y, FT_MB, C_ORANGE, t); return; }   // A05: the pattern
     snprintf(t, sizeof t, "%c %d", engine_playing() ? 1 : 2, (int)(song.tempo * tempo_mul + 0.5f));
     ftext(W - 20 - ftext_w(FT_MB, t), y, FT_MB, engine_playing() ? th_cur[TC_SMP] : C_DIM, t);
 }
@@ -84,9 +90,10 @@ static void ui_path(char *b, int n) {    // NEON > INSTRUMENT > 06 GRAND > DEEP
     if (pad >= 0) UI_ADD("%02d %.14s", pad + 1, slot_name(pad) ? slot_name(pad) : "EMPTY");
     else if (tab == T_FX) UI_ADD("%s", fx_unit == NSLOT ? "RETURN A" : fx_unit == NSLOT + 1 ? "RETURN B" : "MASTER");
     if (exporting) UI_ADD("EXPORT"); else if (naming) UI_ADD("NAME"); else if (browsing) UI_ADD("FILES");
-    else if (slicing) UI_ADD("SLICES"); else if (rolling) UI_ADD("ROLL"); else if (randing) UI_ADD("RANDOM");
+    else if (slicing) UI_ADD("SLICES"); else if (rolling) UI_ADD("PATTERN > ROLL"); else if (randing) UI_ADD("RANDOM");
     else if (picking) UI_ADD("ENGINE"); else if (presetting) UI_ADD("PRESETS"); else if (theming) UI_ADD("THEME");
     else if (iconing) UI_ADD("ICON"); else if (ducking) UI_ADD("DUCK");
+    else if (recpage) UI_ADD("PATTERN > RECORD");
     else if (v2_steps()) UI_ADD("PATTERN > STEPS");
     else if (ui_cat >= 0 && !(tab == T_PAT) && !(ui_cat == PC_SOUND && cl_deep)) UI_ADD("%s", cat_name[ui_cat]);
     else if (tab == T_PAT) UI_ADD("PATTERN > SELECT");
@@ -180,14 +187,21 @@ static void cat_open(int c) {
     hub_cur = c; ui_cat = c;
     if (c == PC_PATTERN && (srow < 1 || srow > 2)) { srow = 1; scol = 0; }
     if (c == PC_PATTERN && pm_cur == 1) pat_open();   // the page it was left on
+    else if (c == PC_PATTERN && pm_cur == 2) recpage = 1;
+    else if (c == PC_PATTERN && cur_pat(sel)->mode) roll_open();
     if (c == PC_SOUND) { srow = 3; scol = 0; cl_deep = 0; gb_cur = 0; }
     if (c == PC_FX || c == PC_MOD) { fx_unit = sel; fx_page = c == PC_MOD; }
     if (c == PC_MIX) mcol = sel;
     seq_clamp();
 }
 static int in_pad(void) { return hubbing || ui_cat >= 0; }
+static void pat_sync(void) {              // another pad on PATTERN's first page: its steps or its roll
+    if (ui_cat != PC_PATTERN || tab != T_SEQ || patmenu || recpage) return;
+    int m = cur_pat(sel)->mode;
+    if (m) roll_open(); else if (rolling) roll_leave();
+}
 static void pad_step(int d) {             // F1/F2 inside a pad: the next pad, the same page
-    act_select_step(d); seq_clamp();
+    act_select_step(d); seq_clamp(); pat_sync();
     if (tab == T_FX && fx_unit < NSLOT) fx_unit = sel;
     if (tab == T_MIX && mcol < NSLOT) mcol = sel;
 }
@@ -226,21 +240,24 @@ static void draw_hub(void) {              // the cards of A03: stripe, name in t
 
 // PATTERN (UI v2): its pages as a list, STEPS (the roll when the pattern is one) and SELECT; RECORD comes with A04.
 static void patmenu_key(int k, int down) {
-    if (!down) { if (k == K_EDIT && !used[K_EDIT]) { patmenu = 0; if (pm_cur == 1) pat_open(); else { srow = 1; scol = 0; seq_clamp(); } } return; }
+    if (!down) { if (k == K_EDIT && !used[K_EDIT]) { patmenu = 0;
+        if (pm_cur == 1) pat_open(); else if (pm_cur == 2) recpage = 1; else if (cur_pat(sel)->mode) roll_open(); else { srow = 1; scol = 0; seq_clamp(); } } return; }
     if (k == K_Y) { hub_open(); hub_cur = PC_PATTERN; return; }
     if (k == K_PLAY) { play_key(); return; }
     if (k == K_OPT) { act_listen(sel); return; }
-    if (k == K_UP || k == K_DOWN || k == K_LEFT || k == K_RIGHT) pm_cur ^= 1;
+    if (k == K_UP || k == K_LEFT) pm_cur = (pm_cur + 2) % 3;
+    if (k == K_DOWN || k == K_RIGHT) pm_cur = (pm_cur + 1) % 3;
 }
 static void draw_patmenu(void) {
     enum { CX = 122, CWD = 778, CHT = 104, DY = 122, Y0 = 82 };
     const Track *t = &song.t[sel]; const Pattern *p = cur_pat(sel); int used = 0; for (int q = 0; q < NPAT; q++) used += pat_used(&t->pat[q]);
-    for (int c = 0; c < 2; c++) {
+    for (int c = 0; c < 3; c++) {
         int y = Y0 + c * DY, on = c == pm_cur; Col cc = C_CAT(PC_PATTERN); char b[96];
         rrect(CX, y, CWD, CHT, 8, on ? mix(C_SELBG, C_DIM, 40) : C_CELL);
         rect(CX, y, 9, CHT, cc, 1);
-        ftext(CX + 38, y + 12, FT_LB, cc, c ? "SELECT" : p->mode ? "ROLL" : "STEPS");
-        if (c) snprintf(b, sizeof b, "P%02d of %d used \3 length \3 division \3 what plays after", t->cur + 1, used);
+        ftext(CX + 38, y + 12, FT_LB, cc, c == 2 ? "RECORD" : c ? "SELECT" : p->mode ? "ROLL" : "STEPS");
+        if (c == 2) snprintf(b, sizeof b, "count-in %d \3 quantize %s \3 play it on KEYS or PADS (MENU)", song.count_in, quant_name[song.rec_quant % 5]);
+        else if (c) snprintf(b, sizeof b, "P%02d of %d used \3 length \3 division \3 what plays after", t->cur + 1, used);
         else snprintf(b, sizeof b, "%d steps \3 %s", p->len, div_name[p->div % 6]);
         ftext(CX + 38, y + 56, FT_M, on ? C_WHITE : C_DIM, b);
     }
@@ -294,4 +311,41 @@ static void draw_steps2(void) {
     ftext(W - 28 - ftext_w(FT_M, b), 660, FT_M, C_WHITE, b);
     draw_footer(lane == L_TRIG || lane == L_SLICE ? "EDIT NOTE  L1/R1 LANE  Y BACK  EDIT+ARROWS VALUE  OPT LISTEN  OPT+EDIT DELETE  XX DOUBLE CLIP  SHIFT+X RANDOM"
                                                   : "EDIT+ARROWS VALUE  L1/R1 LANE  Y BACK  OPT LISTEN  OPT+EDIT DEFAULT  XX DOUBLE CLIP  SHIFT+X RANDOM");
+}
+
+// PATTERN > RECORD (UI v2, mockup A04): the take's state as one big circle. The logic is the one of MENU+PLAY: EDIT arms
+// (or ends the take), the count-in runs, the first note starts it; notes come from KEYS or PADS (MENU) or OPTION here.
+static void fdig(int cx, int cy, Col c, const char *s) {   // big digits, centred on cx, the figures' middle on cy
+    int n = (int)strlen(s), x = cx - n * FD_W / 2, y = cy - FD_TOP - FD_CAP / 2;
+    SDL_SetTextureColorMod(font_dig, c.r, c.g, c.b);
+    for (; *s; s++, x += FD_W) { int g = *s == '.' ? 10 : *s >= '0' && *s <= '9' ? *s - '0' : -1; if (g < 0) continue;
+        SDL_Rect src = {g * FD_W, 0, FD_W, FD_H}, dst = {x, y, FD_W, FD_H}; SDL_RenderCopy(R, font_dig, &src, &dst); }
+}
+static void disc2(int cx, int cy, int r, Col c) {
+    SDL_SetRenderDrawColor(R, c.r, c.g, c.b, 255);
+    for (int dy = -r; dy <= r; dy++) { int dx = (int)(sqrtf((float)(r * r - dy * dy)) + 0.5f); SDL_RenderDrawLine(R, cx - dx, cy + dy, cx + dx, cy + dy); }
+}
+static void record_key(int k, int down) {
+    if (!down) { if (k == K_EDIT && !used[K_EDIT]) rec_toggle(engine_posf(), SDL_GetTicks() | 1); return; }
+    if (k == K_Y) {                      // the count or the wait: cancel; else back to the list (a running take goes on)
+        if (rec && (engine_counting() >= 0 || rec_wait)) rec_toggle(engine_posf(), SDL_GetTicks() | 1);
+        else { recpage = 0; patmenu_open(); }
+        return;
+    }
+    if (k == K_PLAY) { play_key(); return; }
+    if (k == K_OPT) { listen(sel); rec_hit(sel, -1, NOTE_NONE); return; }   // a hit of the pad: it starts an armed take
+}
+static void draw_record(void) {
+    enum { CX = W / 2, CY = 300, RR = 169 };
+    int cnt = rec ? engine_counting() : -1, wait = rec && rec_wait && cnt < 0, run = rec && !wait && cnt < 0; char b[96], v[16];
+    const char *line;
+    if (!rec) { disc2(CX, CY, RR, mix(C_RED, C_BG, 200)); disc2(CX, CY, RR - 6, C_BG); ftext(CX - ftext_w(FT_XB, "REC") / 2, CY - 18, FT_XB, mix(C_RED, C_BG, 90), "REC"); line = "ready to record"; }
+    else if (wait) { int on = SDL_GetTicks() / 400 % 2; disc2(CX, CY, RR, C_RED); disc2(CX, CY, RR - 6, on ? mix(C_RED, C_BG, 190) : C_BG); ftext(CX - ftext_w(FT_XB, "PLAY") / 2, CY - 18, FT_XB, C_RED, "PLAY"); line = "play a note: the take starts with it"; }
+    else if (cnt >= 0) { disc2(CX, CY, RR, C_RED); snprintf(v, sizeof v, "%d", cnt > 0 ? cnt : 1); fdig(CX, CY, C_BG, v); line = "count-in before recording"; }
+    else { disc2(CX, CY, RR, C_RED); int q = (int)((engine_posf() - rec_from) * 10 / bar32()); snprintf(v, sizeof v, "%d.%d", q / 10, q % 10); fdig(CX, CY, C_BG, v); line = "recording: bars"; }
+    ftext(CX - ftext_w(FT_LB, line) / 2, 524, FT_LB, C_WHITE, line);
+    snprintf(b, sizeof b, "into %02d %.14s \3 P%02d \3 quantize %s", sel + 1, slot_name(sel) ? slot_name(sel) : "EMPTY", song.t[sel].cur + 1, quant_name[song.rec_quant % 5]);
+    ftext(CX - ftext_w(FT_M, b) / 2, 566, FT_M, C_DIM, b);
+    draw_footer(run ? "EDIT STOP  OPT HIT  Y BACK  MENU KEYS / PADS  PLAY TRANSPORT" : rec ? "PLAY STOP  Y CANCEL  OPT HIT  MENU KEYS / PADS"
+                    : "EDIT ARM  OPT HIT  Y BACK  MENU KEYS / PADS  MENU+PLAY ARM FROM ANYWHERE");
 }

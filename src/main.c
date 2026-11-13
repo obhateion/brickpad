@@ -100,7 +100,8 @@ static void naming_pad(void);
 static int tab = T_GRID, browsing, slicing, theming, perform, sel = 5, undo_armed;
 static int hubbing, hub_cur, ui_cat = -1;   // UI v2: the pad hub is on screen; the category opened from it (-1 none), ui.h
 enum { PC_PATTERN, PC_SOUND, PC_FX, PC_MOD, PC_MIX, PC_N };   // the categories inside a pad
-static int patmenu, pm_cur;              // PATTERN's own list (STEPS, SELECT) is on screen; its cursor, kept
+static int patmenu, pm_cur;              // PATTERN's own list (STEPS or ROLL, SELECT, RECORD) is on screen; its cursor, kept
+static int recpage;                      // PATTERN > RECORD is on screen
 static int v2_steps(void);               // the rebuilt STEPS page is the screen now (below, before seq_clamp)
 static Uint32 menu_down, flash[NSLOT];
 static char msg[80]; static Uint32 msg_t;
@@ -121,6 +122,7 @@ static float clampf1(float v) { return v < -1 ? -1 : v > 1 ? 1 : v; }
 static SDL_Texture *font_sc[4];          // white glyphs, alpha from the font, at scales 1..3
 #include "fontv2.h"
 static SDL_Texture *font_v2[FT_N];      // the mockups' sizes, natural spacing (ftext in ui.h)
+static SDL_Texture *font_dig;            // the big digits (fdig in ui.h)
 static void font_init(void) {
     for (int sc = 1; sc <= 3; sc++) {
         int c = 8 * sc, w = 95 * c; Uint32 *px = calloc((size_t)w * c, 4); const unsigned char *g = fm_glyph[sc];
@@ -142,6 +144,13 @@ static void font_init(void) {
         font_v2[f] = SDL_CreateTexture(R, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STATIC, w, v->h);
         SDL_UpdateTexture(font_v2[f], NULL, px, w * 4); SDL_SetTextureBlendMode(font_v2[f], SDL_BLENDMODE_BLEND); free(px);
     }
+    { int w = 11 * FD_W; Uint32 *px = calloc((size_t)w * FD_H, 4);
+      for (int g = 0; g < 11; g++) for (int i = 0; i < FD_W * FD_H; i++) {
+          int a = fd_px[g * FD_PER + i / 2] >> ((i & 1) ? 0 : 4) & 15;
+          px[(i / FD_W) * w + g * FD_W + i % FD_W] = (Uint32)(a * 17) << 24 | 0xFFFFFF;
+      }
+      font_dig = SDL_CreateTexture(R, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STATIC, w, FD_H);
+      SDL_UpdateTexture(font_dig, NULL, px, w * 4); SDL_SetTextureBlendMode(font_dig, SDL_BLENDMODE_BLEND); free(px); }
 }
 static void text(int x, int y, int sc, Col c, const char *s) {
     if (sc >= 4) {                       // big text is dot-matrix
@@ -2389,7 +2398,7 @@ static void step_listen(int st) {        // only this step's slice, with its not
     flash[sel] = SDL_GetTicks();
     rec_hit(sel, sl, note);
 }
-static void set_tab(int t) { leave_screen(); if (browsing) browse_close(); slicing = 0; roll_leave(); randing = 0; learning = 0; learn_lfo = -1; pt_pick = 0; if (picking) pick_close(); if (presetting) preset_close(1); theming = 0; iconing = 0; ducking = 0; perform = 0; tab = t; hubbing = 0; patmenu = 0; if (t == T_GRID || t == T_PRJ) ui_cat = -1; }
+static void set_tab(int t) { leave_screen(); if (browsing) browse_close(); slicing = 0; roll_leave(); randing = 0; learning = 0; learn_lfo = -1; pt_pick = 0; if (picking) pick_close(); if (presetting) preset_close(1); theming = 0; iconing = 0; ducking = 0; perform = 0; tab = t; hubbing = 0; patmenu = 0; recpage = 0; if (t == T_GRID || t == T_PRJ) ui_cat = -1; }
 // KEYS: the pad gets its own tonality, the project's stays. Coming back to the project's value means following the project again.
 static void pad_tonality(int k) {
     Track *t = &song.t[sel]; char b[48];
@@ -2538,7 +2547,7 @@ static int rolling;                      // the note editor of the pad's current
 static int rl_t, rl_n = 60, rl_v0, rl_n0 = 50, rl_snap = 8, rl_len = 8, rl_heard, rl_chord;   // cursor (tick, pitch), view, grid and last length in ticks
 static const int rl_snaps[6] = {1, 2, 4, 8, 16, 32};   // 1/128 .. 1/4
 static const int rl_d32[6] = {1, 2, 4, 8, 16, 32};
-enum { RL_COLS = 32, RL_ROWS = 24, RL_TAG = 301, RL_CHORD_TAG = 310 };
+enum { RL_COLS = 32, RL_ROWS = 14, RL_TAG = 301, RL_CHORD_TAG = 310 };
 static int roll_ticks(const Pattern *p) { return (p->len ? p->len : 16) * rl_d32[p->div % 6] * RT; }
 static int roll_any(const Pattern *p) { for (int i = 0; i < NNOTE; i++) if (p->roll[i].len) return 1; return 0; }
 static int roll_find(const Pattern *p, int t, int n) {   // the note of pitch n sounding at tick t (the latest to start)
@@ -2571,7 +2580,7 @@ static void roll_open(void) {
     Pattern *p = cur_pat(sel); int d = rl_d32[p->div % 6] * RT;
     rl_snap = d > 32 ? 32 : d; rl_len = d; rl_t = 0; rl_v0 = 0; rl_n = roll_base(sel);
     for (int i = 0; i < NNOTE; i++) if (p->roll[i].len) { rl_n = p->roll[i].note; break; }
-    rl_n0 = clampi(rl_n - 10, 0, 128 - RL_ROWS); rolling = 1;
+    rl_n0 = clampi(rl_n - RL_ROWS / 2, 0, 128 - RL_ROWS); rolling = 1;
 }
 static void roll_mode(void) {            // MODE: STEPS <> ROLL. An empty roll takes the steps as notes; both are kept
     Pattern *p = cur_pat(sel);
@@ -2615,7 +2624,7 @@ static void roll_key(int k, int down) {
         if (k == K_X || k == K_OPT) undo_armed = 0;   // each combo its own undo step
         return;
     }
-    if (k == K_Y) { roll_leave(); return; }
+    if (k == K_Y) { roll_leave(); if (ui_cat == PC_PATTERN) patmenu_open(); return; }   // UI v2: back to PATTERN's list
     if (k == K_PLAY) { play_key(); return; }
     if (held[K_SHIFT] && k == K_L2) {
         undo(); p = cur_pat(sel);
@@ -3307,6 +3316,7 @@ static void key_event(int k, int down) {
     if (in_pad() && down && held[K_SHIFT] && k <= K_RIGHT) { used[K_SHIFT] = 1; cat_open(jump_cat(k)); return; }   // the jump
     if (hubbing) { hub_key(k, down); return; }
     if (patmenu) { patmenu_key(k, down); return; }
+    if (recpage) { record_key(k, down); return; }
     if (ui_cat >= 0 && k == K_Y && tab != T_PAT && !pt_pick) {   // UI v2: Y goes back to the pad's hub, on release (Y+arrows BEND)
         if (!down && !used[K_Y]) { int c = ui_cat; if (c == PC_PATTERN) patmenu_open(); else { hub_open(); hub_cur = c; } return; }
         if (!down || !(tab == T_SEQ && srow >= 1 && srow <= 2)) return;
@@ -3355,7 +3365,7 @@ static void key_event(int k, int down) {
         return;
     }
     if (arrow && held[K_EDIT]) { used[K_EDIT] = 1; edit_arrow(k); return; }
-    if (held[K_X] && tab == T_SEQ && (k == K_LEFT || k == K_RIGHT)) { act_select_step(k == K_RIGHT ? 1 : -1); seq_clamp(); return; }
+    if (held[K_X] && tab == T_SEQ && (k == K_LEFT || k == K_RIGHT)) { act_select_step(k == K_RIGHT ? 1 : -1); seq_clamp(); pat_sync(); return; }
     if (held[K_X] && tab == T_FX && (k == K_LEFT || k == K_RIGHT)) { used[K_X] = 1; act_select_step(k == K_RIGHT ? 1 : -1); fx_unit = sel; return; }   // another pad from any row
     if (arrow && held[K_OPT]) {          // OPTION+<> slot (patterns only on the pattern field since 2026-11-08: OPTION+^v does nothing)
         used[K_OPT] = 1;
@@ -4404,45 +4414,46 @@ static void draw_rnd(void) {
     text(600, 376, 1, C_GREY, "EVERY GENERATE: A NEW TAKE, SHIFT+L2 UNDOES");
     draw_footer(rn_row == RN_GO ? "EDIT GENERATE  SHIFT+L2 UNDO  PLAY  Y BACK" : "EDIT+<> CHANGE  EDIT NEXT  UP/DOWN ROW  Y BACK");
 }
+// PATTERN > ROLL (UI v2, mockup A06): piano keys on the left, fourteen rows, the notes in the engine's colour.
 static void draw_roll(void) {
     Pattern *p = cur_pat(sel); int T = roll_ticks(p), st = song.t[sel].on ? engine_step(sel) : -1;
-    enum { KX = 16, GX = 104, GY = 118, CW = 28, RH = 24 };
+    enum { KX = 26, KW = 64, GX = 96, GY = 76, CW = 28, RH = 44 };
     int beat = 8 * RT, bar = beat * (song.beats > 0 ? song.beats : 4), i = roll_find(p, rl_t, rl_n);
+    Col ec = C_ENG(song.t[sel].type), key_w = mix(C_WHITE, C_BG, 30), key_b = C_LINE;
     roll_view();
-    char b[64], nm[8]; roll_name(nm, rl_n);
-    snprintf(b, sizeof b, "ROLL P%d  GRID 1/%d  BAR %d.%d", song.t[sel].cur + 1, 128 / rl_snap, rl_t / bar + 1, rl_t % bar / beat + 1);
-    text(16, 93, 2, C_WHITE, b);
-    if (i >= 0) { const Note *n = &p->roll[i]; snprintf(b, sizeof b, "%s LEN %d/128 VEL %d CH %d%s", nm, n->len, n->vel, n->prob, n->flags & NF_ACC ? " ACC" : ""); }
-    else snprintf(b, sizeof b, "%s", nm);
-    text(1008 - (int)strlen(b) * 16, 93, 2, i >= 0 ? C_ORANGE : C_DIM, b);
-    for (int r = 0; r < RL_ROWS; r++) {  // rows, high pitches on top; the scale's notes lighter, the tonic orange
-        int n = rl_n0 + RL_ROWS - 1 - r, y = GY + r * RH, in = roll_in_scale(n), ton = ((n - track_key(sel)) % 12 + 12) % 12 == 0;
-        if (in) rect(GX, y, RL_COLS * CW, RH, mix(C_BG, C_CELL, 160), 1);
-        rect(KX, y, 80, RH - 1, ton ? mix(C_BG, C_ORANGE, 90) : in ? C_CELL : C_BG, 1);
-        roll_name(nm, n); text(KX + 6, y + 4, 2, n == rl_n ? C_ORANGE : in ? C_WHITE : C_GREY, nm);
-        rect(GX, y + RH - 1, RL_COLS * CW, 1, n % 12 == 0 ? C_LINE : C_CELL, 1);
+    char b[80], nm[8];
+    for (int r = 0; r < RL_ROWS; r++) {  // rows, high pitches on top: white and black keys; the pad's scale has a dot, its tonic the accent
+        int n = rl_n0 + RL_ROWS - 1 - r, y = GY + r * RH, pc = n % 12, black = pc == 1 || pc == 3 || pc == 6 || pc == 8 || pc == 10;
+        int ton = ((n - track_key(sel)) % 12 + 12) % 12 == 0;
+        rect(GX, y, RL_COLS * CW, RH - 1, black ? mix(C_BG, C_CELL, 110) : C_CELL, 1);
+        rect(KX, y, KW, RH - 1, black ? key_b : key_w, 1);
+        if (pc == 0 || n == rl_n) { roll_name(nm, n); ftext(KX + 6, y + 2, FT_S, n == rl_n && pc ? ec : black ? C_WHITE : C_BG, nm); }
+        if (roll_in_scale(n)) rect(KX + KW - 10, y + RH / 2 - 3, 6, 6, ton ? C_ORANGE : black ? C_DIM : C_GREY, 1);
     }
-    for (int c = 0; c <= RL_COLS; c++) { int t = rl_v0 + c * rl_snap;   // lines: grid, beats, bars
-        Col col = t % bar == 0 ? C_GREY : t % beat == 0 ? C_LINE : C_CELL; if (rl_snap >= beat && t % bar) col = C_LINE;
-        rect(GX + c * CW, GY, 1, RL_ROWS * RH, col, 1); }
-    int end = T - rl_v0; if (end < RL_COLS * rl_snap) { int ex = GX + (end > 0 ? end * CW / rl_snap : 0); hatch(ex, GY, GX + RL_COLS * CW - ex, RL_ROWS * RH, 10, 1, C_LINE); }
+    for (int c = 0; c <= RL_COLS; c++) { int t = rl_v0 + c * rl_snap;   // lines: beats faint, bars clear
+        if (t % bar == 0) rect(GX + c * CW, GY, 2, RL_ROWS * RH, C_GREY, 1);
+        else if (t % beat == 0) rect(GX + c * CW, GY, 1, RL_ROWS * RH, C_LINE, 1); }
+    int end = T - rl_v0; if (end < RL_COLS * rl_snap) { int ex = GX + (end > 0 ? end * CW / rl_snap : 0); rect(ex, GY, GX + RL_COLS * CW - ex, RL_ROWS * RH, C_BG, 1); }   // past the end of the pattern
     for (int j = 0; j < NNOTE; j++) { const Note *n = &p->roll[j];
         if (!n->len || n->note < rl_n0 || n->note >= rl_n0 + RL_ROWS) continue;
         int a = n->start - rl_v0, e = a + n->len; if (e <= 0 || a >= RL_COLS * rl_snap) continue;
         int x0 = GX + (a < 0 ? 0 : a * CW / rl_snap), x1 = GX + (e > RL_COLS * rl_snap ? RL_COLS * rl_snap : e) * CW / rl_snap;
         int y = GY + (rl_n0 + RL_ROWS - 1 - n->note) * RH;
-        if (x1 - x0 < 3) x1 = x0 + 3;
-        Col c = n->start >= T ? C_GREY : mix(C_DIM, C_ORANGE, 120 + n->vel);
-        rect(x0 + 1, y + 2, x1 - x0 - 1, RH - 4, c, 1);
-        rect(x0 + 1, y + 2, 2, RH - 4, C_WHITE, 1);                  // where it starts
-        if (n->flags & NF_ACC) text(x0 + 5, y + 8, 1, C_BG, "A");
-        if (j == i) frame(x0, y + 1, x1 - x0 + 1, RH - 2, 2, C_WHITE);
+        if (x1 - x0 < 8) x1 = x0 + 8;
+        Col c = n->start >= T ? C_GREY : mix(mix(ec, C_BG, 110), ec, n->vel * 2);
+        if (j == i) rframe(x0, y + 2, x1 - x0, RH - 5, 7, 3, C_WHITE, c); else rrect(x0 + 2, y + 4, x1 - x0 - 3, RH - 9, 5, c);
+        if (n->flags & NF_ACC) ftext(x0 + 7, y + 10, FT_S, C_BG, "A");
     }
     if (st >= 0) { int t = st * rl_d32[p->div % 6] * RT - rl_v0; if (t >= 0 && t < RL_COLS * rl_snap) rect(GX + t * CW / rl_snap, GY, 2, RL_ROWS * RH, C_WHITE, 1); }
-    { int cx = GX + (rl_t - rl_v0) * CW / rl_snap, cy = GY + (rl_n0 + RL_ROWS - 1 - rl_n) * RH;   // the cursor: orange outside, dark inside
-      frame(cx - 1, cy - 1, CW + 3, RH + 2, 3, C_ORANGE); frame(cx + 2, cy + 2, CW - 3, RH - 4, 1, C_BG); }
-    draw_footer(i >= 0 ? "EDIT DEL  EDIT+ARROWS LEN/PITCH  X+ARROWS VEL/CH  Y BACK"
-                       : "EDIT NOTE  OPT+<> NEXT  X+EDIT CHORD  L1/R1 GRID  Y BACK");
+    if (i < 0) { int cx = GX + (rl_t - rl_v0) * CW / rl_snap, cy = GY + (rl_n0 + RL_ROWS - 1 - rl_n) * RH;   // the cursor on an empty place
+        rect(cx, cy + 2, CW, 2, C_WHITE, 1); rect(cx, cy + RH - 5, CW, 2, C_WHITE, 1); rect(cx, cy + 2, 2, RH - 5, C_WHITE, 1); rect(cx + CW - 2, cy + 2, 2, RH - 5, C_WHITE, 1); }
+    snprintf(b, sizeof b, "grid 1/%d \3 bar %d.%d", 128 / rl_snap, rl_t / bar + 1, rl_t % bar / beat + 1); ftext(26, 694, FT_S, C_DIM, b);
+    roll_name(nm, rl_n);
+    if (i >= 0) { const Note *n = &p->roll[i]; snprintf(b, sizeof b, "%s \3 len %d/128 \3 vel %d \3 chance %d%s", nm, n->len, n->vel, n->prob, n->flags & NF_ACC ? " \3 acc" : ""); }
+    else snprintf(b, sizeof b, "%s", nm);
+    ftext(W - 28 - ftext_w(FT_S, b), 694, FT_S, C_WHITE, b);
+    draw_footer(i >= 0 ? "EDIT DELETE  EDIT+ARROWS LENGTH/PITCH  Y BACK  X+ARROWS VEL/CHANCE  L1/R1 GRID  OPT+<> NEXT"
+                       : "EDIT NOTE  L1/R1 GRID  Y BACK  OPT+<> NEXT  X+EDIT CHORD  SHIFT+ARROWS PAGE");
 }
 static void draw_seq(void) {
     Pattern *p = cur_pat(sel); int st = song.t[sel].on ? engine_step(sel) : -1;
@@ -5676,8 +5687,8 @@ static void draw(void) {
       last = scr; }
     SDL_SetRenderDrawColor(R, C_BG.r, C_BG.g, C_BG.b, 255);
     SDL_RenderClear(R);
-    ui_v2 = !exporting && !naming && !browsing && !slicing && !rolling && !randing && !presetting && !theming && !iconing && !ducking
-            && (picking || hubbing || patmenu || v2_steps() || tab == T_PAT || (tab == T_GRID && perform != 2));   // the screens rebuilt after the mockups so far
+    ui_v2 = !exporting && !naming && !browsing && !slicing && !randing && !presetting && !theming && !iconing && !ducking
+            && (rolling || picking || hubbing || patmenu || recpage || v2_steps() || tab == T_PAT || (tab == T_GRID && perform != 2));   // the screens rebuilt after the mockups so far
     if (ui_v2) ui2_header(); else draw_header();
     if (exporting) draw_export();
     else if (naming) draw_naming();
@@ -5692,6 +5703,7 @@ static void draw(void) {
     else if (ducking) draw_duck();
     else if (hubbing) draw_hub();
     else if (patmenu) draw_patmenu();
+    else if (recpage) draw_record();
     else if (v2_steps()) draw_steps2();
     else switch (tab) {
     case T_GRID: draw_grid(); break; case T_SEQ: draw_seq(); break; case T_PAT: draw_pat(); break; case T_PRJ: draw_prj(); break;
