@@ -98,6 +98,7 @@ static int ducking;                      // the DUCK window is open (below, with
 static int tap_bpm(Uint32 *t, int *n);
 static void naming_pad(void);
 static int tab = T_GRID, browsing, slicing, theming, perform, sel = 5, undo_armed;
+static int hubbing, hub_cur, ui_cat = -1;   // UI v2: the pad hub is on screen; the category opened from it (-1 none), ui.h
 static Uint32 menu_down, flash[NSLOT];
 static char msg[80]; static Uint32 msg_t;
 
@@ -2273,9 +2274,10 @@ static void edit_arrow(int k) {
         char b[32]; snprintf(b, sizeof b, "VOLUME %d", song.t[sel].vol); toast(b);
     }
 }
+static void hub_open(void);
 static void edit_tap(void) {
     switch (tab) {
-    case T_GRID: if (has_sound(sel)) set_tab(T_SEQ); else pick_open(); break;   // UI v2: EDIT opens the pad, an empty one asks for an engine
+    case T_GRID: if (has_sound(sel)) hub_open(); else pick_open(); break;   // UI v2: EDIT opens the pad, an empty one asks for an engine
     case T_SEQ: seq_tap(); break;
     case T_PAT: pat_tap(); break;
     case T_PRJ: prj_tap(); break;
@@ -2344,7 +2346,7 @@ static void step_listen(int st) {        // only this step's slice, with its not
     flash[sel] = SDL_GetTicks();
     rec_hit(sel, sl, note);
 }
-static void set_tab(int t) { leave_screen(); if (browsing) browse_close(); slicing = 0; roll_leave(); randing = 0; learning = 0; learn_lfo = -1; pt_pick = 0; if (picking) pick_close(); if (presetting) preset_close(1); theming = 0; iconing = 0; ducking = 0; perform = 0; tab = t; }
+static void set_tab(int t) { leave_screen(); if (browsing) browse_close(); slicing = 0; roll_leave(); randing = 0; learning = 0; learn_lfo = -1; pt_pick = 0; if (picking) pick_close(); if (presetting) preset_close(1); theming = 0; iconing = 0; ducking = 0; perform = 0; tab = t; hubbing = 0; if (t == T_GRID || t == T_PRJ) ui_cat = -1; }
 // KEYS: the pad gets its own tonality, the project's stays. Coming back to the project's value means following the project again.
 static void pad_tonality(int k) {
     Track *t = &song.t[sel]; char b[48];
@@ -3159,6 +3161,7 @@ static void listen_name(int s, char *b) {   // the listening note by name where 
     else snprintf(b, 8, n ? "%+d ST" : "0 ST", n);
 }
 static int asking, naming, exporting; static void ask_key(int k, int down); static void nm_key(int k, int down); static void export_key(int k, int down);
+#include "ui.h"
 static void key_event(int k, int down) {
     if (k < 0) return;
     if (k == K_PLAY && !down) play_release();
@@ -3191,7 +3194,7 @@ static void key_event(int k, int down) {
     if (k == K_F1 || k == K_F2) {        // tabs on release, so that F1+F2 does not move first
         int other = k == K_F1 ? K_F2 : K_F1;
         if (down && held[other]) { used[K_F1] = used[K_F2] = 1; tab_project(); }
-        else if (!down && !used[k]) { if (perform == 1 && held[K_SHIFT]) act_scene(k == K_F2 ? 1 : -1); else tab_step(k == K_F2 ? 1 : -1); }
+        else if (!down && !used[k]) { if (perform == 1 && held[K_SHIFT]) act_scene(k == K_F2 ? 1 : -1); else if (in_pad() && !perform) pad_step(k == K_F2 ? 1 : -1); else { ui_cat = -1; tab_step(k == K_F2 ? 1 : -1); } }
         return;
     }
     if (k == K_PLAY && held[K_SHIFT]) return;   // SHIFT = BTN_MODE: Knulli kills the app on a double press of this combo, leave it unbound
@@ -3258,6 +3261,12 @@ static void key_event(int k, int down) {
     if (theming) { theme_key(k, down); return; }
     if (iconing) { icon_key(k, down); return; }
     if (ducking) { duck_key(k, down); return; }
+    if (in_pad() && down && held[K_SHIFT] && k <= K_RIGHT) { used[K_SHIFT] = 1; cat_open(jump_cat(k)); return; }   // the jump
+    if (hubbing) { hub_key(k, down); return; }
+    if (ui_cat >= 0 && k == K_Y && tab != T_PAT && !pt_pick) {   // UI v2: Y goes back to the pad's hub, on release (Y+arrows BEND)
+        if (!down && !used[K_Y]) { int c = ui_cat; hub_open(); hub_cur = c; return; }
+        if (!down || !(tab == T_SEQ && srow >= 1 && srow <= 2)) return;
+    }
     if (!down) {                         // taps fire on release when no combo was used
         if (k == K_EDIT) { if (!used[K_EDIT]) edit_tap(); undo_armed = 0; }
         if (k == K_X && !used[K_X] && tab == T_SEQ && !held[K_SHIFT]) {
@@ -3434,7 +3443,6 @@ static int slot_icon(int i) {            // the type comes from the path: asked 
     if (strncmp(seen[i], p, 255)) { snprintf(seen[i], 256, "%s", p); cat[i] = file_cat(p); }
     return cat[i];
 }
-#include "ui.h"
 static void draw_header(void) {
     ui_top();
     rect(16, 44, 992, 1, C_LINE, 1);
@@ -5122,7 +5130,7 @@ static void pick_thumbs(void) {
     gb_direct = 0; song.t[sel] = keep;
     srow = ks; scol = kc; spage = kp; lane = kl; cl_deep = kd; gb_cur = kg;
 }
-static void pick_open(void) { picking = 1; pk_cur = 0; pick_thumbs(); }
+static void pick_open(void) { picking = 1; pk_cur = 0; }   // UI v2 (A03): a list, no panel pictures (they took 12 MB)
 static void pick_close(void) {
     picking = 0;
     for (int i = 0; i < 4; i++) if (pk_tex[i]) { SDL_DestroyTexture(pk_tex[i]); pk_tex[i] = NULL; }   // 3 MB each
@@ -5134,7 +5142,7 @@ static void pick_take(int i) {
     if (i == 1 && t->sp[SP_MARK] != SP_INIT) synth_defaults(t->sp);
     if (i == 2 && t->ap[AP_MARK] != AP_INIT) acid_defaults(t->ap);
     if (i == 3 && t->cp[CP_MARK] != CP_INIT) cl_defaults(t->cp);
-    if (tab != T_SEQ) set_tab(T_SEQ);
+    cat_open(PC_SOUND);
     cl_deep = 0; par_focus(P_SAMPLE);
     if (i == 3) browse_slot();           // grains need a sample: the browser first
     else toast(i == 1 ? "GRAND: HOLD EDIT TO HEAR" : "ACID: HOLD EDIT TO HEAR");
@@ -5143,23 +5151,22 @@ static void pick_key(int k, int down) {
     if (!down) { if (k == K_EDIT && !used[K_EDIT]) pick_take(pk_cur); return; }
     if (k == K_Y || k == K_OPT) { pick_close(); return; }
     if (k == K_PLAY) { play_key(); return; }
-    if (k == K_LEFT || k == K_RIGHT) pk_cur ^= 1;
-    else if (k == K_UP || k == K_DOWN) pk_cur ^= 2;
+    if (k == K_UP || k == K_DOWN) pk_cur = (pk_cur + (k == K_DOWN ? 1 : 3)) % 4;   // a list now, round
 }
+// The empty pad (UI v2, mockup A03): "what goes here?", the four engines as cards in their colours.
 static void draw_pick(void) {
-    char b[48]; snprintf(b, sizeof b, "PAD %d IS EMPTY: CHOOSE AN INSTRUMENT", sel + 1); text(16, 92, 2, C_WHITE, b);
-    rect(16, 120, 992, 1, C_LINE, 1);
+    char b[48]; snprintf(b, sizeof b, "PAD %02d IS EMPTY. WHAT GOES HERE?", sel + 1);
+    text(W / 2 - (int)strlen(b) * 8, 120, 2, C_WHITE, b);
+    enum { CX = 160, CWD = 704, CHT = 104, GAP = 18, Y0 = 170 };
     for (int i = 0; i < 4; i++) {
-        int x = 16 + (i & 1) * 500, y = 130 + (i >> 1) * 278, w = 492, h = 270, on = i == pk_cur;
-        rect(x, y, w, 30, on ? C_ORANGE : C_CELL, 1);
-        text(x + 10, y + 7, 2, on ? C_BG : C_WHITE, pick_name[i]);
-        text(x + w - 10 - (int)strlen(pick_what[i]) * 8, y + 11, 1, on ? C_BG : C_GREY, pick_what[i]);
-        frame(x, y, w, h, on ? 3 : 1, on ? C_ORANGE : C_LINE);
-        int iw = w - 12, ih = iw * PK_SH / 992; if (ih > h - 42) { ih = h - 42; iw = ih * 992 / PK_SH; } SDL_Rect src = {16, PK_SY, 992, PK_SH}, dst = {x + (w - iw) / 2, y + 30 + (h - 30 - ih) / 2, iw, ih};
-        if (pk_tex[i]) SDL_RenderCopy(R, pk_tex[i], &src, &dst);
-        else ctext(x + w / 2, y + 140, 3, on ? C_ORANGE : C_DIM, pick_name[i]);   // no render targets, or the clip plays: the name
+        int y = Y0 + i * (CHT + GAP), on = i == pk_cur; Col ec = C_ENG(i);
+        rect(CX, y, CWD, CHT, on ? C_SELBG : C_CELL, 1);
+        rect(CX, y, 8, CHT, ec, 1);
+        if (on) frame(CX - 2, y - 2, CWD + 4, CHT + 4, 2, ec);
+        text(CX + 32, y + 22, 3, ec, pick_name[i]);
+        text(CX + 32, y + 66, 2, on ? C_WHITE : C_DIM, pick_what[i]);
     }
-    draw_footer("ARROWS CHOOSE  EDIT TAKE  Y BACK");
+    draw_footer("EDIT CHOOSE  UP/DOWN ENGINE  Y BACK");
 }
 // ---------- projects (2026-11-09) ----------
 // state.bin stays the working copy (autosave). A project is projects/NAME.bpp, the same bytes; project.cfg remembers
@@ -5643,6 +5650,7 @@ static void draw(void) {
     else if (theming) draw_theme();
     else if (iconing) draw_icons();
     else if (ducking) draw_duck();
+    else if (hubbing) draw_hub();
     else switch (tab) {
     case T_GRID: draw_grid(); break; case T_SEQ: draw_seq(); break; case T_PAT: draw_pat(); break; case T_PRJ: draw_prj(); break;
     case T_MIX: draw_mixer(); break; case T_FX: draw_fx(); break;

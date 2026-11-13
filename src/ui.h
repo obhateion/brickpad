@@ -4,6 +4,9 @@
 #pragma once
 
 enum { STRIP_HIDDEN, STRIP_THIN, STRIP_BIG };
+enum { PC_PATTERN, PC_SOUND, PC_FX, PC_MOD, PC_MIX, PC_N };   // inside a pad (the hub, below)
+static const char *const cat_name[PC_N] = {"PATTERN", "SOUND", "FX", "MOD", "MIX"};
+static void draw_footer(const char *hint);
 static int ui_strip = STRIP_THIN;        // PROJECT > SYSTEM > INTERFACE (step 6)
 static char ui_hint[256];                // this frame's whole footer hint: the cheat sheet shows all of it
 
@@ -13,17 +16,19 @@ static int ui_window(void) {             // a window over the screens: no popup,
 static void ui_path(char *b, int n) {    // NEON > INSTRUMENT > 06 GRAND > DEEP
     int l = snprintf(b, n, "%s", prj_cur[0] ? prj_cur : "UNTITLED");
 #define UI_ADD(...) (l += snprintf(b + l, l < n ? n - l : 0, " > " __VA_ARGS__))
+    int inpad = hubbing || ui_cat >= 0;
     if (perform) UI_ADD("%s", perform == 2 ? "KEYS" : "PADS");
-    else UI_ADD("%s", tab_name[tab == T_PAT ? T_SEQ : tab]);
-    int pad = perform || tab == T_SEQ || tab == T_PAT ? sel : tab == T_FX && fx_unit < NSLOT ? fx_unit : -1;
+    else if (!inpad) UI_ADD("%s", tab == T_GRID ? "PADS" : tab_name[tab == T_PAT ? T_SEQ : tab]);
+    int pad = inpad || perform || tab == T_SEQ || tab == T_PAT ? sel : tab == T_FX && fx_unit < NSLOT ? fx_unit : -1;
     if (pad >= 0) UI_ADD("%02d %.14s", pad + 1, slot_name(pad) ? slot_name(pad) : "EMPTY");
     else if (tab == T_FX) UI_ADD("%s", fx_unit == NSLOT ? "RETURN A" : fx_unit == NSLOT + 1 ? "RETURN B" : "MASTER");
     if (exporting) UI_ADD("EXPORT"); else if (naming) UI_ADD("NAME"); else if (browsing) UI_ADD("FILES");
     else if (slicing) UI_ADD("SLICES"); else if (rolling) UI_ADD("ROLL"); else if (randing) UI_ADD("RANDOM");
     else if (picking) UI_ADD("ENGINE"); else if (presetting) UI_ADD("PRESETS"); else if (theming) UI_ADD("THEME");
     else if (iconing) UI_ADD("ICON"); else if (ducking) UI_ADD("DUCK");
-    else if (tab == T_PAT) UI_ADD("PATTERNS");
-    else if (tab == T_SEQ && srow >= 3 && cl_deep) UI_ADD("%s", song.t[sel].type == 1 && cl_deep == 2 ? "PATCH" : "DEEP");
+    else if (ui_cat >= 0 && !(tab == T_PAT) && !(ui_cat == PC_SOUND && cl_deep)) UI_ADD("%s", cat_name[ui_cat]);
+    else if (tab == T_PAT) UI_ADD("PATTERN > PATTERNS");
+    else if (tab == T_SEQ && srow >= 3 && cl_deep) UI_ADD("%s%s", ui_cat == PC_SOUND ? "SOUND > " : "", song.t[sel].type == 1 && cl_deep == 2 ? "PATCH" : "DEEP");
     else if (tab == T_FX && fx_page && fx_unit < NSLOT) UI_ADD("MOD");
 #undef UI_ADD
 }
@@ -100,4 +105,58 @@ static void ui_popup(void) {
         int lo, hi, st, bg; par_limits(sel, p, &lo, &hi, &st, &bg);
         if (hi > lo) { int f = (par_get(sel, p) - lo) * (PW - 32) / (hi - lo); rect(PX + 16, PY + 72, PW - 32, 6, C_LINE, 1); rect(PX + 16, PY + 72, clampi(f, 0, PW - 32), 6, C_ENG(song.t[sel].type), 1); }
     }
+}
+
+// The pad hub (UI v2): PATTERN SOUND FX MOD MIX of the selected pad. EDIT opens one, Y goes back up (category -> hub ->
+// HOME), F1/F2 the next pad on the same page, SHIFT+arrow jumps: UP PATTERN, RIGHT SOUND, DOWN FX, LEFT MIX.
+// Until steps 4-5 rebuild them, the categories open the screens of 1.2 for this pad.
+#define C_CAT(c) th_cur[TC_PAT + (c)]
+static void hub_open(void) { set_tab(T_GRID); hubbing = 1; }
+static void cat_open(int c) {
+    set_tab(c == PC_PATTERN || c == PC_SOUND ? T_SEQ : c == PC_MIX ? T_MIX : T_FX);
+    hub_cur = c; ui_cat = c;
+    if (c == PC_PATTERN && (srow < 1 || srow > 2)) { srow = 1; scol = 0; }
+    if (c == PC_SOUND) { srow = 3; scol = 0; cl_deep = 0; gb_cur = 0; }
+    if (c == PC_FX || c == PC_MOD) { fx_unit = sel; fx_page = c == PC_MOD; }
+    if (c == PC_MIX) mcol = sel;
+    seq_clamp();
+}
+static int in_pad(void) { return hubbing || ui_cat >= 0; }
+static void pad_step(int d) {             // F1/F2 inside a pad: the next pad, the same page
+    act_select_step(d); seq_clamp();
+    if (tab == T_FX && fx_unit < NSLOT) fx_unit = sel;
+    if (tab == T_MIX && mcol < NSLOT) mcol = sel;
+}
+static int jump_cat(int k) { return k == K_UP ? PC_PATTERN : k == K_RIGHT ? PC_SOUND : k == K_DOWN ? PC_FX : PC_MIX; }
+static void hub_key(int k, int down) {
+    if (!down) { if (k == K_EDIT && !used[K_EDIT]) cat_open(hub_cur); return; }
+    if (k == K_Y) { hubbing = 0; return; }   // back to HOME
+    if (k == K_PLAY) { play_key(); return; }
+    if (k == K_OPT) { act_listen(sel); return; }
+    if (k == K_UP || k == K_LEFT) hub_cur = (hub_cur + PC_N - 1) % PC_N;
+    if (k == K_DOWN || k == K_RIGHT) hub_cur = (hub_cur + 1) % PC_N;
+}
+static void hub_line(int c, char *b, int n) {   // what is inside, in a few words
+    const Track *t = &song.t[sel]; const Pattern *p = cur_pat(sel); const PadMix *pm = &song.mix.pad[sel];
+    switch (c) {
+    case PC_PATTERN: snprintf(b, n, "P%d  %d STEPS  %s%s", t->cur + 1, p->len, div_name[p->div % 6], p->mode ? "  ROLL" : ""); break;
+    case PC_SOUND: snprintf(b, n, "%s  %.20s", type_name[t->type & 3], slot_name(sel) ? slot_name(sel) : "EMPTY"); break;
+    case PC_FX: snprintf(b, n, "1 %s  2 %s", pm->ins[0].type ? fx_name[pm->ins[0].type] : "--", pm->ins[1].type ? fx_name[pm->ins[1].type] : "--"); break;
+    case PC_MOD: snprintf(b, n, "LFO 1-4  AUTOMATION  DUCK"); break;
+    case PC_MIX: snprintf(b, n, "VOL %d  PAN %d  SEND A %d  B %d%s", t->vol, t->pan, pm->send_a, pm->send_b, frozen(sel) ? "  FROZEN" : ""); break;
+    }
+}
+static void draw_hub(void) {
+    enum { CX = 120, CWD = 784, CHT = 96, GAP = 14, Y0 = 108 };
+    for (int c = 0; c < PC_N; c++) {
+        int y = Y0 + c * (CHT + GAP), on = c == hub_cur; Col cc = C_CAT(c); char b[96];
+        rect(CX, y, CWD, CHT, on ? C_SELBG : C_CELL, 1);
+        rect(CX, y, 8, CHT, cc, 1);
+        if (on) frame(CX - 2, y - 2, CWD + 4, CHT + 4, 2, cc);
+        text(CX + 32, y + 18, 3, cc, cat_name[c]);
+        hub_line(c, b, sizeof b); text(CX + 32, y + 58, 2, on ? C_WHITE : C_DIM, b);
+        static const char *const jump[PC_N] = {"SHIFT+UP", "SHIFT+RIGHT", "SHIFT+DOWN", "", "SHIFT+LEFT"};
+        text(CX + CWD - 16 - (int)strlen(jump[c]) * 8, y + 24, 1, C_GREY, jump[c]);
+    }
+    draw_footer("EDIT OPEN  F1/F2 PAD  Y HOME");
 }
