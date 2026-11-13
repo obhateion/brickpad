@@ -135,9 +135,9 @@ static void font_init(void) {
         SDL_SetTextureBlendMode(font_sc[sc], SDL_BLENDMODE_BLEND);
         free(px);
     }
-    for (int f = 0; f < FT_N; f++) {     // UI v2 fonts: 99 glyphs in a row
-        const FontV2 *v = &fv2[f]; int w = 99 * v->w; Uint32 *px = calloc((size_t)w * v->h, 4);
-        for (int g = 0; g < 99; g++) for (int i = 0; i < v->w * v->h; i++) {
+    for (int f = 0; f < FT_N; f++) {     // UI v2 fonts: 100 glyphs in a row
+        const FontV2 *v = &fv2[f]; int w = 100 * v->w; Uint32 *px = calloc((size_t)w * v->h, 4);
+        for (int g = 0; g < 100; g++) for (int i = 0; i < v->w * v->h; i++) {
             int a = v->px[g * v->per + i / 2] >> ((i & 1) ? 0 : 4) & 15;
             px[(i / v->w) * w + g * v->w + i % v->w] = (Uint32)(a * 17) << 24 | 0xFFFFFF;
         }

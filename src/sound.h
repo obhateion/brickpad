@@ -5,6 +5,7 @@
 // main.c includes this once, after ui.h.
 #pragma once
 
+static void gb_ring(int cx, int cy, int r, int t, Col c);
 enum { GF_NONE, GF_WAVE, GF_SLICES, GF_OSC, GF_FILTER, GF_ENV, GF_CLOUD, GF_PATCH };
 typedef struct { const char *name; int8_t n, gfx; int16_t p[20]; } SndPage;
 static const SndPage snd_smp[] = {
@@ -52,9 +53,14 @@ static int snd_cards(const SndPage *pg, int *out) {   // the cards on show: what
     int c = 0; for (int i = 0; i < pg->n; i++) if (par_visible(pg->p[i])) out[c++] = pg->p[i];
     return c;
 }
-static int v2_sound(void) { return ui_cat == PC_SOUND && tab == T_SEQ && !hubbing && !patmenu && !perform && srow >= 3 && snd_page()->gfx != GF_PATCH; }
+static int v2_sound(void) { return ui_cat == PC_SOUND && tab == T_SEQ && !hubbing && !patmenu && !perform && srow >= 3; }
+// PATCH (A14): the outputs down the left, the inputs down the right; sp_cur 0..12 an output (JO_LFO..), 13..26 an input (JI_P1..)
+#define PT_NO (JO_N - 1)
+#define PT_NI (JI_N - 1)
+static int pt_jack(int cur) { return cur < PT_NO ? 1 + cur : 16 + 1 + (cur - PT_NO); }   // the P_PT offset of a row
 static int sound_par(void) {             // the parameter under the cursor; the picture stands for the file (or the presets)
     const SndPage *pg = snd_page(); int l[20], c = snd_cards(pg, l);
+    if (pg->gfx == GF_PATCH) return P_PT + pt_jack(clampi(sp_cur, 0, PT_NO + PT_NI - 1));
     if (sp_cur >= 0 && sp_cur < c) return l[sp_cur];
     return pg->gfx == GF_SLICES ? P_SLICES : song.t[sel].type == 3 ? P_SRC : P_SAMPLE;
 }
@@ -63,18 +69,24 @@ static void sound_sync(void) {           // after any change of pad, engine or m
     *pp = clampi(*pp, 0, n - 1); srow = 3; scol = 0;
     const SndPage *pg = &pgs[*pp]; int l[20], c = snd_cards(pg, l);
     cl_deep = pg->gfx == GF_PATCH ? 2 : 0;
+    if (pg->gfx == GF_PATCH) { sp_cur = clampi(sp_cur, 0, PT_NO + PT_NI - 1); return; }
     if (sp_cur >= c) sp_cur = c - 1;
     if (sp_cur < 0 && pg->gfx == GF_NONE) sp_cur = 0;
     if (sp_cur < -1) sp_cur = -1;
 }
 static void sound_page_step(int d) {     // L1/R1
     int n; const SndPage *pgs = snd_pages(song.t[sel].type, &n); int *pp = &sp_pg[song.t[sel].type & 3];
-    *pp = (*pp + d + n) % n; sp_cur = 0;
-    if (pgs[*pp].gfx == GF_PATCH) gb_cur = 1;   // the 1.2 patch bay until it is rebuilt (A14)
+    *pp = (*pp + d + n) % n; sp_cur = 0; pt_pick = 0;
     sound_sync();
 }
 static void sound_move(int k) {          // two columns of cards; UP from the first row: the picture
     const SndPage *pg = snd_page(); int l[20], c = snd_cards(pg, l);
+    if (pg->gfx == GF_PATCH) {           // up and down a column; across: the row at the same height on the other side
+        int in = sp_cur >= PT_NO, r = in ? sp_cur - PT_NO : sp_cur, nr = in ? PT_NI : PT_NO;
+        if (k == K_UP && r > 0) r--; else if (k == K_DOWN && r < nr - 1) r++;
+        else if ((k == K_RIGHT && !in) || (k == K_LEFT && in)) { r = clampi((r * 2 + 1) * (in ? PT_NO : PT_NI) / (2 * nr), 0, (in ? PT_NO : PT_NI) - 1); in = !in; }
+        sp_cur = in ? PT_NO + r : r; return;
+    }
     if (sp_cur < 0) { if (k == K_DOWN && c) sp_cur = 0; return; }
     if (k == K_LEFT) { if (sp_cur & 1) sp_cur--; }
     else if (k == K_RIGHT) { if (!(sp_cur & 1) && sp_cur + 1 < c) sp_cur++; }
@@ -178,6 +190,39 @@ static void snd_card(int x, int y, int w, int h, int p, int on, Col ec) {
     if (par_is_number(p)) { int lo, hi, st, bg; par_limits(sel, p, &lo, &hi, &st, &bg);   // a bar for what is turned, none for what is chosen
         if (bg > 1 && hi > lo) { int by = y + h - 26; rect(x + 20, by, w - 40, 8, C_LINE, 1); rect(x + 20, by, (w - 40) * clampi(par_get(sel, p) - lo, 0, hi - lo) / (hi - lo), 8, ec, 1); } }
 }
+static int pt_y(int j) { return j < 16 ? 150 + (j - 1) * 40 : 146 + (j - 17) * 37; }   // a jack's row
+static const char *pt_name(int j, char *b) {   // the label: the outputs without "OUT", as on A14
+    snprintf(b, 16, "%s", par_name[P_PT + j]); int l = (int)strlen(b);
+    if (l > 4 && !strcmp(b + l - 4, " OUT")) b[l - 4] = 0;
+    return b;
+}
+static void pt_curve(int y0, int y1, Col c) {   // a cable from the left dot to the right one, an S as on A14
+    int px = 172, py = y0;
+    for (int i = 1; i <= 32; i++) { float t = i / 32.f, u = 1 - t;
+        int x = (int)(u * u * u * 172 + 3 * u * u * t * 500 + 3 * u * t * t * 500 + t * t * t * 800), y = (int)(u * u * u * y0 + 3 * u * u * t * y0 + 3 * u * t * t * y1 + t * t * t * y1);
+        line(px, py, x, y, 5, c); px = x; py = y; }
+}
+static void draw_patch2(Col ec) {
+    const uint8_t (*gp)[2] = song.gp[sel]; char b[16], s[96]; int cj = pt_jack(sp_cur);
+    Col cc[6] = {C_ENG(2), C_ENG(1), C_ENG(3), C_ENG(0), C_PLAY, C_RED}, out = C_ORANGE, in = C_ENG(3);
+    for (int k = 0; k < NCABLE; k++) if (gp[k][0] && gp[k][1]) pt_curve(pt_y(gp[k][0]), pt_y(16 + gp[k][1]), cc[k % 6]);
+    if (pt_pick) pt_curve(pt_y(pt_pick), cj >= 16 ? pt_y(cj) : pt_y(pt_pick), C_WHITE);   // the carried cable reaches for the cursor
+    for (int j = 1; j < JO_N; j++) { int y = pt_y(j), on = j == cj;
+        if (on) gb_ring(172, y, 20, 4, ec); if (pt_pick == j) gb_ring(172, y, 26, 3, C_WHITE);
+        disc2(172, y, 12, out); ftext(38, y - 12, FT_MB, on ? ec : C_WHITE, pt_name(j, b)); }
+    for (int i = 1; i < JI_N; i++) { int j = 16 + i, y = pt_y(j), on = j == cj;
+        if (on) gb_ring(800, y, 20, 4, ec);
+        disc2(800, y, 12, in); pt_name(j, b); ftext(984 - ftext_w(FT_MB, b), y - 12, FT_MB, on ? ec : C_WHITE, b); }
+    s[0] = 0;                            // under the bay: the cursor's jack and where its cables go
+    if (pt_pick) snprintf(s, sizeof s, "%s \004 ...", pt_name(pt_pick, b));
+    else for (int k = 0, l; k < NCABLE; k++) { if (!gp[k][0] || !gp[k][1] || (cj < 16 ? gp[k][0] != cj : gp[k][1] != cj - 16)) continue;
+        char o[16], d[16]; l = (int)strlen(s); snprintf(s + l, sizeof s - l, "%s%s \004 %s", l ? "   " : "", pt_name(gp[k][0], o), pt_name(16 + gp[k][1], d));
+        if (gp[k][0] == JO_ATT || gp[k][1] == JI_ATT) { l = (int)strlen(s); snprintf(s + l, sizeof s - l, " \003 %d%%", song.gx[sel][GX_ATTEN]); } }
+    if (!s[0]) snprintf(s, sizeof s, "%s: no cable", pt_name(cj, b));
+    ftext(512 - ftext_w(FT_MB, s) / 2, 672, FT_MB, ec, s);
+    draw_footer(pt_pick ? "EDIT ON AN INPUT PLUG  Y DROP THE CABLE" : cj >= 16 ? "EDIT TAKE ITS CABLE  OPT+EDIT PULL IT  L1/R1 PAGE  Y BACK"
+                : "EDIT CABLE  OPT+EDIT PULL ITS CABLES  L1/R1 PAGE  Y BACK");
+}
 static void draw_sound2(void) {
     int n; const SndPage *pgs = snd_pages(song.t[sel].type, &n), *pg = snd_page(); int cur = (int)(pg - pgs);
     Col ec = C_ENG(song.t[sel].type); int l[20], c = snd_cards(pg, l);
@@ -187,6 +232,7 @@ static void draw_sound2(void) {
         int px = i == cur ? 26 + tw * i + (tw - 10 > 184 ? 184 : tw - 10) / 2 : cx - 5;
         ftext(px - ftext_w(FT_MB, pgs[i].name) / 2, 80, FT_MB, i == cur ? C_BG : C_DIM, pgs[i].name);
     }
+    if (pg->gfx == GF_PATCH) { draw_patch2(ec); return; }
     int y0 = 127;
     if (pg->gfx != GF_NONE) {            // the picture; the cursor on it: the file (the sampler, CLOUD) or the presets
         if (sp_cur < 0) rframe(26, 127, 971, 243, 8, 4, ec, C_CELL); else rrect(26, 127, 971, 243, 8, C_CELL);

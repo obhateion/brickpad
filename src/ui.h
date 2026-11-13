@@ -18,6 +18,7 @@ static int ftext(int x, int y, int f, Col c, const char *s) {   // y: the top of
     for (; *s; s++, x += v->w) {
         int ch = (unsigned char)*s, g = ch >= 32 && ch <= 127 ? ch - 32 : ch == 1 ? 96 : ch == 2 ? 97 : -1;
         if (ch == 3) g = 98;             // the middle dot
+        if (ch == 4) g = 99;             // the arrow
         if (g <= 0) continue;
         SDL_Rect src = {g * v->w, 0, v->w, v->h}, dst = {x, y, v->w, v->h}; SDL_RenderCopy(R, t, &src, &dst);
     }
