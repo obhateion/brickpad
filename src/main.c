@@ -100,6 +100,7 @@ static void naming_pad(void);
 static int tab = T_GRID, browsing, slicing, theming, perform, sel = 5, undo_armed;
 static int hubbing, hub_cur, ui_cat = -1;   // UI v2: the pad hub is on screen; the category opened from it (-1 none), ui.h
 enum { PC_PATTERN, PC_SOUND, PC_FX, PC_MOD, PC_MIX, PC_N };   // the categories inside a pad
+static int scening;                      // HOME > SCENES (A02) is on screen, over the pads
 static int modmenu, mm_cur;              // MOD's own list (LFO, AUTOMATION, DUCK), as PATTERN's
 static int patmenu, pm_cur;              // PATTERN's own list (STEPS or ROLL, SELECT, RECORD) is on screen; its cursor, kept
 static int recpage;                      // PATTERN > RECORD is on screen
@@ -2407,7 +2408,7 @@ static void step_listen(int st) {        // only this step's slice, with its not
     flash[sel] = SDL_GetTicks();
     rec_hit(sel, sl, note);
 }
-static void set_tab(int t) { leave_screen(); if (browsing) browse_close(); slicing = 0; roll_leave(); randing = 0; learning = 0; learn_lfo = -1; pt_pick = 0; if (picking) pick_close(); if (presetting) preset_close(1); theming = 0; iconing = 0; ducking = 0; perform = 0; tab = t; hubbing = 0; patmenu = 0; modmenu = 0; recpage = 0; if (t == T_GRID || t == T_PRJ) ui_cat = -1; }
+static void set_tab(int t) { leave_screen(); if (browsing) browse_close(); slicing = 0; roll_leave(); randing = 0; learning = 0; learn_lfo = -1; pt_pick = 0; if (picking) pick_close(); if (presetting) preset_close(1); theming = 0; iconing = 0; ducking = 0; perform = 0; tab = t; hubbing = 0; patmenu = 0; modmenu = 0; scening = 0; recpage = 0; if (t == T_GRID || t == T_PRJ) ui_cat = -1; }
 // KEYS: the pad gets its own tonality, the project's stays. Coming back to the project's value means following the project again.
 static void pad_tonality(int k) {
     Track *t = &song.t[sel]; char b[48];
@@ -2446,6 +2447,10 @@ static int fx_unit;                      // what the FX tab shows: a pad 0..11, 
 static void tab_step(int d) {            // F1 left, F2 right, round: GRID SEQ+INST FX MIXER (user, 2026-11-09); PROJECT goes back
     static const int order[4] = {T_GRID, T_SEQ, T_FX, T_MIX};
     if (tab == T_PRJ) { set_tab(prj_back == T_PAT ? T_SEQ : prj_back); return; }
+    {                                    // UI v2: HOME is PADS, SCENES, MIXER (PROJECT: F1+F2); the pad's pages are inside the pad
+        int at = tab == T_MIX ? 2 : tab == T_GRID && scening ? 1 : 0, to = (at + (d > 0 ? 1 : 2)) % 3;
+        set_tab(to == 2 ? T_MIX : T_GRID); scening = to == 1; return;
+    }
     int i = 0, cur = tab == T_PAT ? T_SEQ : tab; while (i < 4 && order[i] != cur) i++;
     int nt = order[((i < 4 ? i : 0) + (d > 0 ? 1 : 3)) % 4];
     if (nt == T_FX) fx_unit = sel;
@@ -3341,6 +3346,7 @@ static void key_event(int k, int down) {
     if (hubbing) { hub_key(k, down); return; }
     if (patmenu) { patmenu_key(k, down); return; }
     if (modmenu) { modmenu_key(k, down); return; }
+    if (scening) { scene_key(k, down); return; }
     if (recpage) { record_key(k, down); return; }
     if (ui_cat >= 0 && k == K_Y && tab != T_PAT && !pt_pick) {   // UI v2: Y goes back to the pad's hub, on release (Y+arrows BEND)
         if (!down && !used[K_Y]) { int c = ui_cat; if (c == PC_PATTERN) patmenu_open(); else if (c == PC_MOD) modmenu_open(); else { hub_open(); hub_cur = c; } return; }
@@ -5748,7 +5754,7 @@ static void draw(void) {
     SDL_SetRenderDrawColor(R, C_BG.r, C_BG.g, C_BG.b, 255);
     SDL_RenderClear(R);
     ui_v2 = !exporting && !naming && !(browsing && bmode) && !randing && !theming && !iconing
-            && (ducking || browsing || presetting || slicing || rolling || picking || hubbing || patmenu || recpage || modmenu || v2_mix() || v2_mixer() || v2_lfo() || v2_auto() || v2_steps() || v2_sound() || v2_fx() || tab == T_PAT || (tab == T_GRID && perform != 2));   // the screens rebuilt after the mockups so far
+            && (ducking || browsing || presetting || slicing || rolling || picking || hubbing || patmenu || recpage || modmenu || scening || (tab == T_PRJ && !perform) || v2_mix() || v2_mixer() || v2_lfo() || v2_auto() || v2_steps() || v2_sound() || v2_fx() || tab == T_PAT || (tab == T_GRID && perform != 2));   // the screens rebuilt after the mockups so far
     if (ui_v2) ui2_header(); else draw_header();
     if (exporting) draw_export();
     else if (naming) draw_naming();
@@ -5764,6 +5770,7 @@ static void draw(void) {
     else if (hubbing) draw_hub();
     else if (patmenu) draw_patmenu();
     else if (modmenu) draw_modmenu();
+    else if (scening) draw_scenes();
     else if (recpage) draw_record();
     else if (v2_steps()) draw_steps2();
     else if (v2_sound()) draw_sound2();
@@ -5773,7 +5780,7 @@ static void draw(void) {
     else if (v2_mix()) draw_mix2();
     else if (v2_mixer()) draw_mixer2();
     else switch (tab) {
-    case T_GRID: draw_grid(); break; case T_SEQ: draw_seq(); break; case T_PAT: draw_pat(); break; case T_PRJ: draw_prj(); break;
+    case T_GRID: draw_grid(); break; case T_SEQ: draw_seq(); break; case T_PAT: draw_pat(); break; case T_PRJ: if (ui_v2) draw_prj2(); else draw_prj(); break;
     case T_MIX: draw_mixer(); break; case T_FX: draw_fx(); break;
     }
     ui_popup(); ui_cheat();

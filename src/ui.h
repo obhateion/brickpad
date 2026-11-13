@@ -36,7 +36,7 @@ static void rrect(int x, int y, int w, int h, int r, Col c) {   // a filled roun
 static void rframe(int x, int y, int w, int h, int r, int t, Col c, Col inside) {   // a rounded outline t thick
     rrect(x, y, w, h, r, c); rrect(x + t, y + t, w - 2 * t, h - 2 * t, r > t ? r - t : 1, inside);
 }
-static int v2_fx(void); static int fx2_slot; static int v2_mixer(void); static int mx_pg; static int v2_lfo(void); static int v2_auto(void); static void modmenu_open(void); static void ui_path(char *b, int n); static const char *snd_page_name(void); static void snd_page_count(char *b, int n);   // sound.h
+static int v2_fx(void); static int fx2_slot; static int scene_count(void); static int v2_mixer(void); static int mx_pg; static int v2_lfo(void); static int v2_auto(void); static void modmenu_open(void); static void ui_path(char *b, int n); static const char *snd_page_name(void); static void snd_page_count(char *b, int n);   // sound.h
 static void ui2_header(void) {           // NEON > PADS on the left, the transport and the tempo on the right
     rect(0, 0, W, V2_HEAD, C_CELL, 1);
     char b[160]; ui_path(b, sizeof b);
@@ -56,7 +56,8 @@ static void ui2_header(void) {           // NEON > PADS on the left, the transpo
         ftext(W - 20 - ftext_w(FT_MB, t), y, FT_MB, C_RED, t); return;
     }
     if (tab == T_PAT && !perform) return;   // A07: nothing on the right
-    if (browsing || presetting || slicing || ducking) return;   // A11, A12: nothing on the right
+    if (browsing || presetting || slicing || ducking || tab == T_PRJ) return;
+    if (scening) { snprintf(t, sizeof t, "%d/%d", live_scene + 1, scene_count()); ftext(W - 20 - ftext_w(FT_MB, t), y, FT_MB, th_cur[TC_SMP], t); return; }   // A11, A12: nothing on the right
     if (v2_sound()) { snd_page_count(t, sizeof t); ftext(W - 20 - ftext_w(FT_MB, t), y, FT_MB, C_ENG(song.t[sel].type), t); return; }   // A08: 1/5
     if (v2_steps() || rolling) { snprintf(t, sizeof t, "P%02d", song.t[sel].cur + 1); ftext(W - 20 - ftext_w(FT_MB, t), y, FT_MB, C_ORANGE, t); return; }   // A05: the pattern
     snprintf(t, sizeof t, "%c %d", engine_playing() ? 1 : 2, (int)(song.tempo * tempo_mul + 0.5f));
@@ -88,7 +89,7 @@ static void ui_path(char *b, int n) {    // NEON > INSTRUMENT > 06 GRAND > DEEP
     if (picking) { snprintf(b + l, l < n ? n - l : 0, " > %02d -", sel + 1); return; }   // the empty pad (A03)
     int inpad = hubbing || ui_cat >= 0;
     if (perform) UI_ADD("%s", perform == 2 ? "KEYS" : "PADS");
-    else if (!inpad) UI_ADD("%s", tab == T_GRID ? "PADS" : tab_name[tab == T_PAT ? T_SEQ : tab]);
+    else if (!inpad) UI_ADD("%s", tab == T_GRID ? (scening ? "SCENES" : "PADS") : tab_name[tab == T_PAT ? T_SEQ : tab]);
     int pad = inpad || perform || tab == T_SEQ || tab == T_PAT ? sel : tab == T_FX && fx_unit < NSLOT ? fx_unit : -1;
     if (pad >= 0) UI_ADD("%02d %.14s", pad + 1, slot_name(pad) ? slot_name(pad) : "EMPTY");
     else if (tab == T_FX) UI_ADD("%s", fx_unit == NSLOT ? "RETURN A" : fx_unit == NSLOT + 1 ? "RETURN B" : "MASTER");
@@ -99,6 +100,7 @@ static void ui_path(char *b, int n) {    // NEON > INSTRUMENT > 06 GRAND > DEEP
     else if (recpage) UI_ADD("PATTERN > RECORD");
     else if (v2_sound()) UI_ADD("SOUND > %s", snd_page_name());
     else if (v2_steps()) UI_ADD("PATTERN > STEPS");
+    else if (tab == T_PRJ && !theming) UI_ADD("%s", prj_sec_name[jsec]);
     else if (v2_mixer()) UI_ADD("%s", mx_pg == 1 ? "RETURNS" : mx_pg == 2 ? "FREEZE" : "PADS");
     else if (v2_lfo()) UI_ADD("MOD > LFO");
     else if (v2_auto()) UI_ADD("MOD > AUTOMATION");

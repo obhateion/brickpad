@@ -316,3 +316,46 @@ static void draw_duck2(void) {
     draw_footer(dk_row == 0 ? "EDIT+^v LEVEL  EDIT+<> DRAW  Y BACK  OPT+EDIT POINT UP  L1/R1 PAD" : "EDIT NEXT  EDIT+ARROWS VALUE  Y BACK  OPT+EDIT DEFAULT  L1/R1 PAD");
     return;
 }
+
+// ---- SCENES (A02, HOME): a scene = one pattern number for every pad; a row each, a dot per pad that has notes in it ----
+static int sc_cur;
+static int scene_count(void) {           // up to the highest pattern any pad uses
+    int top = 0; for (int s = 0; s < NSLOT; s++) if (has_sound(s)) for (int q = NPAT - 1; q > top; q--) if (pat_used(&song.t[s].pat[q])) { top = q; break; }
+    return top + 1;
+}
+static void scene_key(int k, int down) {
+    if (!down) { if (k == K_EDIT && !used[K_EDIT]) act_scene(sc_cur - live_scene); return; }
+    if (k == K_Y) { scening = 0; return; }
+    if (k == K_PLAY) { play_key(); return; }
+    if (k == K_UP || k == K_DOWN) sc_cur = clampi(sc_cur + (k == K_DOWN ? 1 : -1), 0, scene_count() - 1);
+}
+static void draw_scenes(void) {
+    int n = scene_count(); sc_cur = clampi(sc_cur, 0, n - 1);
+    int top = clampi(sc_cur - 2, 0, n > 6 ? n - 6 : 0);
+    for (int r = 0; r < 6 && top + r < n; r++) { int q = top + r, y = 80 + r * 104, on = q == sc_cur; char b[16];
+        rrect(26, y, 971, 90, 8, on ? C_SELBG : C_CELL);
+        snprintf(b, sizeof b, "SCENE %d", q + 1); ftext(48, y + 30, FT_LB, on ? C_WHITE : C_DIM, b);
+        if (q == live_scene) ftext(22 + 4, y + 32, FT_MB, th_cur[TC_SMP], "\001");
+        for (int s = 0; s < NSLOT; s++) { if (!has_sound(s)) continue; int x = 344 + s * 52, cy = y + 45, u = pat_used(&song.t[s].pat[q]);
+            disc2(x, cy, u ? 8 : 7, u ? C_ENG(song.t[s].type) : C_LINE); } }
+    if (n > 6) { int th = 6 * 104 - 14, tw = th * 6 / n; rect(1004, 80, 4, th, C_CELL, 1); rect(1004, 80 + (th - tw) * top / (n - 6), 4, tw, C_DIM, 1); }
+    draw_footer("EDIT LAUNCH  Y BACK  F1/F2 HOME");
+}
+
+// ---- PROJECT (A24): the sections on the left, the settings of the one chosen as cards (the 1.2 page's jsec/jcol/jcur) ----
+static void prj_value(int i, char *b);
+static void draw_prj2(void) {
+    Col ec = th_cur[TC_SMP]; int r[6], n = prj_rows(jsec, r);
+    { int ok = 0; for (int i = 0; i < n; i++) if (r[i] == jcur) ok = 1; if (!ok) jcur = r[0]; }
+    for (int k = 0; k < JS_N; k++) { int y = 76 + k * 70, on = k == jsec;
+        rrect(26, y, 249, 60, 8, on ? (jcol ? mix(C_SELBG, C_CELL, 128) : C_SELBG) : C_CELL);
+        ftext(48, y + 16, FT_MB, on ? C_WHITE : C_DIM, prj_sec_name[k]); }
+    int ch = n <= 4 ? 144 : (624 - (n - 1) * 12) / n, dy = ch + 12;
+    for (int j = 0; j < n; j++) { int i = r[j], y = 82 + j * dy, on = jcol && i == jcur; char b[32]; prj_value(i, b);
+        if (on) rframe(300, y, 690, ch, 8, 4, ec, C_CELL); else rrect(300, y, 690, ch, 8, C_CELL);
+        ftext(320, y + 14, FT_M, C_DIM, prj_name[i]);
+        int f = ftext_w(FT_XB, b) <= 640 - ftext_w(FT_M, prj_name[i]) ? FT_XB : FT_M;
+        ftext(970 - ftext_w(f, b), y + 10, f, i == J_PROJ && prj_dirty() ? C_ORANGE : C_WHITE, b);
+        if (i == J_MASTER && ch >= 70) { rect(320, y + ch - 26, 650, 8, C_LINE, 1); rect(320, y + ch - 26, 650 * song.master / 100, 8, ec, 1); } }
+    draw_footer(!jcol ? "EDIT ENTER  F1+F2 BACK  ^v SECTION" : "EDIT+<> VALUE  EDIT DO IT  < SECTIONS  F1+F2 BACK");
+}
