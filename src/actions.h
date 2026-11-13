@@ -16,6 +16,11 @@ static void act_freeze(int s, int on) { freeze_set(s, on); }
 static void act_param_step(int s, int p, int d, int big) { par_adjust(s, p, d, big); }
 static void act_param_reset(int s, int p) { par_default(s, p); }
 static void act_param_text(int s, int p, char *b, int n) { par_str(s, p, b, n); }
+static int act_param_get(int s, int p) { return par_get(s, p); }
+static void act_param_set(int s, int p, int v) {   // a number straight to a value (the simple view, a dial): kept in range
+    if (!par_is_number(p)) return;
+    int lo, hi, st, bg; par_limits(s, p, &lo, &hi, &st, &bg); edit_begin(); par_put(s, p, clampi(v, lo, hi));
+}
 static void act_listen_note(int s, int d) { song.lnote[s] = (int8_t)clampi(song.lnote[s] + d, -48, 48); }   // the note OPTION plays on the panel
 
 // patterns and automation

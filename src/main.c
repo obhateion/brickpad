@@ -1528,6 +1528,7 @@ static void par_str(int pad, int p, char *b, int n) {
         } else snprintf(b, n, "%d", v);
     }
 }
+#include "params.h"
 static void par_adjust(int pad, int p, int d, int big) {
     Track *t = &song.t[pad];
     if (p == P_SAMPLE) p = P_TYPE;        // the instrument switch: every arrow, round (RIGHT/UP next, LEFT/DOWN back)
@@ -1540,43 +1541,24 @@ static void par_adjust(int pad, int p, int d, int big) {
         return;
     }
     if (p == P_SRC) { if (!big) { edit_begin(); neighbour_file(pad, d); } return; }   // CLOUD's sample: the next file
-    if (p >= P_SX && p < P_SX + SX_N) { edit_begin(); int8_t *v = &song.smx[pad][p - P_SX]; *v = (int8_t)clampi(*v + d * (big ? 10 : 1), 0, 100); return; }
     if (p == P_NORM) { edit_begin(); int8_t *v = &song.mix.pad[pad].spare[PM_NORM]; *v = (int8_t)((*v + (d > 0 ? 1 : 2)) % 3); return; }
     edit_begin();
     if (p >= P_PT) return;                // jacks are plugged, not turned
-    if (p >= P_GX) { int k = p - P_GX, lo, hi; gx_range(k, &lo, &hi);
-        song.gx[pad][k] = (int8_t)clampi(song.gx[pad][k] + d * (big && hi > 12 ? 10 : 1), lo, hi); song.gx[pad][GX_MARK] = GX_INIT; return; }
-    if (p >= P_AX) { int k = p - P_AX, lo, hi; ax_range(k, &lo, &hi);
-        song.ax[pad][k] = (int8_t)clampi(song.ax[pad][k] + d * (big && hi > 4 ? 10 : 1), lo, hi); song.ax[pad][AX_MARK] = AX_INIT; return; }
-    if (p >= P_CX) { int k = p - P_CX, lo, hi; cx_range(k, &lo, &hi);
-        song.cx[pad][k] = (int8_t)clampi(song.cx[pad][k] + d * (big ? (k == CX_PITCH ? 12 : hi - lo <= 4 ? 1 : 10) : 1), lo, hi); return; }
-    if (p >= P_CL) { int k = p - P_CL; t->cp[k] = (int8_t)clampi(t->cp[k] + d * (big ? 10 : 1), 0, 100); return; }
-    if (p >= P_AC) { int k = p - P_AC, lo, hi; ap_range(k, &lo, &hi);
-        t->ap[k] = (int8_t)clampi(t->ap[k] + d * (big ? (k == AP_TUNE ? 12 : k == AP_WAVE || k == AP_DTYPE ? 1 : 10) : 1), lo, hi); return; }
-    if (p >= P_SY) { int k = p - P_SY, lo, hi; sp_range(k, &lo, &hi);
-        t->sp[k] = (int8_t)clampi(t->sp[k] + d * (big ? (k == SP_TUNE2 ? 12 : k <= SP_OSC2 ? 1 : 10) : 1), lo, hi); return; }
-    switch (p) {
-    case P_PITCH: t->pitch = clampi(t->pitch + d * (big ? 12 : 1), -24, 24); break;
-    case P_FINE: t->fine = clampi(t->fine + d * (big ? 10 : 1), -50, 50); break;
-    case P_VOL: t->vol = clampi(t->vol + d * (big ? 10 : 1), 0, 100); break;
-    case P_PAN: t->pan = clampi(t->pan + d * (big ? 10 : 1), -50, 50); break;
-    case P_START: t->start = clampi(t->start + d * (big ? 50 : 5), 0, t->end - 5); break;
-    case P_END: t->end = clampi(t->end + d * (big ? 50 : 5), t->start + 5, 1000); break;
-    case P_DIR: t->rev = !t->rev; break;
-    case P_VOICE: t->voice = !t->voice; break;
-    case P_ROOT: t->root = clampi(t->root + d, -1, 11); break;
-    case P_SLICES: t->slices = clampi(t->slices + d, 0, song.cut[pad].n ? 6 : 5); relayout(pad); break;
-    case P_WARP: t->warp = clampi(t->warp + d, 0, 5); break;
-    case P_GRAIN: { int g = t->grain ? t->grain : t->warp == 4 ? 90 : 30; t->grain = clampi(g + d * (big ? 10 : 1), 5, 120); break; }
-    case P_FLUX: { int f = t->flux ? t->flux : 40; t->flux = clampi(f + d * (big ? 10 : 1), 1, 100); break; }
+    switch (p) {                          // what is not a plain number in a range
+    case P_DIR: t->rev = !t->rev; return;
+    case P_VOICE: t->voice = !t->voice; return;
+    case P_GRAIN: { int g = t->grain ? t->grain : t->warp == 4 ? 90 : 30; t->grain = clampi(g + d * (big ? 10 : 1), 5, 120); return; }
+    case P_FLUX: { int f = t->flux ? t->flux : 40; t->flux = clampi(f + d * (big ? 10 : 1), 1, 100); return; }
     case P_BPM: { int cur = t->bpm ? t->bpm : (int)(track_bpm(pad) + 0.5f);
         if (!cur) cur = song.tempo;
         int nb = t->bpm ? cur + d * (big ? 10 : 1) : cur;   // first touch takes the detected value
-        t->bpm = nb < 40 ? 0 : clampi(nb, 40, 300); relayout(pad); break; }
+        t->bpm = nb < 40 ? 0 : clampi(nb, 40, 300); relayout(pad); return; }
     case P_BARS: { static const int bv[6] = {0, 1, 2, 4, 8, 16}; int i = 0;
         while (i < 5 && bv[i] != t->bars) i++;
-        t->bars = bv[clampi(i + d, 0, 5)]; relayout(pad); break; }
+        t->bars = bv[clampi(i + d, 0, 5)]; relayout(pad); return; }
     }
+    int lo, hi, st, bg; par_limits(pad, p, &lo, &hi, &st, &bg);
+    par_put(pad, p, clampi(par_get(pad, p) + d * (big ? bg : st), lo, hi));
 }
 static void par_default(int pad, int p) {
     Track *t = &song.t[pad]; edit_begin();
