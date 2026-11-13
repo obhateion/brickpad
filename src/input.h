@@ -14,10 +14,12 @@ static int map_button(int b) {   // Brick joystick buttons; EDIT = B, OPTION = A
     }
     return -1;
 }
-static void input_key(int k, int down) { held[k] = down; if (down) used[k] = 0; }
+static Uint32 shift_t;                   // when SHIFT went down: held alone, it opens the cheat sheet (ui.h)
+static void input_key(int k, int down) { held[k] = down; if (down) used[k] = 0; if (k == K_SHIFT && down) shift_t = SDL_GetTicks() | 1; }
 static void input_combo(int k, int down) {   // a key going down while EDIT or X is held makes that EDIT or X a combo
     if (down && held[K_EDIT] && k != K_EDIT && k != K_SHIFT) used[K_EDIT] = 1;   // any combo: its release is no tap
     if (down && held[K_X] && k != K_X) used[K_X] = 1;
+    if (down && held[K_SHIFT] && k != K_SHIFT) used[K_SHIFT] = 1;   // SHIFT served a combo: no cheat sheet
 }
 static int input_tap(int k) { return !used[k]; }    // asked on release: the key was pressed alone
 static void input_use(int k) { used[k] = 1; }       // this key served a combo: its release must not act again

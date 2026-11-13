@@ -3424,18 +3424,9 @@ static int slot_icon(int i) {            // the type comes from the path: asked 
     if (strncmp(seen[i], p, 255)) { snprintf(seen[i], 256, "%s", p); cat[i] = file_cat(p); }
     return cat[i];
 }
+#include "ui.h"
 static void draw_header(void) {
-    int x = 16;
-    for (int i = 0; i < T_N; i++) {      // tabs: words, the current one a plate; PATTERNS is a window inside SEQ+INST
-        if (i == T_PAT) continue;
-        int w = (int)strlen(tab_name[i]) * 16 + 16, cur = i == tab || (i == T_SEQ && tab == T_PAT);
-        if (cur) plate(x, 10, w, 28, 7, C_ORANGE);
-        text(x + 8, 16, 2, cur ? C_BG : C_DIM, tab_name[i]);
-        x += w + 8;
-    }
-    hatch(830, 14, 60, 20, 8, 3, C_GREY);
-    text(936, 14, 1, C_DIM, "F1 < > F2");
-    text(904, 28, 1, C_DIM, "F1+F2 PROJECT");
+    ui_top();
     rect(16, 44, 992, 1, C_LINE, 1);
     const Sample *s = engine_sample(sel); char nb[8]; snprintf(nb, sizeof nb, "%02d", sel + 1);
     int name_on = tab == T_SEQ && srow < 0 && scol == 0 && !browsing && !slicing && !perform;
@@ -3474,9 +3465,9 @@ static int is_key_word(const char *w, int n) {   // the first word of a hint: a 
     for (int i = 0; whole[i]; i++) if ((int)strlen(whole[i]) == n && !strncmp(w, whole[i], n)) return 1;
     return 0;
 }
-static void draw_hint(const char *h) {   // same width as plain text: the cap grows into the double space
-    int x = 20, y = H - 64;
-    while (*h) {
+static void draw_hint(const char *h) {   // same width as plain text: the cap grows into the double space; at most three
+    int x = 20, y = H - 64, left = 3, more = ui_pairs(h) > 3;
+    while (*h && left--) {
         const char *e = strstr(h, "  "); int n = e ? (int)(e - h) : (int)strlen(h), w = (int)strcspn(h, " ");
         if (w > n) w = n;
         char b[96]; int key = is_key_word(h, w);
@@ -3485,17 +3476,17 @@ static void draw_hint(const char *h) {   // same width as plain text: the cap gr
         snprintf(b, sizeof b, "%.*s", n - w, h + w); text(x + w * 16, y, 2, C_DIM, b);
         x += n * 16 + 32; h += n; while (*h == ' ') h++;
     }
+    if (more) { rect(1008 - 160 - 4, y - 4, 5 * 16 + 8, 24, C_LINE, 1); text(1008 - 160, y, 2, C_WHITE, "SHIFT"); text(1008 - 80, y, 2, C_DIM, " MORE"); }
 }
 static void draw_footer(const char *hint) {
+    snprintf(ui_hint, sizeof ui_hint, "%s", hint);
     Uint32 now = SDL_GetTicks();
     rect(16, H - 73, 992, 32, C_BG, 1);   // a window drawn over a screen replaces its hints, never mixes with them
     rect(16, H - 74, 992, 1, C_LINE, 1);
     if (msg_t && now - msg_t < 1500) { plate(16, H - 69, (int)strlen(msg) * 16 + 16, 26, 6, C_ORANGE); text(24, H - 64, 2, C_BG, msg); }
     else draw_hint(hint);
     textf(16, H - 32, 2, engine_load() >= 0.85f ? C_RED : C_GREY, "DSP %d%%  V%02d", (int)(engine_load() * 100), engine_voices());   // red: close to gaps in the sound
-    int screen = tab == T_GRID ? 1 : tab == T_SEQ || tab == T_PAT ? 2 : tab == T_FX ? 3 : tab == T_MIX ? 4 : 5;   // GRID, SEQ+INST, FX, MIXER, PROJECT (2026-11-11: there were 8 dots for 5 tabs)
-    textf(250, H - 34, 1, C_DIM, "BP.03"); textf(250, H - 22, 1, C_GREY, "%02d / %02d", screen, 5);
-    for (int i = 0; i < 5; i++) { if (i == screen - 1) rect(336 + i * 14, H - 30, 10, 10, C_ORANGE, 1); else frame(336 + i * 14, H - 30, 10, 10, 1, C_GREY); }
+    // which screen of five: the path on top shows it now (UI v2)
     char b[48]; snprintf(b, sizeof b, "%d BPM%s", (int)(song.tempo * tempo_mul + 0.5f), song.metro ? " M" : "");
     int tx = 1008 - (int)strlen(b) * 16;     // right edge: state plate, beat lights, tempo
     text(tx, H - 32, 2, C_WHITE, b);
@@ -4826,7 +4817,7 @@ static double draw_build_ms, draw_present_ms;   // summed over the frames since 
 static Uint32 last_input;                // the last button or d-pad event
 static int frame_rate(Uint32 now) {      // frames per second for what is happening now
     int keys = 0; for (int k = 0; k < K_N; k++) keys |= held[k];
-    if (keys || (last_input && ms_since(now, last_input) < 500) || browse_hold || menu_down) return 60;
+    if (keys || (last_input && ms_since(now, last_input) < 500) || browse_hold || menu_down) return 30;   // UI v2: never over 30
     if (engine_playing() || engine_counting() >= 0 || engine_voices() > 0 || (msg_t && now - msg_t < 1600) || marq_live) return 30;
     for (int i = 0; i < NSLOT; i++) if (flash[i] && now - flash[i] < 200) return 30;
     return 10;
@@ -5638,6 +5629,7 @@ static void draw(void) {
     case T_GRID: draw_grid(); break; case T_SEQ: draw_seq(); break; case T_PAT: draw_pat(); break; case T_PRJ: draw_prj(); break;
     case T_MIX: draw_mixer(); break; case T_FX: draw_fx(); break;
     }
+    ui_popup(); ui_cheat();
     if (asking) draw_ask();
     Uint64 tp = SDL_GetPerformanceCounter(); draw_build_ms += (tp - t_draw0) * 1000.0 / SDL_GetPerformanceFrequency();
     SDL_RenderPresent(R);
