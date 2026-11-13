@@ -2,7 +2,7 @@
 // Each page draws after its mockup and drives the 1.2 state underneath (frow/fcol, lcol/lrow, mcol/mrow...), so the
 // actions, undo and the engine stay as they were. main.c includes this once, after sound.h.
 #pragma once
-static void fx_pstr(int type, int k, int v, char *b);
+static void fx_pstr(int type, int k, int v, char *b); static void unit_pstr(int unit, int k, int v, char *b);
 
 // ---- FX (A17): the two inserts as tabs (L1/R1), a picture of the effect (EDIT: the next type), its parameters as cards ----
 static int fx2_slot, fx2_cur = -1;       // the insert shown; the card under the cursor, -1 = the picture (the type)
@@ -192,4 +192,127 @@ static void draw_auto2(void) {
     if (st >= 0) { if (al->v[st] != AUTO_EMPTY) snprintf(b, sizeof b, "step %d \004 %d%%", st + 1, al->v[st]); else snprintf(b, sizeof b, "step %d", st + 1);
         ftext(997 - ftext_w(FT_M, b), 664, FT_M, C_WHITE, b); }
     draw_footer(srow == 0 ? "EDIT+<> TARGET  EDIT POINT AT A KNOB  Y BACK" : "EDIT POINT  Y+ARROWS BEND  Y BACK  EDIT+^v VALUE  L1/R1 LANE  OPT+EDIT CLEAR");
+}
+
+// ---- MIX of a pad: its strip of the mixer as cards (the 1.2 rows: mrow, the column mcol = the pad) ----
+static const int8_t mix2_rows[8] = {MX_VOL, MX_PAN, MX_SA, MX_SB, MX_FRZ, MX_DUCK, MX_MUTE, MX_SOLO};
+static int mix2_cur;
+static int v2_mix(void) { return ui_cat == PC_MIX && tab == T_MIX && mcol < NSLOT && !ducking; }
+static void mix2_move(int k) {
+    if (k == K_LEFT) { if (mix2_cur & 1) mix2_cur--; } else if (k == K_RIGHT) { if (!(mix2_cur & 1)) mix2_cur++; }
+    else if (k == K_DOWN) { if (mix2_cur + 2 < 8) mix2_cur += 2; } else if (mix2_cur >= 2) mix2_cur -= 2;
+    mrow = mix2_rows[mix2_cur];
+}
+static void draw_mix2(void) {
+    Col ec = C_CAT(PC_MIX); const Track *t = &song.t[mcol]; const PadMix *pm = &song.mix.pad[mcol]; mrow = mix2_rows[mix2_cur & 7];
+    static const char *const nm[8] = {"VOLUME", "PAN", "SEND A", "SEND B", "FREEZE", "DUCK", "MUTE", "SOLO"};
+    for (int i = 0; i < 8; i++) { char v[24]; int x = i & 1 ? 518 : 32, y = 80 + (i / 2) * 156, on = i == mix2_cur, val = -1, lo = 0, hi = 100;
+        switch (i) { case 0: val = t->vol; snprintf(v, sizeof v, "%d", t->vol); break;
+            case 1: val = t->pan; lo = -50; hi = 50; if (t->pan) snprintf(v, sizeof v, "%c%d", t->pan < 0 ? 'L' : 'R', abs(t->pan)); else snprintf(v, sizeof v, "C"); break;
+            case 2: val = pm->send_a; snprintf(v, sizeof v, "%d", pm->send_a); break;
+            case 3: val = pm->send_b; snprintf(v, sizeof v, "%d", pm->send_b); break;
+            case 4: snprintf(v, sizeof v, "%s", frozen(mcol) ? "FROZEN" : "LIVE"); break;
+            case 5: if (pm->spare[DK_SRC]) snprintf(v, sizeof v, "PAD %d %d%%", pm->spare[DK_SRC], pm->spare[DK_AMT]); else snprintf(v, sizeof v, "OFF"); break;
+            case 6: snprintf(v, sizeof v, "%s", t->mute ? "ON" : "OFF"); break;
+            default: snprintf(v, sizeof v, "%s", pm->solo ? "ON" : "OFF"); }
+        if (on) rframe(x, y, 473, 144, 8, 4, ec, C_CELL); else rrect(x, y, 473, 144, 8, C_CELL);
+        ftext(x + 20, y + 12, FT_M, C_DIM, nm[i]); ftext(x + 453 - ftext_w(FT_XB, v), y + 10, FT_XB, (i >= 4 && (i == 4 ? frozen(mcol) : i == 6 ? t->mute : i == 7 ? pm->solo : pm->spare[DK_SRC] != 0)) ? ec : C_WHITE, v);
+        if (val >= 0 || i == 1) { int by = y + 144 - 30; rect(x + 20, by, 433, 8, C_LINE, 1);
+            if (i == 1) { int cx = x + 20 + 433 / 2, w = 433 * t->pan / 100; if (w > 0) rect(cx, by, w, 8, ec, 1); else rect(cx + w, by, -w, 8, ec, 1); rect(cx, by - 4, 2, 16, C_WHITE, 1); }
+            else rect(x + 20, by, 433 * clampi(val - lo, 0, hi - lo) / (hi - lo), 8, ec, 1); } }
+    draw_footer(mix2_cur == 4 ? "EDIT FREEZE/LIVE  Y BACK" : mix2_cur == 5 ? "EDIT OPEN DUCK  EDIT+<> SOURCE  Y BACK  EDIT+^v DEPTH" : mix2_cur >= 6 ? "EDIT ON/OFF  Y BACK" : "EDIT+ARROWS VALUE  Y BACK  OPT+EDIT DEFAULT");
+}
+
+// ---- MIXER (HOME): L1/R1 the page: PADS (A21, faders), RETURNS (A22: A, B, MASTER), FREEZE (A23, and EXPORT) ----
+static int mx_pg, mx_r, mx_fz;            // the page; RETURNS: the row in a column (0 level, 1-2 two parameters); FREEZE: the row
+static int v2_mixer(void) { return ui_cat < 0 && tab == T_MIX && !ducking && !perform; }
+static const int8_t mx_ret_k[3][2] = {{RV_SIZE, RV_DECAY}, {DL_TIME, DL_FB}, {MS_COMP, MS_LIM}};
+static void mixer2_page(int d) { mx_pg = (mx_pg + d + 3) % 3; if (mx_pg == 0) { mcol = sel; mrow = MX_VOL; } else if (mx_pg == 1) { mcol = NSLOT; mx_r = 0; mrow = MX_VOL; } else mx_fz = 0; }
+static void mixer2_move(int k) {
+    if (mx_pg == 0) { if (k == K_LEFT) mcol = (mcol + NSLOT - 1) % NSLOT; else if (k == K_RIGHT) mcol = (mcol + 1) % NSLOT; sel = mcol; mrow = MX_VOL; return; }
+    if (mx_pg == 1) { if (k == K_LEFT && mcol > NSLOT) mcol--; else if (k == K_RIGHT && mcol < NSLOT + 2) mcol++; else if (k == K_UP && mx_r) mx_r--; else if (k == K_DOWN && mx_r < 2) mx_r++;
+        mrow = mx_r ? MX_PAN : MX_VOL; return; }
+    int n = 0; for (int s = 0; s < NSLOT; s++) n += has_sound(s);
+    if (k == K_UP && mx_fz) mx_fz--; else if (k == K_DOWN && mx_fz < n) mx_fz++;
+}
+static int mixer2_fz_pad(void) { int n = 0; for (int s = 0; s < NSLOT; s++) if (has_sound(s)) { if (n == mx_fz) return s; n++; } return -1; }   // -1: EXPORT
+static void mixer2_arrow(int k) {         // EDIT+arrows
+    int d = k == K_RIGHT || k == K_UP ? 1 : -1, big = k == K_UP || k == K_DOWN;
+    if (mx_pg == 0) { act_pad_volume_step(mcol, d * (big ? 5 : 1)); return; }
+    if (mx_pg == 1) { int u = mcol - NSLOT;
+        if (mx_r == 0) { if (u == 2) act_master_step(d * (big ? 5 : 1)); else act_unit_param_add(mcol, u ? DL_LEVEL : RV_LEVEL, d * (big ? 5 : 1)); }
+        else if (u == 2) act_master_fx_toggle(mx_ret_k[2][mx_r - 1]);
+        else act_unit_param_add(mcol, mx_ret_k[u][mx_r - 1], d * (big && !(u == 1 && mx_r == 1) ? 5 : 1)); }
+}
+static int mixer2_tap(void) {             // EDIT: RETURNS opens the unit's every parameter; FREEZE freezes, or exports
+    if (mx_pg == 1) { fx_unit = mcol; frow = fcol = 0; set_tab(T_FX); return 1; }
+    if (mx_pg == 2) { int s = mixer2_fz_pad(); if (s < 0) { export_open(); return 1; } freeze_set(s, !frozen(s)); if (!frozen(s)) toast("UNFROZEN"); return 1; }
+    return 0;
+}
+static void draw_mixer2(void) {
+    static const char *const pgn[3] = {"PADS", "RETURNS", "FREEZE"};
+    for (int i = 0; i < 3; i++) { int x = 26 + i * 324, on = i == mx_pg; if (on) rrect(x, 70, 314, 34, 8, C_ORANGE);
+        ftext(x + 157 - ftext_w(FT_MB, pgn[i]) / 2, 75, FT_MB, on ? C_BG : C_DIM, pgn[i]); }
+    if (mx_pg == 0) {                     // A21: twelve faders in the pads' engine colours
+        for (int s = 0; s < NSLOT; s++) { int cx = 66 + s * 81, on = s == mcol, top = 124, bot = 640, h = (bot - top) * song.t[s].vol / 100;
+            Col c = has_sound(s) ? (on ? C_ORANGE : C_ENG(song.t[s].type)) : C_LINE; char b[4];
+            if (on) rframe(cx - 38, top - 10, 76, 600, 8, 3, C_WHITE, C_BG);
+            rect(cx - 8, top, 16, bot - top, C_CELL, 1); if (has_sound(s)) { rect(cx - 8, bot - h, 16, h, c, 1); rect(cx - 22, bot - h - 5, 44, 10, C_WHITE, 1); }
+            snprintf(b, sizeof b, "%02d", s + 1); ftext(cx - ftext_w(FT_MB, b) / 2, 652, FT_MB, on ? C_WHITE : C_DIM, b);
+            if (song.t[s].mute) ftext(cx - 6, 678, FT_MB, C_RED, "M"); else if (song.mix.pad[s].solo) ftext(cx - 6, 678, FT_MB, C_ORANGE, "S"); }
+        draw_footer("EDIT+^v LEVEL  Y MUTE  X SOLO  L1/R1 PAGE");
+    } else if (mx_pg == 1) {              // A22: the returns and the master, a fader and two bars each
+        static const char *const cn[3] = {"A \003 REVERB", "B \003 DELAY", "MASTER"}, *const pn[3][2] = {{"SIZE", "DECAY"}, {"TIME", "FEEDBACK"}, {"COMP", "LIMITER"}};
+        for (int u = 0; u < 3; u++) { int x = 32 + u * 324, on = mcol == NSLOT + u, lo, hi, def; Col c = u == 2 ? th_cur[TC_SMP] : C_CAT(PC_MIX);
+            if (on) rframe(x, 112, 310, 590, 8, 4, C_CAT(PC_MIX), C_CELL); else rrect(x, 112, 310, 590, 8, C_CELL);
+            ftext(x + 20, 128, FT_MB, C_WHITE, cn[u]);
+            int lv = u == 2 ? song.master : *unit_param(NSLOT + u, u ? DL_LEVEL : RV_LEVEL, &lo, &hi, &def), fh = 380 * lv / 100;
+            rect(x + 142, 168, 26, 380, C_LINE, 1); rect(x + 142, 548 - fh, 26, fh, c, 1);
+            if (on && mx_r == 0) rframe(x + 134, 160, 42, 396, 6, 3, C_WHITE, C_CELL), rect(x + 142, 168, 26, 380, C_LINE, 1), rect(x + 142, 548 - fh, 26, fh, c, 1);
+            for (int r = 0; r < 2; r++) { int k = mx_ret_k[u][r], y = 570 + r * 62, v; char b[16];
+                if (u == 2) { v = song.mix.ms[k] ? 100 : 0; snprintf(b, sizeof b, "%s", song.mix.ms[k] ? "ON" : "OFF"); }
+                else { v = *unit_param(NSLOT + u, k, &lo, &hi, &def); unit_pstr(NSLOT + u, k, v, b); v = hi > lo ? (v - lo) * 100 / (hi - lo) : 0; }
+                ftext(x + 20, y, FT_M, on && mx_r == r + 1 ? C_WHITE : C_DIM, pn[u][r]); ftext(x + 290 - ftext_w(FT_M, b), y, FT_M, on && mx_r == r + 1 ? C_WHITE : C_DIM, b);
+                rect(x + 20, y + 30, 270, 8, C_LINE, 1); rect(x + 20, y + 30, 270 * v / 100, 8, on && mx_r == r + 1 ? C_WHITE : C_CAT(PC_MIX), 1); } }
+        draw_footer("EDIT+^v VALUE  EDIT ALL PARAMETERS  L1/R1 PAGE");
+    } else {                              // A23: the pads with a sound, live or frozen; EXPORT last; the DSP load
+        int n = 0, ss[NSLOT]; for (int s = 0; s < NSLOT; s++) if (has_sound(s)) ss[n++] = s;
+        int top = clampi(mx_fz - 3, 0, n + 1 > 6 ? n + 1 - 6 : 0);
+        for (int r = 0; r < 6 && top + r <= n; r++) { int i = top + r, y = 114 + r * 90, on = i == mx_fz; char b[40];
+            rrect(26, y, 971, 80, 8, on ? C_SELBG : C_CELL);
+            if (i == n) { ftext(48, y + 26, FT_LB, C_WHITE, "EXPORT"); ftext(974 - ftext_w(FT_M, "song \003 WAV"), y + 28, FT_M, C_DIM, "song \003 WAV"); continue; }
+            int s = ss[i]; snprintf(b, sizeof b, "%02d %.16s", s + 1, slot_name(s) ? slot_name(s) : "EMPTY"); ftext(48, y + 26, FT_LB, C_WHITE, b);
+            if (frozen(s)) { const char *f = "\002 frozen"; ftext(974 - ftext_w(FT_M, f), y + 28, FT_M, C_ENG(1), f); } else ftext(974 - ftext_w(FT_M, "live"), y + 28, FT_M, C_DIM, "live"); }
+        int ld = (int)(engine_load() * 100); char b[8]; snprintf(b, sizeof b, "%d%%", ld);
+        ftext(26, 660, FT_M, C_DIM, "CPU"); rect(102, 668, 780, 8, C_LINE, 1); rect(102, 668, 780 * clampi(ld, 0, 100) / 100, 8, ld >= 85 ? C_RED : th_cur[TC_SMP], 1);
+        ftext(997 - ftext_w(FT_MB, b), 658, FT_MB, C_WHITE, b);
+        draw_footer(mixer2_fz_pad() < 0 ? "EDIT EXPORT  L1/R1 PAGE" : "EDIT FREEZE  L1/R1 PAGE");
+    }
+}
+
+// ---- MOD > DUCK (A20): the curve as sixteen bars, the fields as cards (keys: duck_key, the 1.2 window's) ----
+static void draw_duck2(void) {
+    const PadMix *pm = &song.mix.pad[sel]; const int8_t *dx = song.dkx[sel]; const uint8_t *cv = song.dkc[sel];
+    int mode = dx[DX_MODE] % DM_N, amt = pm->spare[DK_AMT], src = pm->spare[DK_SRC], onn = mode == DM_GRID ? amt > 0 : src > 0;
+    Col ec = C_CAT(PC_MIX); enum { PX = 26, PY = 80, PW = 971, PH = 280 };
+    if (dk_row == 0) rframe(PX, PY, PW, PH, 8, 4, ec, C_CELL); else rrect(PX, PY, PW, PH, 8, C_CELL);
+    for (int i = 0; i < 16; i++) { int bw = (PW - 28) / 16, x = PX + 14 + i * bw, h = (PH - 28) * cv[i] / 100, on = dk_row == 0 && i == dk_pt;
+        int rh = (PH - 28) * (100 - amt * (100 - cv[i]) / 100) / 100;   // what the level really does, with the depth
+        rect(x, PY + PH - 14 - h, bw - 6, h > 1 ? h : 1, on ? C_WHITE : onn ? ec : C_DIM, 1);
+        rect(x, PY + PH - 14 - rh, bw - 6, 3, mix(C_WHITE, ec, 120), 1); }
+    { float g = 1, v = engine_duck_view(sel, &g); if (v >= 0) rect(PX + 14 + (int)((PW - 28) * v), PY + 6, 2, PH - 12, C_WHITE, 1); }
+    static const char *const fn2[DF_N] = {"TRIGGER", "SOURCE", "DEPTH", "LENGTH", "", "SMOOTH", "SHAPE"};
+    for (int c = 0; c < DF_N; c++) { char v[24]; int x = c & 1 ? 518 : 32, y = PY + PH + 16 + (c / 2) * 84, on = dk_row == 1 && dk_col == c, use = c != DF_SRC || mode != DM_GRID;
+        switch (c) { case DF_MODE: snprintf(v, sizeof v, "%s", mode == DM_NOTE ? "NOTES" : dk_mode_name[mode]); break;
+            case DF_SRC: if (src) snprintf(v, sizeof v, "%02d %.10s", src, slot_name(src - 1) ? slot_name(src - 1) : "EMPTY"); else snprintf(v, sizeof v, "-"); break;
+            case DF_AMT: snprintf(v, sizeof v, "%d%%", amt); break; case DF_LEN: snprintf(v, sizeof v, "%s", dk_len_name[dx[DX_LEN] % DK_NLEN]); break;
+            case DF_RATE: if (mode == DM_GRID) snprintf(v, sizeof v, "%s", dk_len_name[dx[DX_GRID] % DK_NLEN]); else if (mode == DM_AUDIO) snprintf(v, sizeof v, "%dDB", (int)((dx[DX_THRESH] - 100) * 0.6f)); else { snprintf(v, sizeof v, "-"); use = 0; } break;
+            case DF_SMOOTH: if (dx[DX_SMOOTH]) snprintf(v, sizeof v, "%dMS", dx[DX_SMOOTH] / 2 > 0 ? dx[DX_SMOOTH] / 2 : 1); else snprintf(v, sizeof v, "OFF"); break;
+            default: snprintf(v, sizeof v, "%s", dx[DX_SHAPE] == DK_USER ? "USER" : dk_shape_name[dx[DX_SHAPE] % DK_NSHAPE]); }
+        if (on) rframe(x, y, 473, 76, 8, 4, ec, C_CELL); else rrect(x, y, 473, 76, 8, C_CELL);
+        ftext(x + 20, y + 10, FT_M, C_DIM, c == DF_RATE ? (mode == DM_GRID ? "EVERY" : "THRESHOLD") : fn2[c]);
+        ftext(x + 453 - ftext_w(FT_LB, v), y + 8, FT_LB, use ? C_WHITE : C_DIM, v);
+        if (c == DF_AMT) { rect(x + 20, y + 56, 433, 8, C_LINE, 1); rect(x + 20, y + 56, 433 * amt / 100, 8, ec, 1); } }
+    draw_footer(dk_row == 0 ? "EDIT+^v LEVEL  EDIT+<> DRAW  Y BACK  OPT+EDIT POINT UP  L1/R1 PAD" : "EDIT NEXT  EDIT+ARROWS VALUE  Y BACK  OPT+EDIT DEFAULT  L1/R1 PAD");
+    return;
 }

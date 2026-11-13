@@ -103,6 +103,7 @@ enum { PC_PATTERN, PC_SOUND, PC_FX, PC_MOD, PC_MIX, PC_N };   // the categories 
 static int modmenu, mm_cur;              // MOD's own list (LFO, AUTOMATION, DUCK), as PATTERN's
 static int patmenu, pm_cur;              // PATTERN's own list (STEPS or ROLL, SELECT, RECORD) is on screen; its cursor, kept
 static int recpage;                      // PATTERN > RECORD is on screen
+static int v2_mix(void), v2_mixer(void), v2_fx(void), v2_lfo(void), v2_auto(void), mixer2_tap(void); static void mixer2_arrow(int k);   // UI v2 step 5 pages (pages.h)
 static int v2_steps(void);               // the rebuilt STEPS page is the screen now (below, before seq_clamp)
 static Uint32 menu_down, flash[NSLOT];
 static char msg[80]; static Uint32 msg_t;
@@ -2806,6 +2807,10 @@ static void duck_key(int k, int down) {
         dx[DX_SHAPE] = DK_USER; return;
     }
     if (!arrow) return;
+    if (dk_row == 1) {                   // UI v2 (A20): the fields as cards in two columns
+        if (k == K_LEFT) { if (dk_col & 1) dk_col--; } else if (k == K_RIGHT) { if (!(dk_col & 1) && dk_col + 1 < DF_N) dk_col++; }
+        else if (k == K_DOWN) { if (dk_col + 2 < DF_N) dk_col += 2; } else if (dk_col >= 2) dk_col -= 2; else dk_row = 0;
+        return; }
     if (k == K_UP) dk_row = 0; else if (k == K_DOWN) dk_row = 1;
     else if (dk_row == 0) dk_pt = clampi(dk_pt + (k == K_RIGHT ? 1 : -1), 0, 15);
     else dk_col = (dk_col + (k == K_RIGHT ? 1 : DF_N - 1)) % DF_N;
@@ -2860,6 +2865,7 @@ static void draw_duck(void) {
     draw_footer(dk_row == 0 ? "<> POINT  EDIT+^v LEVEL  EDIT+<> DRAW  OPT+EDIT FULL  Y BACK" : "EDIT+ARROWS CHANGE  UP CURVE  L1/R1 PAD  OPT+EDIT DEFAULT");
 }
 static void mix_arrow(int k) {           // EDIT+arrows on the mixer
+    if (v2_mixer()) { mixer2_arrow(k); return; }
     int d = k == K_RIGHT || k == K_UP ? 1 : -1, big = k == K_UP || k == K_DOWN;
     if (mcol < NSLOT) {
         switch (mrow) {
@@ -2883,6 +2889,7 @@ static void mix_arrow(int k) {           // EDIT+arrows on the mixer
     else if (mrow == MX_INS1 || mrow == MX_INS2) act_master_fx_toggle(mrow == MX_INS1 ? MS_COMP : MS_LIM);
 }
 static void mix_tap(void) {
+    if (v2_mixer() && mixer2_tap()) return;
     if (mcol < NSLOT) {
         Track *t = &song.t[mcol]; PadMix *pm = &song.mix.pad[mcol];
         if (mrow == MX_MUTE) { t->mute = !t->mute; return; }                 // live moves: no undo step
@@ -2905,7 +2912,10 @@ static void mix_delete(void) {           // OPT+EDIT: back to the default
     case MX_PAN: t->pan = 0; break; case MX_VOL: t->vol = 75; break;
     }
 }
+static int v2_mix(void); static void mix2_move(int k); static int v2_mixer(void); static void mixer2_move(int k); static void mixer2_arrow(int k); static int mixer2_tap(void);
 static void mix_move(int k) {
+    if (v2_mix()) { mix2_move(k); return; }
+    if (v2_mixer()) { mixer2_move(k); return; }
     if (k == K_LEFT) mcol = (mcol + NSLOT + 2) % (NSLOT + 3); else if (k == K_RIGHT) mcol = (mcol + 1) % (NSLOT + 3);
     else mrow = clampi(mrow + (k == K_DOWN ? 1 : -1), 0, MX_ROWS - 1);
     if (mcol < NSLOT) sel = mcol;
@@ -3411,6 +3421,7 @@ static void key_event(int k, int down) {
     if (v2_fx() && (k == K_L1 || k == K_R1)) { fx2_slot ^= 1; fx2_cur = -1; fx2_sync(); return; }   // UI v2 (A17): the other insert
     if (tab == T_FX && (k == K_L1 || k == K_R1)) { fx_unit_step(k == K_R1 ? 1 : -1); return; }
     if (tab == T_FX && k == K_Y && fx_unit < NSLOT) { fx_page = !fx_page; return; }   // FX <> MOD
+    if (v2_mixer() && (k == K_L1 || k == K_R1)) { mixer2_page(k == K_R1 ? 1 : -1); return; }   // UI v2: PADS, RETURNS, FREEZE
     if (tab == T_MIX && (k == K_L1 || k == K_R1)) { mcol = k == K_R1 ? (mcol < NSLOT ? (mcol / 4 + 1) * 4 : 0) : (mcol < 4 ? NSLOT : mcol <= NSLOT ? (mcol - 1) / 4 * 4 : NSLOT); if (mcol > NSLOT + 2) mcol = 0; if (mcol < NSLOT) sel = mcol; return; }
     if (ui_cat == PC_SOUND && tab == T_SEQ && (k == K_L1 || k == K_R1)) { sound_page_step(k == K_R1 ? 1 : -1); return; }   // SOUND: the page
     if (tab == T_SEQ && (k == K_L1 || k == K_R1)) {   // the pad's own lanes, round
@@ -5736,8 +5747,8 @@ static void draw(void) {
       last = scr; }
     SDL_SetRenderDrawColor(R, C_BG.r, C_BG.g, C_BG.b, 255);
     SDL_RenderClear(R);
-    ui_v2 = !exporting && !naming && !(browsing && bmode) && !randing && !theming && !iconing && !ducking
-            && (browsing || presetting || slicing || rolling || picking || hubbing || patmenu || recpage || modmenu || v2_lfo() || v2_auto() || v2_steps() || v2_sound() || v2_fx() || tab == T_PAT || (tab == T_GRID && perform != 2));   // the screens rebuilt after the mockups so far
+    ui_v2 = !exporting && !naming && !(browsing && bmode) && !randing && !theming && !iconing
+            && (ducking || browsing || presetting || slicing || rolling || picking || hubbing || patmenu || recpage || modmenu || v2_mix() || v2_mixer() || v2_lfo() || v2_auto() || v2_steps() || v2_sound() || v2_fx() || tab == T_PAT || (tab == T_GRID && perform != 2));   // the screens rebuilt after the mockups so far
     if (ui_v2) ui2_header(); else draw_header();
     if (exporting) draw_export();
     else if (naming) draw_naming();
@@ -5749,7 +5760,7 @@ static void draw(void) {
     else if (presetting) draw_presets2();
     else if (theming) draw_theme();
     else if (iconing) draw_icons();
-    else if (ducking) draw_duck();
+    else if (ducking) { if (ui_v2) draw_duck2(); else draw_duck(); }
     else if (hubbing) draw_hub();
     else if (patmenu) draw_patmenu();
     else if (modmenu) draw_modmenu();
@@ -5759,6 +5770,8 @@ static void draw(void) {
     else if (v2_fx()) draw_fx2();
     else if (v2_lfo()) draw_lfo2();
     else if (v2_auto()) draw_auto2();
+    else if (v2_mix()) draw_mix2();
+    else if (v2_mixer()) draw_mixer2();
     else switch (tab) {
     case T_GRID: draw_grid(); break; case T_SEQ: draw_seq(); break; case T_PAT: draw_pat(); break; case T_PRJ: draw_prj(); break;
     case T_MIX: draw_mixer(); break; case T_FX: draw_fx(); break;
