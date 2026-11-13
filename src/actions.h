@@ -78,3 +78,43 @@ static void act_steps_clear(int s) {          // only the steps of the pattern o
 static void act_pattern_clear(int s, int pat) { edit_begin(); pattern_clear(&song.t[s].pat[pat]); toast("PATTERN CLEARED"); }
 static void act_follow_loop(int s, int pat) { edit_begin(); memset(song.fol[s][pat], 0, 6); toast("FOLLOW: LOOP"); }
 static void act_pad_volume_step(int s, int d) { Track *t = &song.t[s]; edit_begin(); t->vol = clampi(t->vol + d, 0, 100); }
+
+// a pad on the mixer: volume, pan, sends, ducking, the two inserts
+static void fx_cycle(FxSlot *f, int d); static void fx_turn_on(FxSlot *f); static int8_t *unit_param(int unit, int k, int *lo, int *hi, int *def);   // main.c, below
+static void act_pad_pan_step(int s, int d) { Track *t = &song.t[s]; edit_begin(); t->pan = (int8_t)clampi(t->pan + d, -50, 50); }
+static void act_send_step(int s, int b, int d) {        // b 0: send A (reverb), 1: send B (delay)
+    PadMix *pm = &song.mix.pad[s]; edit_begin(); uint8_t *v = b ? &pm->send_b : &pm->send_a; *v = (uint8_t)clampi(*v + d, 0, 100);
+}
+static void act_duck_amount_step(int s, int d) { PadMix *pm = &song.mix.pad[s]; edit_begin(); pm->spare[DK_AMT] = (int8_t)clampi(pm->spare[DK_AMT] + d, 0, 100); }
+static void act_duck_source_step(int s, int d) {        // which pad's notes duck this one: none, then every other pad, round
+    PadMix *pm = &song.mix.pad[s]; edit_begin();
+    int v = pm->spare[DK_SRC]; do v = (v + d + NSLOT + 1) % (NSLOT + 1); while (v - 1 == s); pm->spare[DK_SRC] = (int8_t)v;
+    if (v && pm->spare[DK_AMT] <= 0) pm->spare[DK_AMT] = 80;
+}
+static void act_insert_onoff(int s, int slot) { edit_begin(); FxSlot *f = &song.mix.pad[s].ins[slot]; if (f->on) f->on = 0; else fx_turn_on(f); }
+static void act_insert_on(int s, int slot, int on) { edit_begin(); FxSlot *f = &song.mix.pad[s].ins[slot]; if (on) fx_turn_on(f); else f->on = 0; }
+static void act_insert_type_step(int s, int slot, int d) { fx_cycle(&song.mix.pad[s].ins[slot], d); }
+static void act_insert_param_step(int s, int slot, int k, int d, int big) {   // big: 10 where the range is wide
+    FxSlot *f = &song.mix.pad[s].ins[slot]; int lo, hi; if (!f->type || !fx_pname[f->type][k][0]) return;
+    fx_range(f->type, k, &lo, &hi); edit_begin(); f->p[k] = (int8_t)clampi(f->p[k] + d * (big && hi > 10 ? 10 : 1), lo, hi);
+}
+
+// the returns (reverb, delay) and the master
+static void act_unit_param_add(int unit, int k, int delta) {   // a parameter of a return or master unit, by an amount
+    int lo, hi, def; int8_t *v = unit_param(unit, k, &lo, &hi, &def);
+    if (v) { edit_begin(); *v = (int8_t)clampi(*v + delta, lo, hi); }
+}
+static void act_master_step(int d) { edit_begin(); song.master = (int8_t)clampi(song.master + d, 0, 100); }
+static void act_master_fx_toggle(int which) { edit_begin(); song.mix.ms[which] ^= 1; }   // MS_COMP, MS_LIM
+
+// the song's settings (PROJECT)
+static void act_tempo_step(int d) { edit_begin(); song.tempo = clampi(song.tempo + d, 40, 300); }
+static void act_swing_step(int d) { edit_begin(); song.swing = clampi(song.swing + d, 0, 75); }
+static void act_launch_step(int d) { edit_begin(); int v = song.launch < 1 ? 1 : song.launch; song.launch = (int8_t)((v - 1 + d + 4) % 4 + 1); }   // 1 BAR, 2, 4, NONE
+static void act_metro_toggle(void) { edit_begin(); song.metro = !song.metro; }
+static void act_snap_toggle(void) { edit_begin(); song.snap = !song.snap; }
+static void act_key_step(int d) { edit_begin(); song.key = (song.key + d + 12) % 12; }   // +-7: a fifth
+static void act_scale_step(int d) { edit_begin(); song.scale = (song.scale + d + NSCALE) % NSCALE; }
+static void act_beats_step(int d) { edit_begin(); song.beats = clampi(song.beats + d, 1, 12); }
+static void act_count_in_step(int d) { edit_begin(); song.count_in = (song.count_in + d + 9) % 9; }
+static void act_rec_quant_step(int d) { edit_begin(); song.rec_quant = (song.rec_quant + d + 5) % 5; }

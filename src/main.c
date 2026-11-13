@@ -2059,6 +2059,8 @@ static void prj_move(int k) {
     else if (k == K_UP && jsec > 0) { jsec--; n = prj_rows(jsec, r); jcur = r[n - 1]; }    // past the top: the section above
     else if (k == K_DOWN && jsec < JS_N - 1) { jsec++; prj_rows(jsec, r); jcur = r[0]; }   // past the bottom: the one below
 }
+static int mcol;
+#include "actions.h"
 static void prj_edit_arrow(int k) {
     int d = (k == K_RIGHT || k == K_UP) ? 1 : -1, big = k == K_UP || k == K_DOWN;
     if (!jcol) return;                   // on the sections: the arrows only move
@@ -2066,18 +2068,18 @@ static void prj_edit_arrow(int k) {
     if (jcur == J_THEME) { theme_pick(d); return; }
     edit_begin();
     switch (jcur) {
-    case J_TEMPO: song.tempo = clampi(song.tempo + d * (big ? 10 : 1), 40, 300); break;
-    case J_SWING: song.swing = clampi(song.swing + d * (big ? 10 : 1), 0, 75); break;
-    case J_LAUNCH: { int v = song.launch < 1 ? 1 : song.launch; song.launch = (int8_t)((v - 1 + d + 4) % 4 + 1); break; }   // 1 BAR, 2, 4, NONE
-    case J_METRO: song.metro = !song.metro; break;
-    case J_SNAP: song.snap = !song.snap; break;
+    case J_TEMPO: act_tempo_step(d * (big ? 10 : 1)); break;
+    case J_SWING: act_swing_step(d * (big ? 10 : 1)); break;
+    case J_LAUNCH: act_launch_step(d); break;
+    case J_METRO: act_metro_toggle(); break;
+    case J_SNAP: act_snap_toggle(); break;
     case J_HINT: hint_set(!hint_on); break;
-    case J_KEY: song.key = (song.key + d * (big ? 7 : 1) + 12) % 12; break;
-    case J_SCALE: song.scale = (song.scale + d + NSCALE) % NSCALE; break;
-    case J_BEATS: song.beats = clampi(song.beats + d, 1, 12); break;
-    case J_COUNT: song.count_in = (song.count_in + d + 9) % 9; break;
-    case J_QUANT: song.rec_quant = (song.rec_quant + d + 5) % 5; break;
-    case J_MASTER: song.master = clampi(song.master + d * (big ? 10 : 1), 0, 100); break;
+    case J_KEY: act_key_step(d * (big ? 7 : 1)); break;
+    case J_SCALE: act_scale_step(d); break;
+    case J_BEATS: act_beats_step(d); break;
+    case J_COUNT: act_count_in_step(d); break;
+    case J_QUANT: act_rec_quant_step(d); break;
+    case J_MASTER: act_master_step(d * (big ? 10 : 1)); break;
     }
 }
 static void export_open(void);
@@ -2238,8 +2240,6 @@ static void move_cursor(int k) {
     case T_FX: fx_move(k); break;
     }
 }
-static int mcol;
-#include "actions.h"
 static void edit_arrow(int k) {
     if (tab == T_SEQ) seq_edit_arrow(k);
     else if (tab == T_PRJ) prj_edit_arrow(k);
@@ -2778,28 +2778,25 @@ static void draw_duck(void) {
 static void mix_arrow(int k) {           // EDIT+arrows on the mixer
     int d = k == K_RIGHT || k == K_UP ? 1 : -1, big = k == K_UP || k == K_DOWN;
     if (mcol < NSLOT) {
-        Track *t = &song.t[mcol]; PadMix *pm = &song.mix.pad[mcol];
         switch (mrow) {
-        case MX_INS1: case MX_INS2: if (big) { edit_begin(); FxSlot *f = &pm->ins[mrow]; if (f->on) f->on = 0; else fx_turn_on(f); } else fx_cycle(&pm->ins[mrow], d); break;
-        case MX_SA: edit_begin(); pm->send_a = (uint8_t)clampi(pm->send_a + d * (big ? 5 : 1), 0, 100); break;
-        case MX_SB: edit_begin(); pm->send_b = (uint8_t)clampi(pm->send_b + d * (big ? 5 : 1), 0, 100); break;
-        case MX_DUCK: edit_begin();            // EDIT+<> which pad's notes duck this one, EDIT+^v how much
-            if (big) pm->spare[DK_AMT] = (int8_t)clampi(pm->spare[DK_AMT] + d * 10, 0, 100);
-            else { int v = pm->spare[DK_SRC]; do v = (v + d + NSLOT + 1) % (NSLOT + 1); while (v - 1 == mcol); pm->spare[DK_SRC] = (int8_t)v; if (v && pm->spare[DK_AMT] <= 0) pm->spare[DK_AMT] = 80; }
+        case MX_INS1: case MX_INS2: if (big) act_insert_onoff(mcol, mrow); else act_insert_type_step(mcol, mrow, d); break;
+        case MX_SA: act_send_step(mcol, 0, d * (big ? 5 : 1)); break;
+        case MX_SB: act_send_step(mcol, 1, d * (big ? 5 : 1)); break;
+        case MX_DUCK:                          // EDIT+<> which pad's notes duck this one, EDIT+^v how much
+            if (big) act_duck_amount_step(mcol, d * 10); else act_duck_source_step(mcol, d);
             break;
-        case MX_PAN: edit_begin(); t->pan = (int8_t)clampi(t->pan + d * (big ? 10 : 1), -50, 50); break;
-        case MX_VOL: edit_begin(); t->vol = (int8_t)clampi(t->vol + d * (big ? 5 : 1), 0, 100); break;
+        case MX_PAN: act_pad_pan_step(mcol, d * (big ? 10 : 1)); break;
+        case MX_VOL: act_pad_volume_step(mcol, d * (big ? 5 : 1)); break;
         }
         return;
     }
-    int lo, hi, def;
     if (mcol < NSLOT + 2) {              // returns: VOL = LEVEL, PAN = WIDTH, MUTE
-        int8_t *v = mrow == MX_VOL ? unit_param(mcol, mcol == NSLOT ? RV_LEVEL : DL_LEVEL, &lo, &hi, &def) : mrow == MX_PAN ? unit_param(mcol, mcol == NSLOT ? RV_WIDTH : DL_WIDTH, &lo, &hi, &def) : NULL;
-        if (v) { edit_begin(); *v = (int8_t)clampi(*v + d * (big ? 5 : 1), lo, hi); }
+        if (mrow == MX_VOL) act_unit_param_add(mcol, mcol == NSLOT ? RV_LEVEL : DL_LEVEL, d * (big ? 5 : 1));
+        else if (mrow == MX_PAN) act_unit_param_add(mcol, mcol == NSLOT ? RV_WIDTH : DL_WIDTH, d * (big ? 5 : 1));
         return;
     }
-    if (mrow == MX_VOL) { edit_begin(); song.master = (int8_t)clampi(song.master + d * (big ? 5 : 1), 0, 100); }
-    else if (mrow == MX_INS1 || mrow == MX_INS2) { edit_begin(); song.mix.ms[mrow == MX_INS1 ? MS_COMP : MS_LIM] ^= 1; }
+    if (mrow == MX_VOL) act_master_step(d * (big ? 5 : 1));
+    else if (mrow == MX_INS1 || mrow == MX_INS2) act_master_fx_toggle(mrow == MX_INS1 ? MS_COMP : MS_LIM);
 }
 static void mix_tap(void) {
     if (mcol < NSLOT) {
@@ -2850,25 +2847,21 @@ static void fx_value(int d, int big) {
     if (fx_unit < NSLOT && fx_page) { lfo_value(d, big); return; }
     if (fx_unit >= NSLOT) {
         int half = (unit_nparams(fx_unit) + 1) / 2, kk = fcol * half + frow, lo, hi, def;
-        int8_t *v = unit_param(fx_unit, kk, &lo, &hi, &def);
-        edit_begin(); *v = (int8_t)clampi(*v + d * (big && hi > 10 ? 10 : 1), lo, hi); return;
+        unit_param(fx_unit, kk, &lo, &hi, &def); act_unit_param_add(fx_unit, kk, d * (big && hi > 10 ? 10 : 1)); return;
     }
-    PadMix *pm = &song.mix.pad[fx_unit]; Track *t = &song.t[fx_unit];
+    PadMix *pm = &song.mix.pad[fx_unit];
     if (frow == 8) {
-        edit_begin();
-        switch (fcol) { case 0: pm->send_a = (uint8_t)clampi(pm->send_a + d * (big ? 10 : 1), 0, 100); break;
-                        case 1: pm->send_b = (uint8_t)clampi(pm->send_b + d * (big ? 10 : 1), 0, 100); break;
-                        case 2: t->pan = (int8_t)clampi(t->pan + d * (big ? 10 : 1), -50, 50); break;
-                        default: t->vol = (int8_t)clampi(t->vol + d * (big ? 10 : 1), 0, 100); }
+        int dd = d * (big ? 10 : 1);
+        switch (fcol) { case 0: act_send_step(fx_unit, 0, dd); break; case 1: act_send_step(fx_unit, 1, dd); break;
+                        case 2: act_pad_pan_step(fx_unit, dd); break; default: act_pad_volume_step(fx_unit, dd); }
         return;
     }
     FxSlot *f = &pm->ins[fcol];
-    if (frow == 0) { fx_cycle(f, d); return; }
-    if (frow == 1) { edit_begin(); if (d > 0) fx_turn_on(f); else f->on = 0; return; }
+    if (frow == 0) { act_insert_type_step(fx_unit, fcol, d); return; }
+    if (frow == 1) { act_insert_on(fx_unit, fcol, d > 0); return; }
     if (!f->type) return;
     if (fx_sub && fx_multi_row(fcol, frow)) { int lo2, hi2; int8_t *g = fx_side(fcol, frow, &lo2, &hi2); edit_begin(); *g = (int8_t)clampi(*g + d * (big && hi2 > 12 ? 6 : 1), lo2, hi2); return; }
-    int kk = frow - 2, lo, hi; if (!fx_pname[f->type][kk][0]) return;
-    fx_range(f->type, kk, &lo, &hi); edit_begin(); f->p[kk] = (int8_t)clampi(f->p[kk] + d * (big && hi > 10 ? 10 : 1), lo, hi);
+    act_insert_param_step(fx_unit, fcol, frow - 2, d, big);
 }
 static void fx_tap(void) {
     if (fx_unit < NSLOT && fx_page) { if (lrow == 0) learn_lfo_start(fx_unit, lcol); else lfo_value(1, 0); return; }   // TARGET: point at a knob
