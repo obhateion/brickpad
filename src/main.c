@@ -85,7 +85,6 @@ enum { T_GRID, T_SEQ, T_PAT, T_FX, T_MIX, T_PRJ, T_N };
 static const char *tab_name[T_N] = {"GRID", "INSTRUMENT", "PATTERNS", "FX", "MIXER", "PROJECT"};
 
 static SDL_Renderer *R;
-static SDL_Texture *font;
 static FILE *logf;
 static int koct, key_on[NSLOT];
 static int rec, prj_back = T_GRID;
@@ -112,14 +111,22 @@ static int clampi(int v, int lo, int hi) { return v < lo ? lo : v > hi ? hi : v;
 static float clampf1(float v) { return v < -1 ? -1 : v > 1 ? 1 : v; }
 
 // ---------- drawing ----------
+// Text (UI v2): DejaVu Sans Mono baked into the cells of the old 8x8 font (src/fontmono.h, tools/mkfont.py), so
+// every layout keeps its places; scale 4 and up stays the dot-matrix of 8x8 (big readouts).
+#include "fontmono.h"
+static SDL_Texture *font_sc[4];          // white glyphs, alpha from the font, at scales 1..3
 static void font_init(void) {
-    static Uint32 px[1024 * 8];
-    for (int ch = 0; ch < 128; ch++)
-        for (int y = 0; y < 8; y++)
-            for (int x = 0; x < 8; x++) px[y * 1024 + ch * 8 + x] = (font8x8_basic[ch][y] >> x & 1) ? 0xFFFFFFFF : 0;
-    font = SDL_CreateTexture(R, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STATIC, 1024, 8);
-    SDL_UpdateTexture(font, NULL, px, 1024 * 4);
-    SDL_SetTextureBlendMode(font, SDL_BLENDMODE_BLEND);
+    for (int sc = 1; sc <= 3; sc++) {
+        int c = 8 * sc, w = 95 * c; Uint32 *px = calloc((size_t)w * c, 4); const unsigned char *g = fm_glyph[sc];
+        for (int ch = 0; ch < 95; ch++) for (int i = 0; i < c * c; i++) {
+            int a = g[(ch * c * c + i) / 2] >> ((i & 1) ? 0 : 4) & 15;
+            px[(i / c) * w + ch * c + i % c] = (Uint32)(a * 17) << 24 | 0xFFFFFF;
+        }
+        font_sc[sc] = SDL_CreateTexture(R, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STATIC, w, c);
+        SDL_UpdateTexture(font_sc[sc], NULL, px, w * 4);
+        SDL_SetTextureBlendMode(font_sc[sc], SDL_BLENDMODE_BLEND);
+        free(px);
+    }
 }
 static void text(int x, int y, int sc, Col c, const char *s) {
     if (sc >= 4) {                       // big text is dot-matrix
@@ -128,10 +135,13 @@ static void text(int x, int y, int sc, Col c, const char *s) {
             if (font8x8_basic[*s & 127][b] >> a & 1) { SDL_Rect d = {x + a * sc, y + b * sc, sc - 1, sc - 1}; SDL_RenderFillRect(R, &d); }
         return;
     }
-    SDL_SetTextureColorMod(font, c.r, c.g, c.b);
-    for (; *s; s++, x += 8 * sc) {
-        SDL_Rect src = {(*s & 127) * 8, 0, 8, 8}, dst = {x, y, 8 * sc, 8 * sc};
-        SDL_RenderCopy(R, font, &src, &dst);
+    if (sc < 1) sc = 1;
+    SDL_Texture *t = font_sc[sc]; int cl = 8 * sc;
+    SDL_SetTextureColorMod(t, c.r, c.g, c.b);
+    for (; *s; s++, x += cl) {
+        int ch = *s & 127; if (ch <= 32 || ch > 126) continue;
+        SDL_Rect src = {(ch - 32) * cl, 0, cl, cl}, dst = {x, y, cl, cl};
+        SDL_RenderCopy(R, t, &src, &dst);
     }
 }
 static void textf(int x, int y, int sc, Col c, const char *fmt, ...) {
