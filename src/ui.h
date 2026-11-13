@@ -36,7 +36,7 @@ static void rrect(int x, int y, int w, int h, int r, Col c) {   // a filled roun
 static void rframe(int x, int y, int w, int h, int r, int t, Col c, Col inside) {   // a rounded outline t thick
     rrect(x, y, w, h, r, c); rrect(x + t, y + t, w - 2 * t, h - 2 * t, r > t ? r - t : 1, inside);
 }
-static void ui_path(char *b, int n); static const char *snd_page_name(void); static void snd_page_count(char *b, int n);   // sound.h
+static int v2_fx(void); static int fx2_slot; static int v2_lfo(void); static int v2_auto(void); static void modmenu_open(void); static void ui_path(char *b, int n); static const char *snd_page_name(void); static void snd_page_count(char *b, int n);   // sound.h
 static void ui2_header(void) {           // NEON > PADS on the left, the transport and the tempo on the right
     rect(0, 0, W, V2_HEAD, C_CELL, 1);
     char b[160]; ui_path(b, sizeof b);
@@ -99,6 +99,9 @@ static void ui_path(char *b, int n) {    // NEON > INSTRUMENT > 06 GRAND > DEEP
     else if (recpage) UI_ADD("PATTERN > RECORD");
     else if (v2_sound()) UI_ADD("SOUND > %s", snd_page_name());
     else if (v2_steps()) UI_ADD("PATTERN > STEPS");
+    else if (v2_lfo()) UI_ADD("MOD > LFO");
+    else if (v2_auto()) UI_ADD("MOD > AUTOMATION");
+    else if (v2_fx()) { const FxSlot *f = &song.mix.pad[fx_unit].ins[fx2_slot]; UI_ADD("FX > %s", f->type ? fx_name[f->type] : "EMPTY"); }
     else if (ui_cat >= 0 && !(tab == T_PAT) && !(ui_cat == PC_SOUND && cl_deep)) UI_ADD("%s", cat_name[ui_cat]);
     else if (tab == T_PAT) UI_ADD("PATTERN > SELECT");
     else if (tab == T_SEQ && srow >= 3 && cl_deep) UI_ADD("%s%s", ui_cat == PC_SOUND ? "SOUND > " : "", song.t[sel].type == 1 && cl_deep == 2 ? "PATCH" : "DEEP");
@@ -211,7 +214,7 @@ static void pad_step(int d) {             // F1/F2 inside a pad: the next pad, t
 }
 static int jump_cat(int k) { return k == K_UP ? PC_PATTERN : k == K_RIGHT ? PC_SOUND : k == K_DOWN ? PC_FX : PC_MIX; }
 static void hub_key(int k, int down) {
-    if (!down) { if (k == K_EDIT && !used[K_EDIT]) { if (hub_cur == PC_PATTERN) patmenu_open(); else cat_open(hub_cur); } return; }
+    if (!down) { if (k == K_EDIT && !used[K_EDIT]) { if (hub_cur == PC_PATTERN) patmenu_open(); else if (hub_cur == PC_MOD) modmenu_open(); else cat_open(hub_cur); } return; }
     if (k == K_Y) { hubbing = 0; return; }   // back to HOME
     if (k == K_PLAY) { play_key(); return; }
     if (k == K_OPT) { act_listen(sel); return; }

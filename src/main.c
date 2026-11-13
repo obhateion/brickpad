@@ -100,6 +100,7 @@ static void naming_pad(void);
 static int tab = T_GRID, browsing, slicing, theming, perform, sel = 5, undo_armed;
 static int hubbing, hub_cur, ui_cat = -1;   // UI v2: the pad hub is on screen; the category opened from it (-1 none), ui.h
 enum { PC_PATTERN, PC_SOUND, PC_FX, PC_MOD, PC_MIX, PC_N };   // the categories inside a pad
+static int modmenu, mm_cur;              // MOD's own list (LFO, AUTOMATION, DUCK), as PATTERN's
 static int patmenu, pm_cur;              // PATTERN's own list (STEPS or ROLL, SELECT, RECORD) is on screen; its cursor, kept
 static int recpage;                      // PATTERN > RECORD is on screen
 static int v2_steps(void);               // the rebuilt STEPS page is the screen now (below, before seq_clamp)
@@ -1712,8 +1713,10 @@ static void seq_edit_arrow(int k) {     // EDIT + arrows
         if (is_synth(sel) && srow >= 3 && held[K_EDIT] && pr != P_SAMPLE && is_synth(sel)) gb_audition();
     }
 }
+static int v2_auto(void); static void auto2_move(int k);
 static void seq_move(int k) {
     if (v2_sound()) { sound_move(k); return; }
+    if (v2_auto()) { auto2_move(k); return; }
     if (v2_steps()) {                    // STEPS (UI v2): two rows of eight, the pages follow the cursor
         int len = cur_pat(sel)->len, d = k == K_RIGHT ? 1 : k == K_LEFT ? -1 : k == K_DOWN ? 8 : -8, n = cur_step() + d;
         if (n >= 0 && n < len) set_step(n);
@@ -2403,7 +2406,7 @@ static void step_listen(int st) {        // only this step's slice, with its not
     flash[sel] = SDL_GetTicks();
     rec_hit(sel, sl, note);
 }
-static void set_tab(int t) { leave_screen(); if (browsing) browse_close(); slicing = 0; roll_leave(); randing = 0; learning = 0; learn_lfo = -1; pt_pick = 0; if (picking) pick_close(); if (presetting) preset_close(1); theming = 0; iconing = 0; ducking = 0; perform = 0; tab = t; hubbing = 0; patmenu = 0; recpage = 0; if (t == T_GRID || t == T_PRJ) ui_cat = -1; }
+static void set_tab(int t) { leave_screen(); if (browsing) browse_close(); slicing = 0; roll_leave(); randing = 0; learning = 0; learn_lfo = -1; pt_pick = 0; if (picking) pick_close(); if (presetting) preset_close(1); theming = 0; iconing = 0; ducking = 0; perform = 0; tab = t; hubbing = 0; patmenu = 0; modmenu = 0; recpage = 0; if (t == T_GRID || t == T_PRJ) ui_cat = -1; }
 // KEYS: the pad gets its own tonality, the project's stays. Coming back to the project's value means following the project again.
 static void pad_tonality(int k) {
     Track *t = &song.t[sel]; char b[48];
@@ -2908,7 +2911,10 @@ static void mix_move(int k) {
     if (mcol < NSLOT) sel = mcol;
 }
 // FX tab
+static int v2_fx(void); static void fx2_move(int k); static int v2_lfo(void); static void lfo2_move(int k);
 static void fx_move(int k) {
+    if (v2_fx()) { fx2_move(k); return; }
+    if (v2_lfo()) { lfo2_move(k); return; }
     if (fx_unit < NSLOT && fx_page) { if (k == K_LEFT || k == K_RIGHT) lcol = (lcol + (k == K_RIGHT ? 1 : NLFO - 1)) % NLFO; else lrow = clampi(lrow + (k == K_DOWN ? 1 : -1), 0, 6); return; }   // 7 rows (LR_N, below)
     if (fx_unit < NSLOT) {
         if (frow == 8) { if (k == K_UP) { frow = 7; fcol = fcol >= 2; } else if (k == K_LEFT || k == K_RIGHT) fcol = clampi(fcol + (k == K_RIGHT ? 1 : -1), 0, 3); return; }
@@ -3220,6 +3226,7 @@ static void listen_name(int s, char *b) {   // the listening note by name where 
 static int asking, naming, exporting; static void ask_key(int k, int down); static void nm_key(int k, int down); static void export_key(int k, int down);
 #include "ui.h"
 #include "sound.h"
+#include "pages.h"
 static void key_event(int k, int down) {
     if (k < 0) return;
     if (k == K_PLAY && !down) play_release();
@@ -3323,9 +3330,10 @@ static void key_event(int k, int down) {
     if (in_pad() && down && held[K_SHIFT] && k <= K_RIGHT) { used[K_SHIFT] = 1; cat_open(jump_cat(k)); return; }   // the jump
     if (hubbing) { hub_key(k, down); return; }
     if (patmenu) { patmenu_key(k, down); return; }
+    if (modmenu) { modmenu_key(k, down); return; }
     if (recpage) { record_key(k, down); return; }
     if (ui_cat >= 0 && k == K_Y && tab != T_PAT && !pt_pick) {   // UI v2: Y goes back to the pad's hub, on release (Y+arrows BEND)
-        if (!down && !used[K_Y]) { int c = ui_cat; if (c == PC_PATTERN) patmenu_open(); else { hub_open(); hub_cur = c; } return; }
+        if (!down && !used[K_Y]) { int c = ui_cat; if (c == PC_PATTERN) patmenu_open(); else if (c == PC_MOD) modmenu_open(); else { hub_open(); hub_cur = c; } return; }
         if (!down || !(tab == T_SEQ && srow >= 1 && srow <= 2)) return;
     }
     if (!down) {                         // taps fire on release when no combo was used
@@ -3398,6 +3406,9 @@ static void key_event(int k, int down) {
     if (tab == T_GRID && k == K_X) { icon_open(); return; }
     if (tab == T_MIX && k == K_Y && mcol < NSLOT) { act_mute_toggle(mcol); return; }   // live moves: no undo step
     if (tab == T_MIX && k == K_X && mcol < NSLOT) { act_solo_toggle(mcol); return; }
+    if (v2_lfo() && (k == K_L1 || k == K_R1)) { lcol = (lcol + (k == K_R1 ? 1 : NLFO - 1)) % NLFO; return; }   // UI v2 (A18): the next LFO
+    if (v2_auto() && (k == K_L1 || k == K_R1)) { lane = L_A1 + (lane - L_A1 + (k == K_R1 ? 1 : NAUTO - 1)) % NAUTO; return; }   // A19: the next lane
+    if (v2_fx() && (k == K_L1 || k == K_R1)) { fx2_slot ^= 1; fx2_cur = -1; fx2_sync(); return; }   // UI v2 (A17): the other insert
     if (tab == T_FX && (k == K_L1 || k == K_R1)) { fx_unit_step(k == K_R1 ? 1 : -1); return; }
     if (tab == T_FX && k == K_Y && fx_unit < NSLOT) { fx_page = !fx_page; return; }   // FX <> MOD
     if (tab == T_MIX && (k == K_L1 || k == K_R1)) { mcol = k == K_R1 ? (mcol < NSLOT ? (mcol / 4 + 1) * 4 : 0) : (mcol < 4 ? NSLOT : mcol <= NSLOT ? (mcol - 1) / 4 * 4 : NSLOT); if (mcol > NSLOT + 2) mcol = 0; if (mcol < NSLOT) sel = mcol; return; }
@@ -5726,7 +5737,7 @@ static void draw(void) {
     SDL_SetRenderDrawColor(R, C_BG.r, C_BG.g, C_BG.b, 255);
     SDL_RenderClear(R);
     ui_v2 = !exporting && !naming && !(browsing && bmode) && !randing && !theming && !iconing && !ducking
-            && (browsing || presetting || slicing || rolling || picking || hubbing || patmenu || recpage || v2_steps() || v2_sound() || tab == T_PAT || (tab == T_GRID && perform != 2));   // the screens rebuilt after the mockups so far
+            && (browsing || presetting || slicing || rolling || picking || hubbing || patmenu || recpage || modmenu || v2_lfo() || v2_auto() || v2_steps() || v2_sound() || v2_fx() || tab == T_PAT || (tab == T_GRID && perform != 2));   // the screens rebuilt after the mockups so far
     if (ui_v2) ui2_header(); else draw_header();
     if (exporting) draw_export();
     else if (naming) draw_naming();
@@ -5741,9 +5752,13 @@ static void draw(void) {
     else if (ducking) draw_duck();
     else if (hubbing) draw_hub();
     else if (patmenu) draw_patmenu();
+    else if (modmenu) draw_modmenu();
     else if (recpage) draw_record();
     else if (v2_steps()) draw_steps2();
     else if (v2_sound()) draw_sound2();
+    else if (v2_fx()) draw_fx2();
+    else if (v2_lfo()) draw_lfo2();
+    else if (v2_auto()) draw_auto2();
     else switch (tab) {
     case T_GRID: draw_grid(); break; case T_SEQ: draw_seq(); break; case T_PAT: draw_pat(); break; case T_PRJ: draw_prj(); break;
     case T_MIX: draw_mixer(); break; case T_FX: draw_fx(); break;
