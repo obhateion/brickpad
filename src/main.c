@@ -1889,7 +1889,9 @@ static void pat_switch(int np) {          // the pad's pattern: queued for the n
     if (np == t->cur) { t->queued = -1; return; }   // already this one: nothing to restart
     if (engine_quant32() && engine_playing() && t->on) t->queued = (int8_t)np; else { t->cur = (int8_t)np; t->queued = -1; }
 }
-static int pfol, pfcol;                  // the pattern window's FOLLOW row (for the pattern pcur), its field 0..4
+static int pfol, pfcol;                  // SELECT: the cursor is on the cards (not on the grid); pfcol: the old window's field
+static int sl_r, sl_c;                   // SELECT (UI v2): rows 0-1 the grid 2 x 8, 2 LENGTH DIVISION MODE, 3-4 REPEAT THEN / CHANCE ELSE
+static void select_value(int d, int big); static void patmenu_open(void);
 static const char *const fa_name[FA_N] = {"LOOP", "NEXT", "PREV", "FIRST", "RANDOM", "OTHER", "JUMP", "STOP"};
 static int fol_pat(void) { return pat_last >= 0 && pat_last < NPAT ? pat_last : pcur % NPAT; }   // FOLLOW is about the chosen pattern (SEL)
 static void fol_value(int d, int big) {  // EDIT+arrows on a FOLLOW field
@@ -1902,14 +1904,15 @@ static void fol_value(int d, int big) {  // EDIT+arrows on a FOLLOW field
     case 4: fo[FO_JUMP] = (uint8_t)((fo[FO_JUMP] + d + NPAT) % NPAT); break;
     }
 }
-static void pat_open(void) { Track *t = &song.t[sel]; pcur = pat_last = t->queued >= 0 ? t->queued : t->cur; pfol = 0; tab = T_PAT; }
+static void pat_open(void) { Track *t = &song.t[sel]; pcur = pat_last = t->queued >= 0 ? t->queued : t->cur; pfol = 0; tab = T_PAT; sl_r = pcur / 8; sl_c = pcur % 8; }
 static void pat_close(int take) {         // OK and Y both leave on the chosen pattern (the one EDIT played or marked)
     (void)take; pat_switch(pat_last);
+    if (ui_cat == PC_PATTERN) { patmenu_open(); return; }   // UI v2: back to PATTERN's list
     tab = T_SEQ; srow = -1; scol = 1;
 }
 static void pat_tap(void) {
     Track *t = &song.t[sel];
-    if (pfol) { fol_value(1, 0); return; }        // EDIT on a FOLLOW field: the next value
+    if (sl_r >= 2) { select_value(1, 0); return; }   // EDIT on a card: the next value
     if (pcur >= NPAT) { pat_close(1); return; }   // the OK button
     if (pat_last != pcur) { pat_last = pcur; return; }   // the first EDIT only chooses it (OK and Y will leave on it): no sound (2026-11-11, user)
     if (engine_quant32() && engine_playing()) t->queued = pcur;   // EDIT again on the chosen one plays it: at the next quantum
@@ -2270,26 +2273,43 @@ static void move_cursor(int k) {
         else if (k == K_UP && sel >= 4) sel -= 4; else if (k == K_DOWN && sel < 8) sel += 4;
         break;
     case T_SEQ: seq_move(k); break;
-    case T_PAT:                          // the 16 patterns, the FOLLOW row of the pattern above, the OK row
-        if (pfol) {
-            if (k == K_LEFT || k == K_RIGHT) pfcol = clampi(pfcol + (k == K_RIGHT ? 1 : -1), 0, 4);
-            else if (k == K_UP) pfol = 0; else { pfol = 0; pcur = NPAT; }
-            break;
-        }
-        if (pcur >= NPAT) { if (k == K_UP) { pcur = pat_last >= 0 && pat_last < NPAT ? pat_last : 12; pfol = 1; } break; }
-        if (k == K_LEFT && pcur % 4) pcur--; else if (k == K_RIGHT && pcur % 4 < 3) pcur++;
-        else if (k == K_UP && pcur >= 4) pcur -= 4; else if (k == K_DOWN) { if (pcur >= 12) pfol = 1; else pcur += 4; }
-        break;
+    case T_PAT: {                        // SELECT (UI v2): the grid 2 x 8, LENGTH DIVISION MODE, the four FOLLOW cards
+        static const int cols[5] = {8, 8, 3, 2, 2}; int oc = cols[sl_r];
+        if (k == K_LEFT) { if (sl_c) sl_c--; } else if (k == K_RIGHT) { if (sl_c < oc - 1) sl_c++; }
+        else { int nr = sl_r + (k == K_DOWN ? 1 : -1); if (nr < 0 || nr > 4) break;
+               sl_c = sl_c * cols[nr] / oc; sl_r = nr; }   // the card under or over this one
+        if (sl_r < 2) pcur = sl_r * 8 + sl_c;
+        pfol = sl_r >= 2;
+        break; }
     case T_PRJ: prj_move(k); break;
     case T_MIX: mix_move(k); break;
     case T_FX: fx_move(k); break;
+    }
+}
+static void select_value(int d, int big) {   // SELECT: EDIT+arrows on a card (<> small, ^v big), about the chosen pattern
+    Track *t = &song.t[sel]; int pt = fol_pat(); const uint8_t *fo = song.fol[sel][pt];
+    if (sl_r == 2) {
+        if (sl_c == 0) act_pattern_len_step(sel, pt, d * (big ? 4 : 1));
+        else if (sl_c == 1) act_pattern_div_step(sel, pt, d);
+        else {                           // MODE: the pad must be on this pattern
+            if (pt != t->cur && engine_playing() && t->on) { toast("PLAY THIS PATTERN FIRST: EDIT ON IT TWICE"); return; }
+            if (pt != t->cur) pat_switch(pt);
+            roll_mode();
+        }
+        return;
+    }
+    switch ((sl_r - 3) * 2 + sl_c) {     // REPEAT THEN / CHANCE ELSE
+    case 0: act_follow_repeat_step(sel, pt, d * (big ? 4 : 1)); break;
+    case 1: if (big && fo[FO_A] == FA_JUMP) act_follow_jump_step(sel, pt, d); else act_follow_action_step(sel, pt, 0, d); break;
+    case 2: act_follow_else_chance_step(sel, pt, -d * (big ? 10 : 5)); break;   // CHANCE of THEN: the rest goes to ELSE
+    case 3: if (big && fo[FO_B] == FA_JUMP) act_follow_jump_step(sel, pt, d); else act_follow_action_step(sel, pt, 1, d); break;
     }
 }
 static void edit_arrow(int k) {
     if (tab == T_SEQ) seq_edit_arrow(k);
     else if (tab == T_PRJ) prj_edit_arrow(k);
     else if (tab == T_MIX) mix_arrow(k);
-    else if (tab == T_PAT && pfol) fol_value(k == K_RIGHT || k == K_UP ? 1 : -1, k == K_UP || k == K_DOWN);
+    else if (tab == T_PAT) { if (pfol) select_value(k == K_RIGHT || k == K_UP ? 1 : -1, k == K_UP || k == K_DOWN); }
     else if (tab == T_FX) fx_value(k == K_RIGHT || k == K_UP ? 1 : -1, k == K_UP || k == K_DOWN);
     else if (tab == T_GRID && (k == K_LEFT || k == K_RIGHT)) {   // slot volume
         act_pad_volume_step(sel, k == K_RIGHT ? 5 : -5);
@@ -2311,7 +2331,8 @@ static void delete_action(void) {   // OPTION + EDIT
     switch (tab) {
     case T_GRID: act_steps_clear(sel); break;
     case T_SEQ: seq_delete(); break;
-    case T_PAT: if (pfol) { act_follow_loop(sel, fol_pat()); break; }
+    case T_PAT: if (sl_r == 2) break;
+        if (pfol) { act_follow_loop(sel, fol_pat()); break; }
         if (pcur >= NPAT) break; act_pattern_clear(sel, pcur); break;
     case T_MIX: mix_delete(); break;
     case T_FX: fx_delete(); break;
@@ -4633,49 +4654,41 @@ static void draw_slice(void) {
     text(16, 600, 2, C_DIM, "UP/DOWN ZOOM  EDIT+UP/DOWN MOVE MORE  Y BACK");
     draw_footer("<> POINT  EDIT+<> MOVE  EDIT SPLIT  OPT LISTEN  OPT+EDIT DEL");
 }
+// PATTERN > SELECT (UI v2, mockup A07): the sixteen patterns, the chosen one's LENGTH DIVISION MODE (user, 2026-11-13) and
+// what plays after it: REPEAT xN, THEN (how often: CHANCE), ELSE.
+static void sel_card(int x, int y, int w, int h, const char *label, const char *val, int bar, int on) {   // bar 0..100, -1 none
+    Col cc = C_CAT(PC_PATTERN);
+    if (on) rframe(x, y, w, h, 8, 4, cc, C_CELL); else rrect(x, y, w, h, 8, C_CELL);
+    ftext(x + 20, y + 12, FT_S, C_DIM, label);
+    ftext(x + w - 20 - ftext_w(FT_XB, val), y + 6, FT_XB, C_WHITE, val);
+    if (bar >= 0) { rect(x + 20, y + h - 24, w - 40, 8, C_LINE, 1); rect(x + 20, y + h - 24, (w - 40) * clampi(bar, 0, 100) / 100, 8, cc, 1); }
+}
 static void draw_pat(void) {
-    Track *t = &song.t[sel]; Uint32 now = SDL_GetTicks();
-    enum { CW = 248, CH = 100, BAR = 28 };   // 16 patterns in four rows, the FOLLOW row, the OK row
-    cell_lines(16, 90, CW, CH, 4, 4);
+    const Track *t = &song.t[sel]; int pt = fol_pat(); const Pattern *p = &t->pat[pt]; const uint8_t *fo = song.fol[sel][pt];
+    Col cc = C_CAT(PC_PATTERN); char b[48], v[24];
     for (int i = 0; i < NPAT; i++) {
-        int x = 16 + (i % 4) * CW, y = 90 + (i / 4) * CH; const Pattern *p = &t->pat[i];
-        int playing = i == t->cur, q = i == t->queued, cur = pfol ? i == fol_pat() : i == pcur;   // on the FOLLOW row: the pattern it is about
-        if (playing) rect(x + 1, y + BAR, CW - 1, CH - BAR, C_SELBG, 1);
-        rect(x + 1, y + BAR, CW - 1, 1, C_LINE, 1);
-        if (cur) rect(x, y, CW + (i % 4 == 3 ? 0 : 1), BAR, C_ORANGE, 1);
-        textf(x + 12, y + 6, 2, cur ? C_BG : playing ? C_ORANGE : C_WHITE, "P%d", i + 1);
-        if (playing && t->on) chevrons(x + CW - 40, y + 7, 10, 2, cur ? C_BG : C_PLAY);
-        textf(x + 100, y + 6, 2, cur ? C_BG : C_DIM, "%d %s", p->len, div_name[p->div % 6]);
-        step_matrix(p, x + 13, y + BAR + 8, 60, playing && t->on ? engine_step(sel) : -1, 0);
-        { const uint8_t *fo = song.fol[sel][i];   // its follow action, short
-          if (fo[FO_A] || fo[FO_B]) { char fb[24]; snprintf(fb, sizeof fb, "x%d %s", fo[FO_AFTER] ? fo[FO_AFTER] : 1, fo[FO_A] == FA_JUMP ? "JMP" : fa_name[fo[FO_A]]);
-              int fw = (int)strlen(fb) * 8;   // on clear ground: it lay on the notes, orange on orange (2026-11-11, user)
-              rect(x + CW - 14 - fw, y + CH - 18, fw + 12, 15, playing ? C_SELBG : C_BG, 1); text(x + CW - 8 - fw, y + CH - 14, 1, C_WHITE, fb); } }
-        if (q && (now / 250) % 2) frame(x + 5, y + BAR + 4, CW - 9, CH - BAR - 8, 2, C_WHITE);   // waits for its bar, inside the cursor frame
-        if (i == pat_last) tag(x + CW - 62, y + BAR + 6, C_WHITE, C_BG, "SEL");   // chosen: OK and Y leave on it
+        int x = 29 + (i % 8) * 243 / 2, y = 80 + (i / 8) * 84, used = pat_used(&t->pat[i]) || roll_any(&t->pat[i]);
+        if (sl_r < 2 && i == pcur) rframe(x - 4, y - 4, 119, 78, 11, 3, C_WHITE, C_BG);
+        rrect(x, y, 111, 70, 8, used ? mix(C_BG, cc, 50) : C_CELL);
+        if (i == pt) { rframe(x, y, 111, 70, 8, 2, cc, used ? mix(C_BG, cc, 50) : C_CELL); }   // the chosen one: the cards below are about it
+        snprintf(b, sizeof b, "P%02d", i + 1); ftext(x + 55 - ftext_w(FT_MB, b) / 2, y + 23, FT_MB, used ? cc : C_DIM, b);
+        if (i == t->cur && t->on) ftext(x + 8, y + 4, FT_S, cc, "\1");   // it plays
+        else if (i == t->queued && SDL_GetTicks() / 250 % 2) ftext(x + 8, y + 4, FT_S, C_WHITE, "\1");   // it waits for the quantum
     }
-    {   // FOLLOW: what the pattern under the cursor does after it has played (Ableton's follow actions)
-        int y = 90 + 4 * CH + 6, fp = fol_pat(); const uint8_t *fo = song.fol[sel][fp];
-        static const char *const fn[5] = {"AFTER", "THEN", "OR", "OR %", "JUMP TO"};
-        char v[5][16]; snprintf(v[0], 16, "%dx", fo[FO_AFTER] ? fo[FO_AFTER] : 1); snprintf(v[1], 16, "%s", fa_name[fo[FO_A] % FA_N]); snprintf(v[2], 16, "%s", fa_name[fo[FO_B] % FA_N]);
-        snprintf(v[3], 16, "%d%%", fo[FO_BCH]); snprintf(v[4], 16, "P%d", fo[FO_JUMP] % NPAT + 1);
-        textf(16, y, 1, pfol ? C_ORANGE : C_GREY, "FOLLOW OF P%d (SEL): WHAT IT DOES AFTER IT HAS PLAYED", fp % NPAT + 1);
-        for (int c = 0; c < 5; c++) {
-            int x = 16 + c * 198, on = pfol && pfcol == c, used = c == 0 || c == 1 || (c == 2 && fo[FO_B]) || (c == 3 && fo[FO_B]) || (c == 4 && (fo[FO_A] == FA_JUMP || fo[FO_B] == FA_JUMP));
-            if (on) rect(x, y + 12, 194, 72, C_ORANGE, 1); else rect(x, y + 12, 194, 72, C_CELL, 1);
-            text(x + 10, y + 20, 2, on ? C_BG : C_DIM, fn[c]);
-            text(x + 10, y + 46, 3, on ? C_BG : used ? C_WHITE : C_GREY, v[c]);
-        }
-    }
-    {   // the last row: OK takes the pattern last under the cursor and goes back to SEQ+INST (Y goes back as it was)
-        int y = 90 + 4 * CH + 6 + 92, on = pcur >= NPAT && !pfol;
-        rect(16, y, 992, 690 - y, on ? C_ORANGE : C_CELL, 1);
-        ctext(480, y + (690 - y) / 2 - 16, 4, on ? C_BG : C_WHITE, "OK");
-        textf(536, y + (690 - y) / 2 - 8, 2, on ? C_BG : C_DIM, "TO P%d", pat_last + 1);
-    }
-    if (pfol) { int q = fol_pat(), x = 16 + (q % 4) * CW, y = 90 + (q / 4) * CH; frame(x, y, CW + (q % 4 == 3 ? 0 : 1), CH + 1, 2, C_GREY); }   // FOLLOW: the pattern it is about
-    else if (pcur < NPAT) { int x = 16 + (pcur % 4) * CW, y = 90 + (pcur / 4) * CH; frame(x, y, CW + (pcur % 4 == 3 ? 0 : 1), CH + 1, 2, C_ORANGE); }
-    draw_footer(pfol ? "EDIT+ARROWS CHANGE  EDIT NEXT  OPT+EDIT LOOP  Y BACK" : pcur >= NPAT ? "EDIT OK: BACK TO THE CHOSEN PATTERN  Y THE SAME" : "EDIT CHOOSE, AGAIN PLAYS  PLAY PLAYS  OPT+EDIT CLEAR  Y BACK");
+    snprintf(b, sizeof b, "P%02d", pt + 1); ftext(26, 254, FT_S, C_DIM, b);
+    snprintf(v, sizeof v, "%d", p->len); sel_card(32, 290, 310, 120, "LENGTH", v, p->len * 100 / NSTEP, sl_r == 2 && sl_c == 0);
+    sel_card(357, 290, 310, 120, "DIVISION", div_name[p->div % 6], p->div * 20, sl_r == 2 && sl_c == 1);
+    sel_card(682, 290, 310, 120, "MODE", p->mode ? "ROLL" : "STEPS", -1, sl_r == 2 && sl_c == 2);
+    snprintf(b, sizeof b, "AFTER P%02d", pt + 1); ftext(26, 428, FT_S, C_DIM, b);
+    int rp = fo[FO_AFTER] ? fo[FO_AFTER] : 1, loop = fo[FO_A] == FA_NONE && (fo[FO_B] == FA_NONE || !fo[FO_BCH]);
+    snprintf(v, sizeof v, "x%d", rp); sel_card(32, 462, 474, 116, "REPEAT", loop ? "ALWAYS" : v, loop ? -1 : (rp > 16 ? 16 : rp) * 100 / 16, sl_r == 3 && sl_c == 0);
+    if (fo[FO_A] == FA_JUMP) snprintf(v, sizeof v, "P%02d", fo[FO_JUMP] % NPAT + 1); else snprintf(v, sizeof v, "%s", fa_name[fo[FO_A] % FA_N]);
+    sel_card(522, 462, 474, 116, "THEN", v, -1, sl_r == 3 && sl_c == 1);
+    snprintf(v, sizeof v, "%d%%", 100 - fo[FO_BCH]); sel_card(32, 590, 474, 116, "CHANCE", v, 100 - fo[FO_BCH], sl_r == 4 && sl_c == 0);
+    if (fo[FO_B] == FA_JUMP) snprintf(v, sizeof v, "P%02d", fo[FO_JUMP] % NPAT + 1); else snprintf(v, sizeof v, "%s", fa_name[fo[FO_B] % FA_N]);
+    sel_card(522, 590, 474, 116, "ELSE", fo[FO_BCH] ? v : "-", -1, sl_r == 4 && sl_c == 1);
+    draw_footer(sl_r < 2 ? "EDIT CHOOSE  OPT+EDIT CLEAR  Y BACK  PLAY PLAY IT  SHIFT+OPT COPY  SHIFT+EDIT PASTE"
+              : sl_r == 2 ? "EDIT+ARROWS VALUE  Y BACK" : "EDIT+ARROWS VALUE  OPT+EDIT LOOP  Y BACK  EDIT+UP/DOWN JUMP TARGET");
 }
 static void prj_value(int i, char *b) {
     switch (i) {
@@ -5664,7 +5677,7 @@ static void draw(void) {
     SDL_SetRenderDrawColor(R, C_BG.r, C_BG.g, C_BG.b, 255);
     SDL_RenderClear(R);
     ui_v2 = !exporting && !naming && !browsing && !slicing && !rolling && !randing && !presetting && !theming && !iconing && !ducking
-            && (picking || hubbing || patmenu || v2_steps() || (tab == T_GRID && perform != 2));   // the screens rebuilt after the mockups so far
+            && (picking || hubbing || patmenu || v2_steps() || tab == T_PAT || (tab == T_GRID && perform != 2));   // the screens rebuilt after the mockups so far
     if (ui_v2) ui2_header(); else draw_header();
     if (exporting) draw_export();
     else if (naming) draw_naming();

@@ -48,6 +48,7 @@ static void ui2_header(void) {           // NEON > PADS on the left, the transpo
         x += ftext(x, y, FT_M, C_DIM, " \177 "); p = e + 3;
     }
     char t[16];
+    if (tab == T_PAT && !perform) return;   // A07: nothing on the right
     if (v2_steps()) { snprintf(t, sizeof t, "P%02d", song.t[sel].cur + 1); ftext(W - 20 - ftext_w(FT_MB, t), y, FT_MB, C_ORANGE, t); return; }   // A05: the pattern
     snprintf(t, sizeof t, "%c %d", engine_playing() ? 1 : 2, (int)(song.tempo * tempo_mul + 0.5f));
     ftext(W - 20 - ftext_w(FT_MB, t), y, FT_MB, engine_playing() ? th_cur[TC_SMP] : C_DIM, t);
@@ -88,7 +89,7 @@ static void ui_path(char *b, int n) {    // NEON > INSTRUMENT > 06 GRAND > DEEP
     else if (iconing) UI_ADD("ICON"); else if (ducking) UI_ADD("DUCK");
     else if (v2_steps()) UI_ADD("PATTERN > STEPS");
     else if (ui_cat >= 0 && !(tab == T_PAT) && !(ui_cat == PC_SOUND && cl_deep)) UI_ADD("%s", cat_name[ui_cat]);
-    else if (tab == T_PAT) UI_ADD("PATTERN > PATTERNS");
+    else if (tab == T_PAT) UI_ADD("PATTERN > SELECT");
     else if (tab == T_SEQ && srow >= 3 && cl_deep) UI_ADD("%s%s", ui_cat == PC_SOUND ? "SOUND > " : "", song.t[sel].type == 1 && cl_deep == 2 ? "PATCH" : "DEEP");
     else if (tab == T_FX && fx_page && fx_unit < NSLOT) UI_ADD("MOD");
 #undef UI_ADD

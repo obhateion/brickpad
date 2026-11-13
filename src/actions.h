@@ -118,3 +118,13 @@ static void act_scale_step(int d) { edit_begin(); song.scale = (song.scale + d +
 static void act_beats_step(int d) { edit_begin(); song.beats = clampi(song.beats + d, 1, 12); }
 static void act_count_in_step(int d) { edit_begin(); song.count_in = (song.count_in + d + 9) % 9; }
 static void act_rec_quant_step(int d) { edit_begin(); song.rec_quant = (song.rec_quant + d + 5) % 5; }
+
+// a pattern's own settings and what plays after it (PATTERN > SELECT)
+static void act_pattern_len_step(int s, int pat, int d) { Pattern *p = &song.t[s].pat[pat]; edit_begin(); p->len = (uint8_t)clampi(p->len + d, len_lo(), len_hi()); }
+static void act_pattern_div_step(int s, int pat, int d) { Pattern *p = &song.t[s].pat[pat]; edit_begin(); p->div = (uint8_t)clampi(p->div + d, 0, 5); }
+static void act_follow_repeat_step(int s, int pat, int d) { uint8_t *fo = song.fol[s][pat]; edit_begin(); fo[FO_AFTER] = (uint8_t)clampi((fo[FO_AFTER] ? fo[FO_AFTER] : 1) + d, 1, 64); }
+static void act_follow_action_step(int s, int pat, int other, int d) {   // THEN (other 0) or ELSE (1): LOOP NEXT PREV FIRST RANDOM OTHER JUMP STOP
+    uint8_t *fo = song.fol[s][pat], *a = &fo[other ? FO_B : FO_A]; edit_begin(); *a = (uint8_t)((*a + d + FA_N) % FA_N);
+}
+static void act_follow_jump_step(int s, int pat, int d) { uint8_t *fo = song.fol[s][pat]; edit_begin(); fo[FO_JUMP] = (uint8_t)((fo[FO_JUMP] + d + NPAT) % NPAT); }
+static void act_follow_else_chance_step(int s, int pat, int d) { uint8_t *fo = song.fol[s][pat]; edit_begin(); fo[FO_BCH] = (uint8_t)clampi(fo[FO_BCH] + d, 0, 100); }   // how often ELSE plays instead of THEN
