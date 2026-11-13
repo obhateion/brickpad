@@ -376,3 +376,29 @@ static void draw_unit2(void) {
         if (hi - lo > 1) { rect(x + 20, y + h - 26, 433, 8, C_LINE, 1); rect(x + 20, y + h - 26, 433 * clampi(v - lo, 0, hi - lo) / (hi - lo), 8, ec, 1); } }
     draw_footer("EDIT+ARROWS VALUE  L1/R1 UNIT  Y BACK  EDIT ON/OFF  OPT+EDIT DEFAULT");
 }
+
+// ---- KEYS (MENU twice): the open pad on twelve buttons, the scale's degrees; the tiles of HOME, the notes on them ----
+static void draw_keys2(void) {
+    enum { GX = 26, GY = 86, CW = 230, CH = 140, DX = 247, DY = 152 };
+    int n = track_nslices(sel), ts = track_scale(sel), tk = track_key(sel), sl = scale_len(ts); Col ec = C_ENG(song.t[sel].type); char b[40];
+    for (int i = 0; i < NSLOT; i++) {
+        int x = GX + (i % 4) * DX, y = GY + (i / 4) * DY, deg = i + koct * sl, tonic = ((deg % sl) + sl) % sl == 0, pc = (tk + deg_semis(ts, deg) + 120) % 12, on = key_on[i];
+        rrect(x, y, CW, CH, 8, on ? ec : C_CELL); if (tonic && !on) rect(x, y, 9, CH, ec, 1);
+        ftext(x + 25, y + 12, FT_M, on ? C_BG : C_DIM, pad_label[cell_key[i]]);
+        if (n) snprintf(b, sizeof b, "S%d", ((i + koct * 12) % n + n) % n + 1); else snprintf(b, sizeof b, "%s", note_name[pc]);
+        ftext(x + 25, y + 56, FT_XB, on ? C_BG : C_WHITE, b);
+        if (!n) { snprintf(b, sizeof b, "%d", ((deg % sl) + sl) % sl + 1); ftext(x + CW - 20 - ftext_w(FT_M, b), y + 12, FT_M, on ? C_BG : tonic ? ec : C_DIM, b); }
+    }
+    for (int pc = 0; pc < 12; pc++) {    // the octave: the scale's notes lit, the tonic in the engine's colour, what sounds white
+        int in = 0, on = 0, x = GX + pc * 81;
+        for (int d = 0; d < sl; d++) if ((tk + deg_semis(ts, d)) % 12 == pc) in = 1;
+        for (int i = 0; i < NSLOT; i++) if (key_on[i] && (tk + deg_semis(ts, i + koct * sl) + 120) % 12 == pc) on = 1;
+        rrect(x, 556, 75, 56, 6, on ? C_WHITE : pc == tk ? ec : in ? C_DIM : C_CELL);
+        ftext(x + 10, 574, FT_MB, on || in || pc == tk ? C_BG : C_DIM, note_name[pc]);
+    }
+    int own = song.t[sel].scale || song.t[sel].key;
+    snprintf(b, sizeof b, "%s %s", note_name[tk], scale_name[ts]); int x = 26 + ftext(26, 636, FT_LB, C_WHITE, b) + 20;
+    x += ftext(x, 640, FT_M, own ? ec : C_DIM, own ? "of the pad" : "of the project") + 30;
+    snprintf(b, sizeof b, "octave %+d", koct); ftext(x, 640, FT_M, C_DIM, b);
+    draw_footer("BUTTONS PLAY  MENU BACK  SHIFT+^v OCTAVE  SHIFT+<> SCALE  SHIFT+L1/R1 KEY  MENU+PLAY RECORD");
+}

@@ -3643,9 +3643,10 @@ static void draw_keys(void) {
 // HOME > PADS (UI v2, mockup A01): twelve cards, the engine's stripe, number, name, engine, the clip's bar; the pattern's
 // route and FRZ / M / ! marks small (user, 2026-11-13). EDIT opens the pad, an empty one asks for an engine; single clips
 // start in PADS (MENU).
+static void draw_keys2(void);
 static void draw_grid(void) {
     Uint32 now = SDL_GetTicks();
-    if (perform == 2) { draw_keys(); return; }
+    if (perform == 2) { draw_keys2(); return; }
     enum { GX = 26, GY = 86, CW = 230, CH = 193, DX = 247, DY = 210 };
     static const char *const eng_tag[4] = {"SMP", "GRAND", "ACID", "CLOUD"};   // as the mockup writes them
     for (int i = 0; i < NSLOT; i++) {
@@ -5344,6 +5345,7 @@ static void prj_browse(void) {
 }
 // the info of a project file, read once per file (a few small reads, never the whole file)
 static struct { char path[512]; long mt; int ok, tempo, key, scale; int8_t type[NSLOT]; char nm[NSLOT][24]; } pin;
+static void prj_info_draw2(void);
 static void prj_info_draw(const char *path) {
     struct stat st; long mt = !stat(path, &st) ? (long)st.st_mtime : 0;
     if (strcmp(pin.path, path) || pin.mt != mt) {
@@ -5357,6 +5359,7 @@ static void prj_info_draw(const char *path) {
                 pin.type[s] = tr.type; const char *bn2 = strrchr(pp, '/'); snprintf(pin.nm[s], 24, "%.23s", tr.type ? type_name[tr.type % 4] : pp[0] ? (bn2 ? bn2 + 1 : pp) : ""); }
             fclose(f); }
     }
+    if (ui_v2) { prj_info_draw2(); return; }
     int x = 640, y = 118, w = 368; frame(x, y, w, 560, 1, C_LINE);
     plate(x, y, 120, 24, 5, C_DIM); text(x + 6, y + 4, 2, C_BG, "INFO");
     if (!pin.ok) { text(x + 16, y + 44, 2, C_RED, "NOT A PROJECT FILE"); return; }
@@ -5631,7 +5634,9 @@ static int fm_key(int k) {               // keys while the file menu or the ques
     if (k == K_X) { fmenu_open(); return 1; }
     return 0;
 }
+static void draw_fmenu2(void);
 static void draw_fmenu(void) {
+    if (ui_v2) { draw_fmenu2(); return; }
     if (fmenu) {
         int x = 600, y = 120, w = 392, h = 6 * 56 + 52;
         rect(x - 4, y - 4, w + 8, h + 8, C_BG, 1); frame(x, y, w, h, 3, C_ORANGE);
@@ -5753,6 +5758,7 @@ static void draw_export(void) {
         draw_footer("Y CANCEL");
     } else draw_footer("^v ROW  <> CHANGE  EDIT ON EXPORT: GO  Y BACK");
 }
+#include "windows.h"
 static void draw(void) {
     Uint64 t_draw0 = SDL_GetPerformanceCounter();
     { static int last; int scr = theming ? 2 : !iconing && !browsing && !slicing && !perform && tab == T_PRJ ? 1 : 0;   // every opening gets another figure
@@ -5760,19 +5766,18 @@ static void draw(void) {
       last = scr; }
     SDL_SetRenderDrawColor(R, C_BG.r, C_BG.g, C_BG.b, 255);
     SDL_RenderClear(R);
-    ui_v2 = !exporting && !naming && !(browsing && bmode) && !randing && !theming && !iconing
-            && (ducking || browsing || presetting || slicing || rolling || picking || hubbing || patmenu || recpage || modmenu || scening || v2_unit() || (tab == T_PRJ && !perform) || v2_mix() || v2_mixer() || v2_lfo() || v2_auto() || v2_steps() || v2_sound() || v2_fx() || tab == T_PAT || (tab == T_GRID && perform != 2));   // the screens rebuilt after the mockups so far
-    if (ui_v2) ui2_header(); else draw_header();
-    if (exporting) draw_export();
-    else if (naming) draw_naming();
-    else if (browsing) { if (bmode) draw_browse(); else draw_browse2(); }
+    ui_v2 = 1; v2_normalize();           // every screen is a rebuilt one
+    ui2_header();
+    if (exporting) draw_export2();
+    else if (naming) draw_naming2();
+    else if (browsing) { if (bmode) draw_prjbrowse2(); else draw_browse2(); }
     else if (slicing) draw_slice();
     else if (rolling) draw_roll();
-    else if (randing) draw_rnd();
+    else if (randing) draw_rnd2();
     else if (picking) draw_pick();
     else if (presetting) draw_presets2();
-    else if (theming) draw_theme();
-    else if (iconing) draw_icons();
+    else if (theming) draw_theme2();
+    else if (iconing) draw_icons2();
     else if (ducking) { if (ui_v2) draw_duck2(); else draw_duck(); }
     else if (hubbing) draw_hub();
     else if (patmenu) draw_patmenu();
@@ -5788,11 +5793,11 @@ static void draw(void) {
     else if (v2_unit()) draw_unit2();
     else if (v2_mixer()) draw_mixer2();
     else switch (tab) {
-    case T_GRID: draw_grid(); break; case T_SEQ: draw_seq(); break; case T_PAT: draw_pat(); break; case T_PRJ: if (ui_v2) draw_prj2(); else draw_prj(); break;
-    case T_MIX: draw_mixer(); break; case T_FX: draw_fx(); break;
+    case T_GRID: draw_grid(); break; case T_PAT: draw_pat(); break; case T_PRJ: draw_prj2(); break;
+    default: draw_hub(); break;       // not reached: v2_normalize gives every state a screen
     }
     ui_popup(); ui_cheat();
-    if (asking) draw_ask();
+    if (asking) draw_ask2();
     Uint64 tp = SDL_GetPerformanceCounter(); draw_build_ms += (tp - t_draw0) * 1000.0 / SDL_GetPerformanceFrequency();
     SDL_RenderPresent(R);
     draw_present_ms += (SDL_GetPerformanceCounter() - tp) * 1000.0 / SDL_GetPerformanceFrequency();
