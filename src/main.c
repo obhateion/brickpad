@@ -37,17 +37,27 @@ static const int cell_key[NSLOT] = {K_L2, K_L1, K_R1, K_R2, K_LEFT, K_UP, K_Y, K
 
 typedef struct { Uint8 r, g, b; } Col;
 // Colours come from the current theme. C_WHITE is the text colour and C_ORANGE the accent, whatever they are in a theme.
-enum { TC_BG, TC_CELL, TC_LINE, TC_GREY, TC_DIM, TC_TEXT, TC_ACCENT, TC_ALERT, TC_SEL, TC_PLAY, TC_N };   // TC_PLAY (2026-11-11): the second accent, what plays or carries signal
-enum { TH_PRESETS = 6 };
+// UI v2 tokens (docs/UI-V2.md): the first ten keep the order of the .thm files of 1.2 (a file is numbers only,
+// one colour a line), the engine and category colours follow; a file without them takes COSMIC's.
+enum { TC_BG, TC_CELL, TC_LINE, TC_GREY, TC_DIM, TC_TEXT, TC_ACCENT, TC_ALERT, TC_SEL, TC_PLAY,
+       TC_SMP, TC_GRD, TC_ACD, TC_CLD, TC_PAT, TC_SND, TC_FX, TC_MOD, TC_MIX, TC_N };
+enum { TH_PRESETS = 5 };
+#define RGB(x) {(x) >> 16 & 255, (x) >> 8 & 255, (x) & 255}
 static const Col th_preset[TH_PRESETS][TC_N] = {
-    {{30, 30, 30}, {42, 42, 42}, {64, 64, 64}, {98, 98, 98}, {152, 152, 152}, {224, 224, 224}, {255, 138, 36}, {240, 70, 60}, {72, 54, 36}, {90, 200, 220}},   // GRAPHITE: dark grey, as Ableton's dark theme
-    {{0, 0, 0}, {24, 24, 24}, {54, 54, 54}, {84, 84, 84}, {144, 144, 144}, {235, 235, 235}, {255, 120, 0}, {255, 50, 40}, {40, 26, 12}, {60, 200, 190}},          // BRICK
-    {{236, 232, 222}, {222, 217, 205}, {196, 190, 176}, {160, 154, 140}, {96, 92, 84}, {24, 24, 22}, {214, 74, 0}, {200, 30, 20}, {245, 214, 186}, {0, 120, 140}},  // PAPER
-    {{2, 8, 4}, {8, 22, 12}, {18, 52, 28}, {30, 90, 48}, {60, 160, 90}, {170, 255, 190}, {70, 255, 120}, {255, 90, 60}, {10, 48, 24}, {220, 255, 90}},               // PHOSPHOR
-    {{4, 10, 30}, {12, 24, 56}, {30, 50, 100}, {56, 84, 150}, {130, 160, 220}, {230, 238, 255}, {70, 170, 255}, {255, 80, 90}, {16, 44, 96}, {255, 190, 70}},        // COBALT
-    {{20, 6, 12}, {38, 14, 24}, {70, 30, 46}, {110, 56, 78}, {190, 130, 155}, {250, 230, 238}, {255, 90, 150}, {255, 70, 50}, {70, 18, 44}, {120, 220, 200}},        // ROSE
+    {RGB(0x0B0C10), RGB(0x161820), RGB(0x2A2E3A), RGB(0x3D4250), RGB(0x626877), RGB(0xE8E8E8), RGB(0xFFD23F), RGB(0xFF5A5A), RGB(0x23263A), RGB(0x7CFF6B),
+     RGB(0x3FE0D0), RGB(0xFF4FA3), RGB(0xFFD23F), RGB(0x5AA0FF), RGB(0x7CFF6B), RGB(0xFFD23F), RGB(0xFF4FA3), RGB(0x5AA0FF), RGB(0xFF8A3D)},   // COSMIC: the mockups
+    {RGB(0x000802), RGB(0x041408), RGB(0x0A3014), RGB(0x145024), RGB(0x288C46), RGB(0xAAFFB4), RGB(0x5AFF78), RGB(0xE6FFE6), RGB(0x082C12), RGB(0x78FF96),
+     RGB(0x3CDC6E), RGB(0x8CFFAA), RGB(0x64F082), RGB(0x28B45A), RGB(0x78FF96), RGB(0x5AFF78), RGB(0x8CFFAA), RGB(0x28B45A), RGB(0x64F082)},   // MATRIX: green monochrome
+    {RGB(0x1A1A1B), RGB(0x262628), RGB(0x3C3C3F), RGB(0x58585C), RGB(0x8C8C90), RGB(0xDCDCDE), RGB(0xDC3238), RGB(0xF02828), RGB(0x3C1418), RGB(0xC8C8CC),
+     RGB(0xB4B4B8), RGB(0x96141E), RGB(0xD23C3C), RGB(0x6E6E74), RGB(0xC8C8CC), RGB(0xDC3238), RGB(0x96141E), RGB(0x6E6E74), RGB(0xD23C3C)},   // BLOOD CONCRETE: grey and dark red
+    {RGB(0x0E0800), RGB(0x1E1204), RGB(0x402608), RGB(0x643C0C), RGB(0xAA6414), RGB(0xFFBE5A), RGB(0xFF9614), RGB(0xFFEBC8), RGB(0x3C2004), RGB(0xFFC83C),
+     RGB(0xFFAA28), RGB(0xFF780A), RGB(0xFFD26E), RGB(0xC86E14), RGB(0xFFC83C), RGB(0xFF9614), RGB(0xFF780A), RGB(0xC86E14), RGB(0xFFD26E)},   // AMBER: orange monochrome
+    {RGB(0x9BBC0F), RGB(0x8BAC0F), RGB(0x6E8C14), RGB(0x5A781E), RGB(0x306230), RGB(0x0F380F), RGB(0x1E501E), RGB(0x0F380F), RGB(0x7A9614), RGB(0x306230),
+     RGB(0x0F380F), RGB(0x306230), RGB(0x1E501E), RGB(0x466E28), RGB(0x306230), RGB(0x1E501E), RGB(0x306230), RGB(0x466E28), RGB(0x1E501E)},   // GAMEBOY: light olive
 };
-static Col th_cur[TC_N] = {{30, 30, 30}, {42, 42, 42}, {64, 64, 64}, {98, 98, 98}, {152, 152, 152}, {224, 224, 224}, {255, 138, 36}, {240, 70, 60}, {72, 54, 36}, {90, 200, 220}};
+static Col th_cur[TC_N] = {RGB(0x0B0C10), RGB(0x161820), RGB(0x2A2E3A), RGB(0x3D4250), RGB(0x626877), RGB(0xE8E8E8), RGB(0xFFD23F), RGB(0xFF5A5A), RGB(0x23263A), RGB(0x7CFF6B),
+     RGB(0x3FE0D0), RGB(0xFF4FA3), RGB(0xFFD23F), RGB(0x5AA0FF), RGB(0x7CFF6B), RGB(0xFFD23F), RGB(0xFF4FA3), RGB(0x5AA0FF), RGB(0xFF8A3D)};
+#define C_ENG(t) th_cur[TC_SMP + ((t) & 3)]   // an engine by Track.type: SAMPLER GRAND ACID CLOUD
 #define C_PLAY th_cur[TC_PLAY]
 #define C_BG th_cur[TC_BG]
 #define C_CELL th_cur[TC_CELL]
@@ -1932,8 +1942,9 @@ static void leave_screen(void) {         // what a key held across a screen chan
 // Themes (2026-11-11, user): the built-in ones are read-only; the user's own are files themes/NAME.thm, as many as
 // wanted, made with SAVE / SAVE AS in the colour editor (the M8 name editor); DELETE removes one. theme.cfg keeps the
 // name of the theme in use. Colours changed but not saved stay on the screen until another theme is chosen.
-static const char *th_preset_name[TH_PRESETS] = {"GRAPHITE", "BRICK", "PAPER", "PHOSPHOR", "COBALT", "ROSE"};
-static const char *th_color_name[TC_N] = {"BACKGROUND", "CELL", "LINE", "FAINT", "DIM TEXT", "TEXT", "ACCENT", "ALERT", "SELECTION", "PLAYING"};
+static const char *th_preset_name[TH_PRESETS] = {"COSMIC", "MATRIX", "BLOOD CONCRETE", "AMBER", "GAMEBOY"};
+static const char *th_color_name[TC_N] = {"BACKGROUND", "PANEL", "LINE", "FAINT", "DIM TEXT", "TEXT", "ACCENT", "WARN", "SELECTION", "PLAYING",
+    "SAMPLER", "GRAND", "ACID", "CLOUD", "PATTERN", "SOUND", "FX", "MOD", "MIX"};
 #define TH_MAXU 64
 typedef struct { char name[20]; Col c[TC_N]; } UserTheme;
 static UserTheme th_usr[TH_MAXU]; static int th_nu, th_sel, th_dirty, th_mod;   // th_mod: the colours on screen differ from the saved theme
@@ -1952,7 +1963,7 @@ static void theme_apply(void) {
     memcpy(th_cur, t, sizeof th_cur); th_mod = 0;
 }
 static int th_cmp(const void *a, const void *b) { return strcmp(((const UserTheme *)a)->name, ((const UserTheme *)b)->name); }
-static int theme_read(const char *path, Col *c) {   // a file from before a colour was added keeps GRAPHITE's for it
+static int theme_read(const char *path, Col *c) {   // a file from before a colour was added keeps COSMIC's for it
     FILE *f = fopen(path, "r"); if (!f) return 0; int got = 0, v[3];
     memcpy(c, th_preset[0], sizeof(Col) * TC_N);
     for (; got < TC_N && fscanf(f, "%d %d %d", &v[0], &v[1], &v[2]) == 3; got++) c[got] = (Col){(Uint8)clampi(v[0], 0, 255), (Uint8)clampi(v[1], 0, 255), (Uint8)clampi(v[2], 0, 255)};
@@ -1980,7 +1991,7 @@ static void theme_load(void) {
     if (f) {
         char line[64] = ""; if (!fgets(line, sizeof line, f)) line[0] = 0;
         if (!strncmp(line, "name ", 5)) { line[strcspn(line, "\r\n")] = 0; int i = theme_find(line + 5); if (i >= 0) th_sel = i; }
-        else {                           // before 2026-11-11: "theme N" and three "user USED 27 numbers": the used ones become files; GRAPHITE is the new default
+        else {                           // before 2026-11-11: "theme N" and three "user USED 27 numbers": the used ones become files; the first built-in is the default
             for (int u = 0; u < 3; u++) {
                 int used = 0, v[27], ok = fscanf(f, " user %d", &used) == 1;
                 for (int i = 0; ok && i < 27; i++) ok = fscanf(f, "%d", &v[i]) == 1 && v[i] >= 0 && v[i] <= 255;
@@ -4710,9 +4721,12 @@ static void draw_theme(void) {
     tag(16, 90, C_DIM, C_BG, "THEME"); textf(120, 94, 2, C_WHITE, "%s%s", theme_name(th_sel), th_mod ? " *" : "");
     text(500, 94, 2, C_GREY, th_mod ? "CHANGED, NOT SAVED" : th_sel < TH_PRESETS ? "BUILT-IN" : "YOURS");
     for (int c = 0; c < 3; c++) text(380 + c * 112 + 24, 122, 1, ted_col == c && ted_row < TC_N ? C_ORANGE : C_DIM, chan[c]);
-    enum { LW = 724 };
-    for (int r = 0; r < TC_N; r++) {
-        int y = 140 + r * 44, on = r == ted_row; Col col = th_cur[r];
+    enum { LW = 724, VR = 11 };          // 19 colours, 11 rows on screen: the list scrolls with the cursor
+    int first = ted_row < TC_N ? clampi(ted_row - VR / 2, 0, TC_N - VR) : TC_N - VR;
+    if (first > 0) text(LW - 40, 122, 1, C_DIM, "^ MORE");
+    if (first + VR < TC_N) text(LW - 40, 140 + VR * 44 - 6, 1, C_DIM, "v MORE");
+    for (int r = first; r < first + VR; r++) {
+        int y = 140 + (r - first) * 44, on = r == ted_row; Col col = th_cur[r];
         if (on) rect(16, y - 4, LW, 40, C_ORANGE, 1);
         text(28, y + 4, 3, on ? C_BG : C_DIM, th_color_name[r]);
         rect(288, y, 60, 32, col, 1); frame(288, y, 60, 32, 1, on ? C_BG : C_GREY);
@@ -4724,7 +4738,7 @@ static void draw_theme(void) {
         }
     }
     for (int a2 = 0; a2 < 3; a2++) {      // the bottom row: what to do with these colours
-        int x = 16 + a2 * 244, y = 140 + TC_N * 44 + 6, on = ted_row == TC_N && ted_col == a2, dim = a2 == 2 && th_sel < TH_PRESETS;
+        int x = 16 + a2 * 244, y = 140 + VR * 44 + 6, on = ted_row == TC_N && ted_col == a2, dim = a2 == 2 && th_sel < TH_PRESETS;
         if (on) rect(x, y, 236, 44, C_ORANGE, 1); else frame(x, y, 236, 44, 1, C_LINE);
         ctext(x + 118, y + 10, 3, on ? C_BG : dim ? C_GREY : a2 == 2 ? C_RED : C_WHITE, act[a2]);
     }
