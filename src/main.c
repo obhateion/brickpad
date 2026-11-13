@@ -1090,15 +1090,15 @@ static void browse_key(int k) {
         else if (k == K_EDIT && strlen(p) < 256) { push_undo(); set_slot_file(sel, p); norm_new(sel); auto_setup(sel); browse_close(); }
     } else if (k == K_OPT) browse_close();
 }
-static void neighbour_file(int dir) {
-    char d[256]; snprintf(d, sizeof d, "%s", song.t[sel].path);
+static void neighbour_file(int pad, int dir) {
+    char d[256]; snprintf(d, sizeof d, "%s", song.t[pad].path);
     char *sl = strrchr(d, '/'); if (!sl) return; *sl = 0;
     static Entry e[2048]; int n = list_dir(d, e, 2048), i;
     for (i = 0; i < n && strcmp(e[i].name, sl + 1); i++);
     for (int j = i + dir; j >= 0 && j < n; j += dir)
         if (!e[j].dir) { char p[1024]; snprintf(p, sizeof p, "%s/%s", d, e[j].name);
-            if (strlen(p) >= 256 || idx_bad(p) || !set_slot_raw(sel, p)) continue;   // broken files are stepped over
-            norm_new(sel); auto_setup(sel); listen(sel); return; }
+            if (strlen(p) >= 256 || idx_bad(p) || !set_slot_raw(pad, p)) continue;   // broken files are stepped over
+            norm_new(pad); auto_setup(pad); listen(pad); return; }
 }
 
 // ---------- SEQ+INST ----------
@@ -1389,10 +1389,10 @@ static float norm_gain(int s) {          // what the pad's sample is multiplied 
     const Sample *x = engine_sample(s); int m = song.mix.pad[s].spare[PM_NORM];
     float g = x && m > 0 ? (m == 1 ? x->npk : x->nld) : 1.f; return g > 0 ? g : 1.f;
 }
-static void par_str(int p, char *b, int n) {
-    Track *t = &song.t[sel]; const Sample *s = engine_sample(sel);
+static void par_str(int pad, int p, char *b, int n) {
+    Track *t = &song.t[pad]; const Sample *s = engine_sample(pad);
     switch (p) {
-    case P_SAMPLE: snprintf(b, n, "%.20s", is_synth(sel) ? type_name[t->type % 4] : s ? s->name : "--"); break;
+    case P_SAMPLE: snprintf(b, n, "%.20s", is_synth(pad) ? type_name[t->type % 4] : s ? s->name : "--"); break;
     case P_PITCH: snprintf(b, n, t->pitch ? "%+d" : "0", t->pitch); break;
     case P_FINE: snprintf(b, n, t->fine ? "%+d" : "0", t->fine); break;
     case P_VOL: snprintf(b, n, "%d", t->vol); break;
@@ -1400,44 +1400,44 @@ static void par_str(int p, char *b, int n) {
     case P_START: snprintf(b, n, "%d.%d%%", t->start / 10, t->start % 10); break;
     case P_END: snprintf(b, n, "%d.%d%%", t->end / 10, t->end % 10); break;
     case P_DIR: snprintf(b, n, t->rev ? "REV" : "FWD"); break;
-    case P_VOICE: snprintf(b, n, t->voice ? "POLY" : is_synth(sel) ? "MONO" : "GATE"); break;
+    case P_VOICE: snprintf(b, n, t->voice ? "POLY" : is_synth(pad) ? "MONO" : "GATE"); break;
     case P_TYPE: snprintf(b, n, "%s", type_name[t->type % 4]); break;
     case P_SRC: snprintf(b, n, "%.20s", s ? s->name : "NO SAMPLE"); break;
-    case P_NORM: snprintf(b, n, "%s", norm_name[song.mix.pad[sel].spare[PM_NORM] % 3]); break;
-    case P_SX + SX_FIN: case P_SX + SX_FOUT: case P_SX + SX_XFADE: { int v = song.smx[sel][p - P_SX]; float ms = v * v / 5.f;
+    case P_NORM: snprintf(b, n, "%s", norm_name[song.mix.pad[pad].spare[PM_NORM] % 3]); break;
+    case P_SX + SX_FIN: case P_SX + SX_FOUT: case P_SX + SX_XFADE: { int v = song.smx[pad][p - P_SX]; float ms = v * v / 5.f;
         if (!v) snprintf(b, n, "OFF"); else if (ms < 10) snprintf(b, n, "%.1f MS", ms); else if (ms < 1000) snprintf(b, n, "%d MS", (int)ms); else snprintf(b, n, "%.1f S", ms / 1000); break; }
-    case P_ROOT: { int r = track_root(sel);
+    case P_ROOT: { int r = track_root(pad);
         if (t->root >= 0) snprintf(b, n, "%s", note_name[t->root]);
         else if (s && s->drum) snprintf(b, n, "AUTO DRUMS");
         else if (s && s->root >= 0) snprintf(b, n, "AUTO %s%s", note_name[s->root], s->mode == 2 ? "m" : "");   // the sample's own key; a minor one fits a major project as its relative
         else snprintf(b, n, "AUTO %s", r >= 0 ? note_name[r] : "--");
         break; }
-    case P_SLICES: { int k = track_nslices(sel);
+    case P_SLICES: { int k = track_nslices(pad);
         if (!t->slices) snprintf(b, n, "OFF"); else if (t->slices == 5) snprintf(b, n, "AUTO %d", k);
         else if (t->slices == 6) snprintf(b, n, "EDIT %d", k); else snprintf(b, n, "%d", k); break; }
     case P_WARP: snprintf(b, n, "%s", warp_name[t->warp % 6]); break;
     case P_GRAIN: if (t->warp < 3 || t->warp > 4) snprintf(b, n, "--"); else if (t->grain) snprintf(b, n, "%dMS", t->grain);
         else snprintf(b, n, "AUTO %dMS", t->warp == 3 ? 30 : 90); break;
     case P_FLUX: if (t->warp != 4) snprintf(b, n, "--"); else snprintf(b, n, "%d%%", t->flux ? t->flux : 40); break;
-    case P_BPM: { float bpm = track_bpm(sel);
+    case P_BPM: { float bpm = track_bpm(pad);
         if (t->bpm) snprintf(b, n, "%d", t->bpm); else if (bpm > 0) snprintf(b, n, "AUTO %d", (int)(bpm + 0.5f));
         else snprintf(b, n, "AUTO --"); break; }
-    case P_BARS: { float bpm = track_bpm(sel);
-        if (bpm > 0) snprintf(b, n, "%s%d", t->bars ? "" : "AUTO ", track_bars(sel));
+    case P_BARS: { float bpm = track_bpm(pad);
+        if (bpm > 0) snprintf(b, n, "%s%d", t->bars ? "" : "AUTO ", track_bars(pad));
         else snprintf(b, n, t->bars ? "%d" : "AUTO", t->bars); break; }
     }
     if (p >= P_PT) {                     // a jack: where its cables go
         int j = p - P_PT, isin = j >= 16, id = isin ? j - 16 : j, k = 0; b[0] = 0;
-        for (int c = 0; c < NCABLE; c++) { const uint8_t *g = song.gp[sel][c]; if (!g[0] || !g[1]) continue;
+        for (int c = 0; c < NCABLE; c++) { const uint8_t *g = song.gp[pad][c]; if (!g[0] || !g[1]) continue;
             if (isin ? g[1] == id : g[0] == id) { int l = (int)strlen(b); snprintf(b + l, n - l, "%s%s", k++ ? ", " : isin ? "FROM " : "TO ", par_name[isin ? P_PT + g[0] : P_PT + 16 + g[1]]); } }
         if (!k) snprintf(b, n, isin ? (id == JI_M1 ? "NORMAL: OSC 1" : id == JI_M2 ? "NORMAL: OSC 2" : id == JI_MN ? "NORMAL: NOISE" : id == JI_FIN ? "NORMAL: MIX" : id == JI_VIN ? "NORMAL: FILTER" : id == JI_VAMT ? "NORMAL: ENV" : id == JI_ATT ? "NORMAL: +1" : "FREE") : "FREE");
         return;
     }
     if (p >= P_GX) {                     // GRAND DEEP
-        int k = p - P_GX, v = song.gx[sel][k];
+        int k = p - P_GX, v = song.gx[pad][k];
         static const char *const wn[5] = {"TRIANGLE", "SQUARE", "SAW", "RAMP", "S&H"}, *const o1[4] = {"32'", "16'", "8'", "4'"}, *const o2[4] = {"16'", "8'", "4'", "2'"}, *const kb[3] = {"OFF", "HALF", "FULL"};
         switch (k) {
-        case GX_LRATE: { float hz = gx_lfo_hz(v); if (song.gx[sel][GX_LSYNC]) snprintf(b, n, "SYNCED"); else if (hz < 1) snprintf(b, n, "%.2fHZ", hz); else snprintf(b, n, "%.1fHZ", hz); break; }
+        case GX_LRATE: { float hz = gx_lfo_hz(v); if (song.gx[pad][GX_LSYNC]) snprintf(b, n, "SYNCED"); else if (hz < 1) snprintf(b, n, "%.2fHZ", hz); else snprintf(b, n, "%.1fHZ", hz); break; }
         case GX_LSYNC: snprintf(b, n, "%s", v ? div_label[(v - 1) % NDIV] : "FREE"); break;
         case GX_LWAVE: snprintf(b, n, "%s", wn[v % 5]); break;
         case GX_O1OCT: snprintf(b, n, "%s", o1[v & 3]); break;
@@ -1459,13 +1459,13 @@ static void par_str(int p, char *b, int n) {
         return;
     }
     if (p >= P_AX) {                     // ACID DEEP
-        const int8_t *ax = song.ax[sel]; int k = p - P_AX, v = ax[k];
+        const int8_t *ax = song.ax[pad]; int k = p - P_AX, v = ax[k];
         static const char *const sw[3] = {"SQUARE", "SINE", "TRIANGLE"};
         switch (k) {
         case AX_SUB: case AX_NOISE: case AX_BASS: case AX_CLIP: case AX_TRACK: if (v) snprintf(b, n, "%d%%", v); else snprintf(b, n, "OFF"); break;
         case AX_SUBOCT: snprintf(b, n, v ? "-2 OCT" : "-1 OCT"); break;
         case AX_SUBWAVE: snprintf(b, n, "%s", sw[v % 3]); break;
-        case AX_PW: if (!song.t[sel].ap[AP_WAVE]) snprintf(b, n, "SQUARE ONLY"); else snprintf(b, n, "%d%%", 50 + (v - 50) * 8 / 10); break;
+        case AX_PW: if (!song.t[pad].ap[AP_WAVE]) snprintf(b, n, "SQUARE ONLY"); else snprintf(b, n, "%d%%", 50 + (v - 50) * 8 / 10); break;
         case AX_VATK: snprintf(b, n, "%.1fMS", ax_vatk_s(ax) * 1000); break;
         case AX_VREL: snprintf(b, n, "%.1fMS", ax_vrel_s(ax) * 1000); break;
         case AX_SLIDE: snprintf(b, n, "%dMS", (int)(ax_slide_s(ax) * 3000 + 0.5f)); break;
@@ -1478,7 +1478,7 @@ static void par_str(int p, char *b, int n) {
         return;
     }
     if (p >= P_CX) {
-        int k = p - P_CX, v = song.cx[sel][k];
+        int k = p - P_CX, v = song.cx[pad][k];
         static const char *const wn[5] = {"HANN", "TRIANGLE", "TUKEY", "PERC", "REV PERC"}, *const im[3] = {"OCT+5TH", "OCTAVES", "SCALE"},
                           *const sy[5] = {"FREE", "1/4", "1/8", "1/16", "1/32"}, *const sc[3] = {"FWD", "REV", "PING-PONG"};
         switch (k) {
@@ -1528,8 +1528,8 @@ static void par_str(int p, char *b, int n) {
         } else snprintf(b, n, "%d", v);
     }
 }
-static void par_adjust(int p, int d, int big) {
-    Track *t = &song.t[sel];
+static void par_adjust(int pad, int p, int d, int big) {
+    Track *t = &song.t[pad];
     if (p == P_SAMPLE) p = P_TYPE;        // the instrument switch: every arrow, round (RIGHT/UP next, LEFT/DOWN back)
     if (p == P_TYPE) {
         int nt = ((t->type + d) % 4 + 4) % 4; if (nt == t->type) return;   // SAMPLER, GRAND, ACID, CLOUD
@@ -1539,17 +1539,17 @@ static void par_adjust(int p, int d, int big) {
         if (nt == 3 && t->cp[CP_MARK] != CP_INIT) cl_defaults(t->cp);
         return;
     }
-    if (p == P_SRC) { if (!big) { edit_begin(); neighbour_file(d); } return; }   // CLOUD's sample: the next file
-    if (p >= P_SX && p < P_SX + SX_N) { edit_begin(); int8_t *v = &song.smx[sel][p - P_SX]; *v = (int8_t)clampi(*v + d * (big ? 10 : 1), 0, 100); return; }
-    if (p == P_NORM) { edit_begin(); int8_t *v = &song.mix.pad[sel].spare[PM_NORM]; *v = (int8_t)((*v + (d > 0 ? 1 : 2)) % 3); return; }
+    if (p == P_SRC) { if (!big) { edit_begin(); neighbour_file(pad, d); } return; }   // CLOUD's sample: the next file
+    if (p >= P_SX && p < P_SX + SX_N) { edit_begin(); int8_t *v = &song.smx[pad][p - P_SX]; *v = (int8_t)clampi(*v + d * (big ? 10 : 1), 0, 100); return; }
+    if (p == P_NORM) { edit_begin(); int8_t *v = &song.mix.pad[pad].spare[PM_NORM]; *v = (int8_t)((*v + (d > 0 ? 1 : 2)) % 3); return; }
     edit_begin();
     if (p >= P_PT) return;                // jacks are plugged, not turned
     if (p >= P_GX) { int k = p - P_GX, lo, hi; gx_range(k, &lo, &hi);
-        song.gx[sel][k] = (int8_t)clampi(song.gx[sel][k] + d * (big && hi > 12 ? 10 : 1), lo, hi); song.gx[sel][GX_MARK] = GX_INIT; return; }
+        song.gx[pad][k] = (int8_t)clampi(song.gx[pad][k] + d * (big && hi > 12 ? 10 : 1), lo, hi); song.gx[pad][GX_MARK] = GX_INIT; return; }
     if (p >= P_AX) { int k = p - P_AX, lo, hi; ax_range(k, &lo, &hi);
-        song.ax[sel][k] = (int8_t)clampi(song.ax[sel][k] + d * (big && hi > 4 ? 10 : 1), lo, hi); song.ax[sel][AX_MARK] = AX_INIT; return; }
+        song.ax[pad][k] = (int8_t)clampi(song.ax[pad][k] + d * (big && hi > 4 ? 10 : 1), lo, hi); song.ax[pad][AX_MARK] = AX_INIT; return; }
     if (p >= P_CX) { int k = p - P_CX, lo, hi; cx_range(k, &lo, &hi);
-        song.cx[sel][k] = (int8_t)clampi(song.cx[sel][k] + d * (big ? (k == CX_PITCH ? 12 : hi - lo <= 4 ? 1 : 10) : 1), lo, hi); return; }
+        song.cx[pad][k] = (int8_t)clampi(song.cx[pad][k] + d * (big ? (k == CX_PITCH ? 12 : hi - lo <= 4 ? 1 : 10) : 1), lo, hi); return; }
     if (p >= P_CL) { int k = p - P_CL; t->cp[k] = (int8_t)clampi(t->cp[k] + d * (big ? 10 : 1), 0, 100); return; }
     if (p >= P_AC) { int k = p - P_AC, lo, hi; ap_range(k, &lo, &hi);
         t->ap[k] = (int8_t)clampi(t->ap[k] + d * (big ? (k == AP_TUNE ? 12 : k == AP_WAVE || k == AP_DTYPE ? 1 : 10) : 1), lo, hi); return; }
@@ -1565,39 +1565,39 @@ static void par_adjust(int p, int d, int big) {
     case P_DIR: t->rev = !t->rev; break;
     case P_VOICE: t->voice = !t->voice; break;
     case P_ROOT: t->root = clampi(t->root + d, -1, 11); break;
-    case P_SLICES: t->slices = clampi(t->slices + d, 0, song.cut[sel].n ? 6 : 5); relayout(sel); break;
+    case P_SLICES: t->slices = clampi(t->slices + d, 0, song.cut[pad].n ? 6 : 5); relayout(pad); break;
     case P_WARP: t->warp = clampi(t->warp + d, 0, 5); break;
     case P_GRAIN: { int g = t->grain ? t->grain : t->warp == 4 ? 90 : 30; t->grain = clampi(g + d * (big ? 10 : 1), 5, 120); break; }
     case P_FLUX: { int f = t->flux ? t->flux : 40; t->flux = clampi(f + d * (big ? 10 : 1), 1, 100); break; }
-    case P_BPM: { int cur = t->bpm ? t->bpm : (int)(track_bpm(sel) + 0.5f);
+    case P_BPM: { int cur = t->bpm ? t->bpm : (int)(track_bpm(pad) + 0.5f);
         if (!cur) cur = song.tempo;
         int nb = t->bpm ? cur + d * (big ? 10 : 1) : cur;   // first touch takes the detected value
-        t->bpm = nb < 40 ? 0 : clampi(nb, 40, 300); relayout(sel); break; }
+        t->bpm = nb < 40 ? 0 : clampi(nb, 40, 300); relayout(pad); break; }
     case P_BARS: { static const int bv[6] = {0, 1, 2, 4, 8, 16}; int i = 0;
         while (i < 5 && bv[i] != t->bars) i++;
-        t->bars = bv[clampi(i + d, 0, 5)]; relayout(sel); break; }
+        t->bars = bv[clampi(i + d, 0, 5)]; relayout(pad); break; }
     }
 }
-static void par_default(int p) {
-    Track *t = &song.t[sel]; edit_begin();
+static void par_default(int pad, int p) {
+    Track *t = &song.t[pad]; edit_begin();
     switch (p) {
-    case P_NORM: song.mix.pad[sel].spare[PM_NORM] = 1; break;
-    case P_SX + SX_FIN: case P_SX + SX_FOUT: case P_SX + SX_XFADE: song.smx[sel][p - P_SX] = 0; break;
+    case P_NORM: song.mix.pad[pad].spare[PM_NORM] = 1; break;
+    case P_SX + SX_FIN: case P_SX + SX_FOUT: case P_SX + SX_XFADE: song.smx[pad][p - P_SX] = 0; break;
     case P_PITCH: t->pitch = 0; break; case P_FINE: t->fine = 0; break; case P_VOL: t->vol = 75; break;
     case P_PAN: t->pan = 0; break; case P_START: t->start = 0; break; case P_END: t->end = 1000; break;
     case P_DIR: t->rev = 0; break; case P_VOICE: t->voice = 0; break;
     case P_ROOT: t->root = -1; break; case P_SLICES: t->slices = 0; break; case P_WARP: t->warp = 0; break;
-    case P_BARS: t->bars = 0; relayout(sel); break;
-    case P_BPM: t->bpm = 0; relayout(sel); break;
+    case P_BARS: t->bars = 0; relayout(pad); break;
+    case P_BPM: t->bpm = 0; relayout(pad); break;
     case P_GRAIN: t->grain = 0; break; case P_FLUX: t->flux = 0; break;
-    case P_SAMPLE: if (is_synth(sel)) t->type = 0; else set_slot_file(sel, ""); break;   // a synth goes back to the sampler
+    case P_SAMPLE: if (is_synth(pad)) t->type = 0; else set_slot_file(pad, ""); break;   // a synth goes back to the sampler
     case P_TYPE: t->type = 0; break;
     }
     if (p >= P_PT) { int j = p - P_PT, isin = j >= 16, id = isin ? j - 16 : j;   // OPT+EDIT on a jack: its cables out
-        for (int c = 0; c < NCABLE; c++) { uint8_t *g = song.gp[sel][c]; if (isin ? g[1] == id : g[0] == id) g[0] = g[1] = 0; } pt_pick = 0; }
-    else if (p >= P_GX) song.gx[sel][p - P_GX] = gx_def[p - P_GX];
-    else if (p >= P_AX) song.ax[sel][p - P_AX] = ax_def[p - P_AX];
-    else if (p >= P_CX) { int8_t d0[16]; cx_defaults(d0); song.cx[sel][p - P_CX] = d0[p - P_CX]; }
+        for (int c = 0; c < NCABLE; c++) { uint8_t *g = song.gp[pad][c]; if (isin ? g[1] == id : g[0] == id) g[0] = g[1] = 0; } pt_pick = 0; }
+    else if (p >= P_GX) song.gx[pad][p - P_GX] = gx_def[p - P_GX];
+    else if (p >= P_AX) song.ax[pad][p - P_AX] = ax_def[p - P_AX];
+    else if (p >= P_CX) { int8_t d0[16]; cx_defaults(d0); song.cx[pad][p - P_CX] = d0[p - P_CX]; }
     else if (p >= P_CL) { int8_t d0[7]; cl_defaults(d0); t->cp[p - P_CL] = d0[p - P_CL]; }
     else if (p >= P_AC) { int8_t d0[12]; acid_defaults(d0); t->ap[p - P_AC] = d0[p - P_AC]; }
     else if (p >= P_SY) { int8_t d0[16]; synth_defaults(d0); t->sp[p - P_SY] = d0[p - P_SY]; }
@@ -1638,7 +1638,7 @@ static void seq_edit_arrow(int k) {     // EDIT + arrows
     Pattern *p = cur_pat(sel);
     int d = (k == K_RIGHT || k == K_UP) ? 1 : -1, big = k == K_UP || k == K_DOWN;
     if (srow < 0 && scol == 1) { Track *t = &song.t[sel]; pat_switch((t->queued >= 0 ? t->queued : t->cur) + d); return; }   // the pattern field: the next one
-    if (srow < 0) { if ((k == K_LEFT || k == K_RIGHT) && !is_synth(sel)) { edit_begin(); neighbour_file(d); } return; }   // the name row: the next file
+    if (srow < 0) { if ((k == K_LEFT || k == K_RIGHT) && !is_synth(sel)) { edit_begin(); neighbour_file(sel, d); } return; }   // the name row: the next file
     if (srow == 0) {
         edit_begin();
         if (scol == 4) { AutoLane *al = cur_aut();   // the lane's target (<>), jump or glide (^v)
@@ -1673,7 +1673,7 @@ static void seq_edit_arrow(int k) {     // EDIT + arrows
             if (song.cx[sel][CX_FREEZE] != (k == K_UP)) { edit_begin(); song.cx[sel][CX_FREEZE] = k == K_UP; }
         } else if (big && pr == P_AC + AP_WAVE) {                    // ACID's lever: UP SAW, DOWN SQUARE
             if (song.t[sel].ap[AP_WAVE] != (k == K_DOWN)) { edit_begin(); song.t[sel].ap[AP_WAVE] = k == K_DOWN; }
-        } else par_adjust(pr, d, big);
+        } else par_adjust(sel, pr, d, big);
         par_focus(pr);
         if (is_synth(sel) && srow >= 3 && held[K_EDIT] && pr != P_SAMPLE && is_synth(sel)) gb_audition();
     }
@@ -1735,7 +1735,7 @@ static void seq_delete(void) {
     else if (srow <= 2 && lane != L_TRIG) { char b[32]; snprintf(b, sizeof b, "ERASE ON THE %s LANE", lane_nm(L_TRIG)); toast(b); }
     else if (srow <= 2) { int st = cur_step();
         p->trig[st] = 0; p->note[st] = NOTE_NONE; p->vel[st] = 100; p->prob[st] = 100; p->rep[st] = 1; p->slice[st] = -1; }
-    else { int pr = cur_par(); par_default(pr); par_focus(pr); }
+    else { int pr = cur_par(); par_default(sel, pr); par_focus(pr); }
 }
 static void browse_slot(void) {          // the browser, in the folder of the slot's sample
     const char *pth = song.t[sel].path, *sl = strrchr(pth, '/');
@@ -1852,7 +1852,7 @@ static void seq_tap(void) {
         if (engine_sample(sel)) slicing = 1; else toast("NO SAMPLE");
     } else if (srow >= 3 && cur_par() == P_ROOT) {      // EDIT on ROOT: make it the project key
         int r = track_root(sel); if (r >= 0) { edit_begin(); song.key = r; toast("PROJECT KEY SET"); }
-    } else if (srow >= 3) { int pr = cur_par(); par_adjust(pr, 1, 0); par_focus(pr); }
+    } else if (srow >= 3) { int pr = cur_par(); par_adjust(sel, pr, 1, 0); par_focus(pr); }
 }
 
 // ---------- PATTERNS ----------
@@ -3188,6 +3188,7 @@ static void listen_name(int s, char *b) {   // the listening note by name where 
     else snprintf(b, 8, n ? "%+d ST" : "0 ST", n);
 }
 static int asking, naming, exporting; static void ask_key(int k, int down); static void nm_key(int k, int down); static void export_key(int k, int down);
+#include "actions.h"
 static void key_event(int k, int down) {
     if (k < 0) return;
     if (k == K_PLAY && !down) play_release();
@@ -3222,7 +3223,7 @@ static void key_event(int k, int down) {
     if (k == K_F1 || k == K_F2) {        // tabs on release, so that F1+F2 does not move first
         int other = k == K_F1 ? K_F2 : K_F1;
         if (down && held[other]) { used[K_F1] = used[K_F2] = 1; tab_project(); }
-        else if (!down && !used[k]) { if (perform == 1 && held[K_SHIFT]) live_scene_go(k == K_F2 ? 1 : -1); else tab_step(k == K_F2 ? 1 : -1); }
+        else if (!down && !used[k]) { if (perform == 1 && held[K_SHIFT]) act_scene(k == K_F2 ? 1 : -1); else tab_step(k == K_F2 ? 1 : -1); }
         return;
     }
     if (k == K_PLAY && held[K_SHIFT]) return;   // SHIFT = BTN_MODE: Knulli kills the app on a double press of this combo, leave it unbound
@@ -3256,9 +3257,9 @@ static void key_event(int k, int down) {
             else { engine_trig(sel, 1.f, (float)hit_semis(sel, deg), -1); rec_tag_now = 200 + i; rec_hit(sel, -1, deg_midi(sel, deg)); rec_tag_now = 0; }   // a one-shot, but the take knows how long the key was held (chords)
             key_on[i] = 1; flash[sel] = SDL_GetTicks();
         } else { int clip = !rec && pat_used(cur_pat(i)); if (held[K_SHIFT]) clip = !clip;   // notes in its pattern: the button is the clip; none (or a take running): the sound; SHIFT: the other
-                 if (clip) clip_toggle(i);
-                 else { if (is_synth(i)) { engine_trig_key(i, 1.f, 0, -1, 100 + i); flash[i] = SDL_GetTicks(); rec_tag_now = 100 + i; } else listen(i); rec_hit(i, -1, NOTE_NONE); rec_tag_now = 0; }
-                 sel = i; }
+                 if (clip) act_clip_toggle(i);
+                 else { if (is_synth(i)) { engine_trig_key(i, 1.f, 0, -1, 100 + i); flash[i] = SDL_GetTicks(); rec_tag_now = 100 + i; } else act_listen(i); rec_hit(i, -1, NOTE_NONE); rec_tag_now = 0; }
+                 act_select_pad(i); }
         return;
     }
     if (tab == T_PRJ && !theming && (k == K_L1 || k == K_R1)) { tempo_mul = down ? (k == K_L1 ? 0.94f : 1.06f) : 1.f; return; }
@@ -3303,16 +3304,16 @@ static void key_event(int k, int down) {
         used[K_Y] = 1; int back = aut_point_back();
         if (back < 0) { toast("NO POINT: EDIT PUTS ONE"); return; }
         edit_begin(); int8_t *bc = aut_bend(); int d = k == K_RIGHT ? 10 : k == K_LEFT ? -10 : k == K_UP ? 50 : -50;
-        bc[back] = (int8_t)clampi(bc[back] + d, -100, 100);
+        act_bend(bc, back, d);
         char b[32]; snprintf(b, sizeof b, bc[back] >= 100 ? "BEND +100 HOLD" : bc[back] <= -100 ? "BEND -100 JUMP" : bc[back] ? "BEND %+d" : "BEND 0 STRAIGHT", bc[back]); toast(b); return;
     }
     if (arrow && held[K_OPT] && tab == T_SEQ && srow >= 3 && !browsing && !slicing && !rolling) {   // OPTION + arrows on the panel: the listening note
         used[K_OPT] = 1; int d = k == K_RIGHT ? 1 : k == K_LEFT ? -1 : k == K_UP ? 12 : -12;
-        song.lnote[sel] = (int8_t)clampi(song.lnote[sel] + d, -48, 48);
+        act_listen_note(sel, d);
         engine_release(); engine_trig_held(sel, 1.f, song.lnote[sel], -1); opt_gate = 1; flash[sel] = SDL_GetTicks();
         char b[40], nn[8]; listen_name(sel, nn); snprintf(b, sizeof b, "LISTEN %s", nn); toast(b); return;
     }
-    if (held[K_SHIFT] && k == K_L2) { undo(); return; }
+    if (held[K_SHIFT] && k == K_L2) { act_undo(); return; }
     if (held[K_SHIFT] && k == K_OPT) { used[K_OPT] = 1; copy_paste(0); return; }
     if (held[K_SHIFT] && k == K_EDIT) { used[K_EDIT] = 1; copy_paste(1); return; }
     if (held[K_SHIFT] && k == K_X && tab == T_SEQ) { used[K_X] = 1; rnd_open(); return; }   // RANDOM
@@ -3333,15 +3334,15 @@ static void key_event(int k, int down) {
         return;
     }
     if (arrow && held[K_EDIT]) { used[K_EDIT] = 1; edit_arrow(k); return; }
-    if (held[K_X] && tab == T_SEQ && (k == K_LEFT || k == K_RIGHT)) { sel = (sel + (k == K_RIGHT ? 1 : NSLOT - 1)) % NSLOT; seq_clamp(); return; }
-    if (held[K_X] && tab == T_FX && (k == K_LEFT || k == K_RIGHT)) { used[K_X] = 1; sel = (sel + (k == K_RIGHT ? 1 : NSLOT - 1)) % NSLOT; fx_unit = sel; return; }   // another pad from any row
+    if (held[K_X] && tab == T_SEQ && (k == K_LEFT || k == K_RIGHT)) { act_select_step(k == K_RIGHT ? 1 : -1); seq_clamp(); return; }
+    if (held[K_X] && tab == T_FX && (k == K_LEFT || k == K_RIGHT)) { used[K_X] = 1; act_select_step(k == K_RIGHT ? 1 : -1); fx_unit = sel; return; }   // another pad from any row
     if (arrow && held[K_OPT]) {          // OPTION+<> slot (patterns only on the pattern field since 2026-11-08: OPTION+^v does nothing)
         used[K_OPT] = 1;
         if (k == K_LEFT || k == K_RIGHT) {
             if (tab == T_SEQ && srow >= 1 && srow <= 2 && !cur_pat(sel)->mode) {   // walk the steps, hearing each like in the browser
                 int st = cur_step(), nx = clampi(st + (k == K_RIGHT ? 1 : -1), 0, cur_pat(sel)->len - 1);
                 if (nx != st) { set_step(nx); step_listen(nx); }
-            } else if (tab != T_SEQ || srow < 0) sel = (sel + (k == K_RIGHT ? 1 : NSLOT - 1)) % NSLOT;   // SEQ: only on the name
+            } else if (tab != T_SEQ || srow < 0) act_select_step(k == K_RIGHT ? 1 : -1);   // SEQ: only on the name
         }
         return;
     }
@@ -3354,11 +3355,11 @@ static void key_event(int k, int down) {
     if (tab == T_PAT && k == K_Y) { pat_close(0); return; }   // the pattern window: Y goes back
     if (tab == T_GRID && k == K_Y && held[K_SHIFT]) { freeze_key(); return; }
     if (tab == T_GRID && k == K_Y && gsel_mute()) return;
-    if (tab == T_GRID && k == K_Y) { Track *t = &song.t[sel]; t->mute = !t->mute; toast(t->mute ? "MUTE ON" : "MUTE OFF"); return; }   // a live move: no undo step
+    if (tab == T_GRID && k == K_Y) { act_mute_toggle(sel); toast(song.t[sel].mute ? "MUTE ON" : "MUTE OFF"); return; }   // a live move: no undo step
     if (tab == T_GRID && k == K_X && held[K_SHIFT]) { naming_pad(); return; }
     if (tab == T_GRID && k == K_X) { icon_open(); return; }
-    if (tab == T_MIX && k == K_Y && mcol < NSLOT) { song.t[mcol].mute = !song.t[mcol].mute; return; }   // live moves: no undo step
-    if (tab == T_MIX && k == K_X && mcol < NSLOT) { song.mix.pad[mcol].solo = !song.mix.pad[mcol].solo; return; }
+    if (tab == T_MIX && k == K_Y && mcol < NSLOT) { act_mute_toggle(mcol); return; }   // live moves: no undo step
+    if (tab == T_MIX && k == K_X && mcol < NSLOT) { act_solo_toggle(mcol); return; }
     if (tab == T_FX && (k == K_L1 || k == K_R1)) { fx_unit_step(k == K_R1 ? 1 : -1); return; }
     if (tab == T_FX && k == K_Y && fx_unit < NSLOT) { fx_page = !fx_page; return; }   // FX <> MOD
     if (tab == T_MIX && (k == K_L1 || k == K_R1)) { mcol = k == K_R1 ? (mcol < NSLOT ? (mcol / 4 + 1) * 4 : 0) : (mcol < 4 ? NSLOT : mcol <= NSLOT ? (mcol - 1) / 4 * 4 : NSLOT); if (mcol > NSLOT + 2) mcol = 0; if (mcol < NSLOT) sel = mcol; return; }
@@ -3691,7 +3692,7 @@ static void draw_gb(int focus) {
       text(196, 265, 2, on ? C_BG : GB_LEGEND, "GRAND");
       if (!on) { text(366, 265, 2, C_DIM, "<>"); } }
     gb_screen(410, 256, 598, 34);
-    if (fp >= 0 && fp != P_SAMPLE) { char b[64]; par_str(fp, b, sizeof b); textf(424, 265, 2, C_ORANGE, "%-8s %s", par_name[fp], b); }
+    if (fp >= 0 && fp != P_SAMPLE) { char b[64]; par_str(sel, fp, b, sizeof b); textf(424, 265, 2, C_ORANGE, "%-8s %s", par_name[fp], b); }
     else textf(424, 265, 2, mix(GB_LCD, C_ORANGE, 160), "%s", "EDIT+ARROWS: INSTRUMENT  Y: DEEP");
     // OSCILLATORS: two wave switches, TUNE 2 and DETUNE, a screen with the mixed wave
     gb_section(GB_SX0, 300, GB_OSC, GB_INK, "OSCILLATORS");
@@ -3786,7 +3787,7 @@ static void draw_ab(int focus) {
       text(26, 265, 2, on ? C_BG : C_DIM, "INSTRUMENT"); text(196, 265, 2, on ? C_BG : GB_LEGEND, "ACID");
       if (!on) text(366, 265, 2, C_DIM, "<>"); }
     gb_screen(410, 256, 598, 34);
-    if (fp >= 0 && fp != P_SAMPLE) { char b[64]; par_str(fp, b, sizeof b); textf(424, 265, 2, C_ORANGE, "%-8s %s", fp == P_VOL ? "VOLUME" : par_name[fp], b); }
+    if (fp >= 0 && fp != P_SAMPLE) { char b[64]; par_str(sel, fp, b, sizeof b); textf(424, 265, 2, C_ORANGE, "%-8s %s", fp == P_VOL ? "VOLUME" : par_name[fp], b); }
     else textf(424, 265, 2, mix(GB_LCD, C_ORANGE, 160), "%s", "EDIT+ARROWS: INSTRUMENT  Y: DEEP");
     // OSC: the wave lever and TUNING
     ab_section(AB_SX0, 150, AB_PANEL, AB_HEAD, AB_INK, "OSC");
@@ -3845,7 +3846,7 @@ static void draw_abdeep(int focus) {     // ACID DEEP: the same aluminium, five 
       text(26, 265, 2, on ? C_BG : C_DIM, "INSTRUMENT"); text(196, 265, 2, on ? C_BG : GB_LEGEND, "ACID");
       if (!on) text(366, 265, 2, C_DIM, "<>"); }
     gb_screen(410, 256, 598, 34);
-    if (fp >= 0 && fp != P_SAMPLE) { char b[64]; par_str(fp, b, sizeof b); textf(424, 265, 2, C_ORANGE, "%-8s %s", par_name[fp], b); }
+    if (fp >= 0 && fp != P_SAMPLE) { char b[64]; par_str(sel, fp, b, sizeof b); textf(424, 265, 2, C_ORANGE, "%-8s %s", par_name[fp], b); }
     else textf(424, 265, 2, mix(GB_LCD, C_ORANGE, 160), "%s", "ACID DEEP   Y BACK");
     ab_section(AD_S0, AD_S1 - AD_S0, AB_PANEL, AB_HEAD, AB_INK, "SUB");
     ab_section(AD_S1, AD_S2 - AD_S1, AB_PANEL, AB_HEAD, AB_INK, "VOICE");
@@ -3905,7 +3906,7 @@ static void draw_gbdeep(int focus) {     // GRAND DEEP: the original's colours, 
       text(26, 265, 2, on ? C_BG : C_DIM, "INSTRUMENT"); text(196, 265, 2, on ? C_BG : GB_LEGEND, "GRAND");
       if (!on) text(366, 265, 2, C_DIM, "<>"); }
     gb_screen(410, 256, 598, 34);
-    if (fp >= 0 && fp != P_SAMPLE) { char b[64]; par_str(fp, b, sizeof b); textf(424, 265, 2, C_ORANGE, "%-11s %s", par_name[fp], b); }
+    if (fp >= 0 && fp != P_SAMPLE) { char b[64]; par_str(sel, fp, b, sizeof b); textf(424, 265, 2, C_ORANGE, "%-11s %s", par_name[fp], b); }
     else textf(424, 265, 2, mix(GB_LCD, C_ORANGE, 160), "%s", "GRAND DEEP   Y BACK");
     gb_section(16, GD_SA - 16 - 4, GB_BLACK, GB_LEGEND, "MODULATION");
     { Col yel = {226, 192, 72}; gb_section(GD_SA, GD_S1 - GD_SA - 4, yel, GB_INK, "ARP"); }   // yellow, as the original's sequencer
@@ -3935,7 +3936,7 @@ static void draw_gbdeep(int focus) {     // GRAND DEEP: the original's colours, 
         case GX_AOCT: { char b[16]; snprintf(b, sizeof b, "%d OCT", gx[k] % 3 + 1); int x = g->x - 90;
             rect(x, g->y - 12, 180, 26, on ? C_ORANGE : GB_LCD, 1); frame(x, g->y - 12, 180, 26, 1, on ? C_ORANGE : GB_RIM);
             text(x + 6, g->y - 4, 1, on ? C_BG : GB_LEGEND, "RANGE"); text(x + 174 - (int)strlen(b) * 16, g->y - 7, 2, on ? C_BG : C_ORANGE, b); break; }
-        case GX_LSYNC: { char b[16]; par_str(g->p, b, sizeof b); int x = g->x - 120;
+        case GX_LSYNC: { char b[16]; par_str(sel, g->p, b, sizeof b); int x = g->x - 120;
             rect(x, g->y - 12, 240, 26, on ? C_ORANGE : GB_LCD, 1); frame(x, g->y - 12, 240, 26, 1, on ? C_ORANGE : GB_RIM);
             text(x + 6, g->y - 4, 1, on ? C_BG : GB_LEGEND, "SYNC"); text(x + 234 - (int)strlen(b) * 16, g->y - 7, 2, on ? C_BG : C_ORANGE, b); break; }
         default: {
@@ -3968,7 +3969,7 @@ static void draw_gbpatch(int focus) {     // PATCH: jacks by module, outputs box
       text(26, 265, 2, on ? C_BG : C_DIM, "INSTRUMENT"); text(196, 265, 2, on ? C_BG : GB_LEGEND, "GRAND");
       if (!on) text(366, 265, 2, C_DIM, "<>"); }
     gb_screen(410, 256, 598, 34);
-    if (fp >= 0 && fp != P_SAMPLE) { char b[96]; par_str(fp, b, sizeof b); textf(424, 265, 2, C_ORANGE, "%.11s %.24s", par_name[fp], b); }
+    if (fp >= 0 && fp != P_SAMPLE) { char b[96]; par_str(sel, fp, b, sizeof b); textf(424, 265, 2, C_ORANGE, "%.11s %.24s", par_name[fp], b); }
     else textf(424, 265, 2, mix(GB_LCD, C_ORANGE, 160), "%s", "PATCH   Y BACK TO THE PANEL");
     rect(16, 296, 992, 394, GB_BLACK, 1);
     static const struct { int x; const char *nm; Col bg; } col[8] = {{80, "MOD", {24, 24, 24}}, {200, "OSC IN", {150, 198, 228}}, {320, "OSC OUT", {150, 198, 228}}, {440, "MIXER", {24, 24, 24}},
@@ -4002,7 +4003,7 @@ static void draw_cl(int focus) {
       text(26, 265, 2, on ? C_BG : C_DIM, "INSTRUMENT"); text(196, 265, 2, on ? C_BG : GB_LEGEND, "CLOUD");
       if (!on) text(366, 265, 2, C_DIM, "<>"); }
     gb_screen(410, 256, 598, 34);
-    if (fp >= 0 && fp != P_SAMPLE) { char b[64]; par_str(fp, b, sizeof b); textf(424, 265, 2, C_ORANGE, "%-8s %s", fp == P_VOL ? "VOLUME" : par_name[fp], b); }
+    if (fp >= 0 && fp != P_SAMPLE) { char b[64]; par_str(sel, fp, b, sizeof b); textf(424, 265, 2, C_ORANGE, "%-8s %s", fp == P_VOL ? "VOLUME" : par_name[fp], b); }
     else textf(424, 265, 2, mix(GB_LCD, C_ORANGE, 160), "%s", "EDIT+ARROWS: INSTRUMENT");
     rect(16, 296, 992, 394, CL_PANEL, 1);
     { int on = fp == P_SRC;             // SOURCE: the sample the grains come from
@@ -4037,7 +4038,7 @@ static void draw_cldeep(int focus) {
       text(26, 265, 2, on ? C_BG : C_DIM, "INSTRUMENT"); text(196, 265, 2, on ? C_BG : GB_LEGEND, "CLOUD");
       if (!on) text(366, 265, 2, C_DIM, "<>"); }
     gb_screen(410, 256, 598, 34);
-    if (fp >= 0 && fp != P_SAMPLE) { char b[64]; par_str(fp, b, sizeof b); textf(424, 265, 2, C_ORANGE, "%-9s %s", par_name[fp], b); }
+    if (fp >= 0 && fp != P_SAMPLE) { char b[64]; par_str(sel, fp, b, sizeof b); textf(424, 265, 2, C_ORANGE, "%-9s %s", par_name[fp], b); }
     else textf(424, 265, 2, mix(GB_LCD, C_ORANGE, 160), "%s", "CLOUD DEEP   Y BACK");
     rect(16, 296, 992, 394, CL_PANEL, 1);
     static const char *const sec[5] = {"GRAIN", "PITCH", "TIME", "SPACE", "SHAPE"};
@@ -4051,7 +4052,7 @@ static void draw_cldeep(int focus) {
     for (int i = 0; i < n; i++) {
         const GbCtl *g = &c[i]; int on = i == focus;
         if (g->kind == GB_SELECT && g->p == P_CX + CX_SHMODE) {   // INTERVALS: a word plate, it is a choice not an amount
-            char b[24]; par_str(g->p, b, sizeof b);
+            char b[24]; par_str(sel, g->p, b, sizeof b);
             ctext(g->x, g->y - 22, 2, on ? C_ORANGE : CL_INK, "INTERVALS");
             rect(g->x - 90, g->y - 2, 180, 24, on ? C_ORANGE : CL_HEAD, 1); ctext(g->x, g->y + 2, 2, on ? C_BG : GB_LEGEND, b);
             continue;
@@ -4093,7 +4094,7 @@ static void sm_section(int x, int y, int w, int h, const char *name) {
     disc(x + w - 12, y + 12, 4, SM_EDGE); line(x + w - 15, y + 12, x + w - 9, y + 12, 1, SM_HEAD);   // a rack screw
 }
 static void sm_plate(const GbCtl *g, int w, int on, int idle, const char *label) {   // a value on a dark plate, its name small beside it
-    char b[24]; par_str(g->p, b, sizeof b);
+    char b[24]; par_str(sel, g->p, b, sizeof b);
     int x = g->x - w / 2;
     rect(x, g->y - 12, w, 26, on ? C_ORANGE : SM_LCD, 1); frame(x, g->y - 12, w, 26, 1, on ? C_ORANGE : SM_EDGE);
     const char *v = idle ? "--" : b; int vw = (int)strlen(v) * 16, lw = (int)strlen(label) * 8;
@@ -4105,7 +4106,7 @@ static void sm_plate(const GbCtl *g, int w, int on, int idle, const char *label)
     text(x + w - 6 - vw, g->y - 7, 2, on ? C_BG : idle ? SM_DIM : SM_GLOW, v);
 }
 static void norm_plate(const GbCtl *g, int h, int on, Col bg, Col edge, Col ink, Col glow) {   // NORM and OFF / PEAK / LOUD, 120 wide
-    char b[8]; par_str(P_NORM, b, sizeof b); int w = 120, x = g->x - w / 2, y = g->y - h / 2;
+    char b[8]; par_str(sel, P_NORM, b, sizeof b); int w = 120, x = g->x - w / 2, y = g->y - h / 2;
     rect(x, y, w, h, on ? C_ORANGE : bg, 1); frame(x, y, w, h, 1, on ? C_ORANGE : edge);
     text(x + 6, g->y - 4, 1, on ? C_BG : ink, "NORM");
     text(x + w - 6 - (int)strlen(b) * 16, g->y - 8, 2, on ? C_BG : song.mix.pad[sel].spare[PM_NORM] ? glow : ink, b);
@@ -4127,7 +4128,7 @@ static void draw_sm(int focus) {
       text(26, 265, 2, on ? C_BG : C_DIM, "INSTRUMENT"); text(196, 265, 2, on ? C_BG : SM_INK, "SAMPLER");
       if (!on) text(366, 265, 2, C_DIM, "<>"); }
     rect(410, 256, 598, 34, SM_LCD, 1); frame(410, 256, 598, 34, 2, SM_EDGE);
-    if (fp >= 0 && fp != P_SAMPLE) { char b[64]; par_str(fp, b, sizeof b); textf(424, 265, 2, SM_GLOW, "%-8s %s", par_name[fp], b); }
+    if (fp >= 0 && fp != P_SAMPLE) { char b[64]; par_str(sel, fp, b, sizeof b); textf(424, 265, 2, SM_GLOW, "%-8s %s", par_name[fp], b); }
     else textf(424, 265, 2, s ? SM_GLOW : SM_DIM, "%.36s", s ? s->name : "NO SAMPLE: EDIT TO BROWSE");
     // SAMPLE: the whole sample, START..END bright, the slices, where it plays now (live, on top)
     sm_section(16, 296, 992, 190, "SAMPLE");
@@ -4152,7 +4153,7 @@ static void draw_sm(int focus) {
           if (r >= 0) k += snprintf(inf + k, sizeof inf - k, "  %s", note_name[r]);
           if (bpm > 0) snprintf(inf + k, sizeof inf - k, "  %d BPM", (int)(bpm + 0.5f));
           text(sx + 10, sy + 8, 2, SM_GLOW, inf);
-          if (ns) { char b[24]; par_str(P_SLICES, b, sizeof b); textf(sx + sw - 10 - (8 + (int)strlen(b)) * 8, sy + 12, 1, SM_GLOW, "SLICES %s", b); }
+          if (ns) { char b[24]; par_str(sel, P_SLICES, b, sizeof b); textf(sx + sw - 10 - (8 + (int)strlen(b)) * 8, sy + 12, 1, SM_GLOW, "SLICES %s", b); }
       } else ctext(sx + sw / 2, sy + sh / 2 - 8, 2, SM_DIM, "NO SAMPLE  -  EDIT ON INSTRUMENT TO BROWSE");
     }
     // the four sections below
@@ -4199,7 +4200,7 @@ static void draw_smdeep(int focus) {
       text(26, 265, 2, on ? C_BG : C_DIM, "INSTRUMENT"); text(196, 265, 2, on ? C_BG : SM_INK, "SAMPLER");
       if (!on) text(366, 265, 2, C_DIM, "<>"); }
     rect(410, 256, 598, 34, SM_LCD, 1); frame(410, 256, 598, 34, 2, SM_EDGE);
-    if (fp >= 0 && fp != P_SAMPLE) { char b[64]; par_str(fp, b, sizeof b); textf(424, 265, 2, SM_GLOW, "%-8s %s", par_name[fp], b); }
+    if (fp >= 0 && fp != P_SAMPLE) { char b[64]; par_str(sel, fp, b, sizeof b); textf(424, 265, 2, SM_GLOW, "%-8s %s", par_name[fp], b); }
     else text(424, 265, 2, SM_GLOW, "SAMPLER DEEP: FADES");
     sm_section(16, 296, 992, 190, "FADES");
     { int sx0 = 24, sy = 324, sw = 976, sh = 154, w = sw - 8; rect(sx0, sy, sw, sh, SM_LCD, 1); frame(sx0, sy, sw, sh, 2, SM_EDGE);
@@ -4229,7 +4230,7 @@ static void draw_smdeep(int focus) {
     for (int k = 0; k < SX_N; k++) sm_section(16 + 332 * k, 490, k == 2 ? 328 : 328, 200, par_name[P_SX + k]);
     for (int i = 0; i < n; i++) {
         const GbCtl *g = &c[i]; if (g->kind != GB_KNOBC) continue;
-        int on = i == focus, k = g->p - P_SX; char b[24]; par_str(g->p, b, sizeof b);
+        int on = i == focus, k = g->p - P_SX; char b[24]; par_str(sel, g->p, b, sizeof b);
         gb_knob(g->x - 104, g->y, g->r, gb_frac(g->p), 0, SM_INK, on);
         text(g->x - 50, g->y - 18, 3, on ? C_ORANGE : SM_GLOW, b);
         text(g->x - 50, g->y + 16, 1, SM_INK, what[k][0]); text(g->x - 50, g->y + 30, 1, C_GREY, what[k][1]);
@@ -4542,7 +4543,7 @@ static void draw_seq(void) {
     for (int c = 0; c < 2; c++) for (int r = 0; r < PROWS; r++) {
         int i = par_at(c, r); if (i < 0) continue;
         int x = 28 + c * 496, y = PY + r * PH + 8, on = srow == 3 + r && scol == c;
-        char b[64]; par_str(i, b, sizeof b);
+        char b[64]; par_str(sel, i, b, sizeof b);
         Col sec = par_section(i); int has_sec = i >= P_SY && memcmp(&sec, &C_BG, sizeof sec);
         if (on) rect(c ? 511 : 16, y - 8, c ? 497 : 494, PH - 1, C_ORANGE, 1);
         else if (has_sec) rect(c ? 511 : 16, y - 8, 124, PH - 1, sec, 1);   // the section's colour, as on the panel
@@ -4619,7 +4620,7 @@ static void draw_slice(void) {
         else if (m == cnt) text(x - 20, WY + WH - 20, 2, on ? C_ORANGE : C_WHITE, "E");
         if (m < cnt && track_nslices(sel) && x + 36 < 16 + WAVE_W) textf(x + 4, WY + 4, cnt > 16 ? 1 : 2, m == k ? C_ORANGE : track_follows(sel, m) ? C_DIM : C_WHITE, "%d", m + 1);
     }
-    char b1[32]; par_str(P_SLICES, b1, sizeof b1);
+    char b1[32]; par_str(sel, P_SLICES, b1, sizeof b1);
     tag(16, 90, C_DIM, C_BG, "SLICES"); text(134, 94, 2, C_WHITE, b1);
     if (ed_zoom && span < s->n) textf(320, 94, 2, C_DIM, "ZOOM X%d", s->n / span);
     if (ed_m == 0) textf(640, 94, 2, C_ORANGE, "START %d.%d%%", t->start / 10, t->start % 10);
