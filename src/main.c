@@ -1015,7 +1015,7 @@ static int pack_take(int cat, int slot) {   // cat -1 = anything; a broken file 
     return 0;
 }
 static void draw(void);
-static void load_pack(const char *dir, int random) {   // random: any files on any slots, repeated if fewer than 12
+static void load_pack(const char *dir, int random) {   // random: any files on any slots, repeated if fewer than 12 (as in version 1)
     pk_n = 0; pack_scan(dir, 0);
     if (!pk_n) { toast("NO SAMPLES IN THIS FOLDER"); return; }
     toast("LOADING PACK..."); draw();
@@ -1035,7 +1035,7 @@ static void load_pack(const char *dir, int random) {   // random: any files on a
         placed = ng;
         for (int s = ng; ng && s < NSLOT; s++) if (set_slot_raw(s, pk[good[rnd() % (Uint32)ng]])) { norm_new(s); full[s] = 1; }
     }
-    // the kit layout: slot numbers are L2 L1 R1 R2 / LEFT UP Y X / DOWN RIGHT B A
+    // the kit layout of version 1: slot numbers are L2 L1 R1 R2 / LEFT UP Y X / DOWN RIGHT B A
     static const struct { signed char slot, want[4]; } role[NSLOT] = {
         {11, {CAT_KICK, -1, -1, -1}},                {10, {CAT_SNARE, CAT_CLAP, -1, -1}},
         {7, {CAT_HAT, CAT_OHAT, -1, -1}},            {6, {CAT_CLAP, CAT_SNARE, CAT_PERC, -1}},
@@ -1108,13 +1108,16 @@ static int is_synth(int s);
 static int lane_list(int *l) {           // the lanes this pad has: a sampler slices, a synth does not, ACID has ACCENT and SLIDE
     static const int smp_l[] = {L_TRIG, L_VEL, L_PROB, L_REP, L_SLICE}, gb_l[] = {L_TRIG, L_VEL, L_PROB, L_REP},   // TRIG holds the note too (2026-11-09)
                      ab_l[] = {L_TRIG, L_VEL, L_PROB, L_REP, L_ACC, L_SLD};
-    int ty = song.t[sel].type; const int *src = ty == 2 ? ab_l : ty ? gb_l : smp_l; int n = ty == 2 ? 6 : ty ? 4 : 5;
+    static const int sls_l[] = {L_SLICE, L_TRIG, L_VEL, L_PROB, L_REP};   // a sliced sample: SLC first (2026-11-12, user)
+    int ty = song.t[sel].type; const int *src = ty == 2 ? ab_l : ty ? gb_l : track_nslices(sel) > 1 ? sls_l : smp_l; int n = ty == 2 ? 6 : ty ? 4 : 5;
     if (song.t[sel].pat[song.t[sel].cur].mode) n = 1;   // ROLL: the roll itself (NOTE) and the automation lanes   // CLOUD: as GRAND
     for (int i = 0; i < n; i++) l[i] = src[i];
     for (int a = 0; a < NAUTO; a++) l[n++] = L_A1 + a;   // automation lanes on every pad
     return n;
 }
 static int is_auto(int ln) { return ln >= L_A1 && ln <= L_A4; }
+static const char *lane_nm(int ln) { return ln == L_TRIG && song.t[sel].type == 0 ? "PITCH" : lane_name[ln]; }   // the sampler's note lane is its PITCH (2026-11-12, user)
+static int lane_first(void) { int l[L_N]; lane_list(l); return l[0]; }
 static int lane; static int lfo_targets(int s, int *out); static void lfo_tname(int s, int tg, char *b);
 static int learning, learn_lane, learn_lfo = -1;   // LEARN: a lane (or LFO learn_lfo, from the MOD page) waits for a knob; EDIT on the panel binds it
 static int8_t *aut_bend(void);
@@ -1127,6 +1130,7 @@ static int aut_point_back(void) {        // the point the segment under the curs
     for (int i = 0; i < len; i++) { int j = (k - i + len) % len; if (al->v[j] != AUTO_EMPTY) return j; }
     return -1;
 }
+static int last_vel[NSLOT], last_prob[NSLOT], last_rep[NSLOT], last_slc[NSLOT];   // the last value set on each lane, +1 (slice +2), 0 none: a new step starts from it (2026-11-12, user)
 static int last_note[NSLOT];             // the last note set on a pad's steps, MIDI + 1 (0 none): a new step gets it
 static int in_scale(int s, int m) {      // a pitch belongs to the pad's scale
     int pc = ((m - track_key(s)) % 12 + 12) % 12, sc = track_scale(s), n = scale_len(sc);
@@ -1600,11 +1604,13 @@ static void par_default(int p) {
 }
 static void step_audition(int st);
 static void step_reset(Pattern *p, int st);
+static void step_seed(Pattern *p, int st);
 static void step_hear(int st) {          // an edit sounds, unless the pad's clip plays it anyway
     if (!(engine_playing() && song.t[sel].on)) step_audition(st);
 }
 static void step_adjust(int st, int d, int big) {
     Pattern *p = cur_pat(sel); edit_begin();
+    if (!is_auto(lane) && !p->trig[st]) step_seed(p, st);
     if (is_auto(lane)) { AutoLane *al = cur_aut(); int v = al->v[st] == AUTO_EMPTY ? 50 : al->v[st]; al->v[st] = (int8_t)clampi(v + d * (big ? 10 : 1), 0, 100); return; }
     switch (lane) {
     case L_TRIG: case L_NOTE: {          // the step's pitch: a semitone (SCALE SNAP: the next note of the scale), an octave
@@ -1624,6 +1630,8 @@ static void step_adjust(int st, int d, int big) {
         f = d > 0 ? f | bit : f & ~bit; p->slice[st] = (int8_t)(f ? f : -1); break; }   // RIGHT/UP sets, LEFT/DOWN clears
     }
     p->trig[st] = 1;
+    if (lane == L_VEL) last_vel[sel] = p->vel[st] + 1; else if (lane == L_PROB) last_prob[sel] = p->prob[st] + 1;
+    else if (lane == L_REP) last_rep[sel] = p->rep[st] + 1; else if (lane == L_SLICE) last_slc[sel] = p->slice[st] + 2;
     if (lane == L_TRIG || lane == L_NOTE || lane == L_SLICE) step_hear(st);   // the new note or slice sounds
 }
 static void seq_edit_arrow(int k) {     // EDIT + arrows
@@ -1650,7 +1658,7 @@ static void seq_edit_arrow(int k) {     // EDIT + arrows
             c = clampi(c, 0, p->len - 1); set_step(c);
             int lo = paint_anchor < c ? paint_anchor : c, hi = paint_anchor < c ? c : paint_anchor;
             for (int i = 0; i < NSTEP; i++) { p->trig[i] = i >= lo && i <= hi ? paint_val : paint_snap[i];
-                }   // painted steps get the last note
+                if (i >= lo && i <= hi && paint_val && !paint_snap[i]) step_seed(p, i); }   // a painted step starts from the lanes' last values   // painted steps get the last note
         } else step_adjust(st, d, big);
     } else {
         int pr = cur_par();
@@ -1720,9 +1728,11 @@ static void seq_move(int k) {
 static void seq_delete(void) {
     if (srow < 0) return;
     Pattern *p = cur_pat(sel); edit_begin();
+    if (srow == 0 && scol == 4 && is_auto(lane)) { char b[32]; cur_aut()->target = 0; snprintf(b, sizeof b, "%s UNLINKED", lane_name[lane]); toast(b); return; }   // 2026-11-12, user: the points stay
     if (srow == 0) { int l = p->len, dv = p->div, md = p->mode; pattern_clear(p); p->len = l; p->div = dv; p->mode = md; toast("CLIP CLEARED"); }
     else if (p->mode) { for (int i = 0; i < NNOTE; i++) roll_del(p, i); toast("ROLL CLEARED"); }
     else if (srow <= 2 && is_auto(lane)) cur_aut()->v[cur_step()] = AUTO_EMPTY;
+    else if (srow <= 2 && lane != L_TRIG) { char b[32]; snprintf(b, sizeof b, "ERASE ON THE %s LANE", lane_nm(L_TRIG)); toast(b); }
     else if (srow <= 2) { int st = cur_step();
         p->trig[st] = 0; p->note[st] = NOTE_NONE; p->vel[st] = 100; p->prob[st] = 100; p->rep[st] = 1; p->slice[st] = -1; }
     else { int pr = cur_par(); par_default(pr); par_focus(pr); }
@@ -1818,6 +1828,8 @@ static void seq_tap(void) {
             if (!p->trig[st]) { p->trig[st] = 1; f |= bit; } else f ^= bit;
             p->slice[st] = (int8_t)(f ? f : -1); return;   // it sounded when B went down
         }
+        if (p->trig[st] && lane != L_TRIG) { char b[32]; snprintf(b, sizeof b, "ERASE ON THE %s LANE", lane_nm(L_TRIG)); toast(b); return; }   // 2026-11-12, user
+        if (!p->trig[st]) step_seed(p, st);
         p->trig[st] = !p->trig[st];
         // 2026-11-11 (user): a new step is the tonic of the pad's key (NOTE_NONE plays exactly that and follows the key), and its name shows at once
         if (!p->trig[st]) step_reset(p, st);   // (a new step sounded when B went down)           // a removed step forgets its note, velocity, chance, repeats, slice
@@ -2329,6 +2341,14 @@ static void saver_pause(int on) {
 
 // ---------- key dispatch ----------
 static void step_reset(Pattern *p, int st) { p->note[st] = NOTE_NONE; p->vel[st] = 100; p->prob[st] = 100; p->rep[st] = 1; p->slice[st] = -1; }
+static void step_seed(Pattern *p, int st) {   // an empty step about to be put: every lane starts from its last value on this pad
+    step_reset(p, st);
+    if (last_note[sel]) p->note[st] = (int8_t)(last_note[sel] - 1);
+    if (last_vel[sel]) p->vel[st] = (int8_t)(last_vel[sel] - 1);
+    if (last_prob[sel]) p->prob[st] = (int8_t)(last_prob[sel] - 1);
+    if (last_rep[sel]) p->rep[st] = (int8_t)(last_rep[sel] - 1);
+    if (last_slc[sel] && song.t[sel].type == 0) p->slice[st] = (int8_t)(last_slc[sel] - 2);
+}
 static void step_audition(int st) {      // an edited step sounds once; editing is not playing: no take, no capture
     Pattern *p = cur_pat(sel); int ns = track_nslices(sel), nt = p->note[st];
     (void)last_note;   // a step about to be put: the note it will have
@@ -2904,6 +2924,7 @@ static void fx_tap(void) {
     else if (frow == 1) { edit_begin(); if (f->on) f->on = 0; else fx_turn_on(f); }
 }
 static void fx_delete(void) {
+    if (fx_unit < NSLOT && fx_page && lrow == 0) { char b[24]; edit_begin(); song.lfo[fx_unit][lcol].target = 0; snprintf(b, sizeof b, "LFO %d UNLINKED", lcol + 1); toast(b); return; }   // 2026-11-12, user
     if (fx_unit < NSLOT && fx_page) { edit_begin(); memset(&song.lfo[fx_unit][lcol], 0, sizeof(Lfo)); toast("LFO OFF"); return; }
     if (fx_unit >= NSLOT) { int half = (unit_nparams(fx_unit) + 1) / 2, kk = fcol * half + frow, lo, hi, def; int8_t *v = unit_param(fx_unit, kk, &lo, &hi, &def); edit_begin(); *v = (int8_t)def; return; }
     PadMix *pm = &song.mix.pad[fx_unit]; edit_begin();
@@ -3190,6 +3211,7 @@ static void key_event(int k, int down) {
     if (k == K_EDIT && down && !browsing && !slicing && !rolling && !theming && !iconing && !perform && tab == T_SEQ && srow >= 3 && is_synth(sel) && cur_par() != P_SAMPLE) gb_audition();
     if (k == K_EDIT && down && !browsing && !slicing && !rolling && !theming && !iconing && !perform && tab == T_SEQ && srow >= 1 && srow <= 2 && !cur_pat(sel)->mode) {
         Pattern *p = cur_pat(sel); int st = cur_step();
+        if (st < p->len && !is_auto(lane) && !p->trig[st]) step_seed(p, st);   // it sounds as it will be put
         if (st < p->len && !is_auto(lane) && (!p->trig[st] || lane == L_ACC)) step_hear(st);   // the step sounds as B goes down (it is put on at release)
     }
     if (k == K_EDIT && down && !browsing && !slicing && !rolling && tab == T_SEQ && srow >= 1 && srow <= 2 && lane == L_TRIG && !cur_pat(sel)->mode) {
@@ -4426,7 +4448,7 @@ static void draw_seq(void) {
         x += w + 12;
     }
     const int hx = x;                    // where the left half of the row ends: nothing on the right may start before it
-    if (!lane_ok(lane)) lane = L_TRIG;
+    if (!lane_ok(lane)) lane = lane_first();
     if (learning) lane = learn_lane;
     if (learning && learn_lfo >= 0) {   // an LFO learns: no lanes, the question
         char b2[40]; snprintf(b2, sizeof b2, "LFO %d < PICK A KNOB", learn_lfo + 1); int w = (int)strlen(b2) * 16 + 12, x = 1008 - w, on = SDL_GetTicks() / 300 % 2;
@@ -4441,10 +4463,10 @@ static void draw_seq(void) {
         if (on) plate(x, 89, w, 24, 5, C_ORANGE); text(x + 6, 93, 2, on ? C_BG : al->target ? C_ORANGE : C_RED, b2);
     } else {                             // the pad's lanes against the right edge, the current one a plate; A1..A4 show as one AUT
       int l[L_N], n = lane_list(l), m = 0; for (int i = 0; i < n; i++) if (!is_auto(l[i]) || l[i] == L_A1) l[m++] = l[i];
-      int w = 0; for (int i = 0; i < m; i++) w += (is_auto(l[i]) ? 3 : (int)strlen(lane_name[l[i]])) * 16 + 10;
+      int w = 0; for (int i = 0; i < m; i++) w += (is_auto(l[i]) ? 3 : (int)strlen(lane_nm(l[i]))) * 16 + 10;
       int x = 1008 - w; if (x < hx) x = hx;
       if (!last_page() && x - 52 > hx) text(x - 48, 97, 1, C_GREY, "L1/R1");   // with pages the footer says it
-      for (int i = 0; i < m; i++) { const char *nm = is_auto(l[i]) ? "AUT" : lane_name[l[i]]; int lw = (int)strlen(nm) * 16 + 10;
+      for (int i = 0; i < m; i++) { const char *nm = is_auto(l[i]) ? "AUT" : lane_nm(l[i]); int lw = (int)strlen(nm) * 16 + 10;
           if (l[i] == lane) plate(x, 89, lw, 24, 5, C_ORANGE);
           text(x + 5, 93, 2, l[i] == lane ? C_BG : C_DIM, nm); x += lw; } }
     enum { SX = 16, SY = 118, SC = 62 };
@@ -4723,7 +4745,7 @@ static void draw_prj(void) {
     fig_put(fig_open, FIG_MID, PX + 40, PT + 44, 90);
     rect(PX, PT + 260, PW, 1, C_LINE, 1);
     text(PX + 16, PT + 276, 3, C_WHITE, "BRICKPAD");
-    text(PX + 16, PT + 310, 1, C_DIM, "SAMPLER / SEQUENCER / V1.1");
+    text(PX + 16, PT + 310, 1, C_DIM, "SAMPLER / SEQUENCER / V1.2");
     barcode(PX + 16, PT + 330, PW - 32, 28, 2u, C_GREY);
     rect(PX, PT + 374, PW, 1, C_LINE, 1);
     int used_slots = 0, playing = 0; for (int i = 0; i < NSLOT; i++) { if (has_sound(i)) used_slots++; if (song.t[i].on) playing++; }
@@ -5065,7 +5087,7 @@ static void draw_fx(void) {
                 if (f->type == FX_COMP && k == 0) {   // THRESH left, KEY right: what the compressor listens to (another pad = sidechain)
                     param_row(x, y, w / 2 - 4, fx_pname[f->type][k], b, f->p[k], lo, hi, on && !fx_sub, 1);
                     int kp = song.mbx[u][c][5]; if (kp > 0 && kp <= NSLOT) snprintf(b, sizeof b, "PAD %d", kp); else snprintf(b, sizeof b, "SELF");
-                    param_row(x + w / 2 + 4, y, w / 2 - 4, "KEY", b, kp, 0, NSLOT, on && fx_sub, 0); continue;
+                    param_row(x + w / 2 + 4, y, w / 2 - 4, "SRC", b, kp, 0, NSLOT, on && fx_sub, 0); continue;
                 }
                 if (f->type == FX_MULTI) {      // two halves: the dynamics left, the gains right (Song.mbx)
                     param_row(x, y, w / 2 - 4, fx_pname[f->type][k], b, f->p[k], lo, hi, on && !fx_sub, 1);
@@ -5120,7 +5142,7 @@ static void pick_thumbs(void) {
         if (!pk_tex[i]) break;
         Track *t = &song.t[sel]; t->type = (int8_t)i; t->on = 0;
         if (i == 1) synth_defaults(t->sp); if (i == 2) acid_defaults(t->ap); if (i == 3) cl_defaults(t->cp);
-        srow = 3; scol = 0; spage = 0; lane = L_TRIG; cl_deep = 0; gb_cur = 0;
+        srow = 3; scol = 0; spage = 0; lane = lane_first(); cl_deep = 0; gb_cur = 0;
         SDL_SetRenderTarget(R, pk_tex[i]);
         SDL_SetRenderDrawColor(R, C_BG.r, C_BG.g, C_BG.b, 255); SDL_RenderClear(R);
         draw_seq();

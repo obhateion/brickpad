@@ -3,7 +3,7 @@
 <p align="center">
   <a href="https://github.com/obhateion/brickpad/releases/latest"><b>Download</b></a> ·
   <a href="docs/MANUAL.md"><b>Manual</b></a> ·
-  <a href="docs/BrickPad-Manual.pdf"><b>Manual (PDF)</b></a> ·
+  <a href="docs/BrickPad-Manual.pdf"><b>Manual (PDF, 1.1)</b></a> ·
   <a href="CHANGELOG.md"><b>Changelog</b></a>
 </p>
 
@@ -77,6 +77,7 @@ row of a panel, opens its DEEP page.
   bitcrusher, tape, autopan, ring modulator, multiband.
 - **Sends**: A is a reverb, B a delay in tempo. **Master**: compressor and limiter.
 - **Automation**: four lanes per pattern, any knob as the target, straight or bent segments. LFOs add on top.
+  OPTION+EDIT on a target unlinks it.
 - **Freeze**: SHIFT+Y on GRID or the F row of the mixer renders a pad with its effects and modulation into audio.
   Volume, pan, sends, mute, duck and follow actions stay live; editing the pad thaws it. Recordings are kept on the
   card, so a project opens without rendering again.
@@ -89,7 +90,7 @@ row of a panel, opens its DEEP page.
 You need a TrimUI Brick with Knulli and a way to copy files to it: the SD card in a computer, or the Knulli network
 share.
 
-1. Download `brickpad-1.1-alpha-trimui-brick.zip` from the
+1. Download `brickpad-1.2-alpha-trimui-brick.zip` from the
    [latest release](https://github.com/obhateion/brickpad/releases/latest) and unpack it:
    ```
    BrickPad.sh                      the launcher

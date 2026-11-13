@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.2 alpha (2026-11-13)
+
+- Sampler: the note lane is called PITCH. With a sliced sample the lanes start with SLICE (SLICE, PITCH, VELOCITY,
+  CHANCE, REPEAT) and the cursor starts there.
+- A step is removed only on its PITCH / NOTE lane. On the other lanes a tap or OPTION+EDIT leaves the step alone.
+- A new step starts from the last value set on each lane of the pad (pitch, velocity, chance, repeats, slice).
+- OPTION+EDIT on an automation lane's target unlinks it and keeps its points; on an LFO's TARGET it unlinks the LFO.
+- Compressor: the sidechain field is called SRC.
+- Sound: high PITCH no longer crackles. Pitch from automation and LFOs moves smoothly inside each audio buffer, and a
+  sample played much faster than its own speed is read with a simple anti-aliasing filter.
+- The PROJECT screen shows the version, V1.2.
+
 ## 1.1 alpha (2026-11-12)
 
 - Tap tempo: press EDIT in time on PROJECT > TEMPO, and on the sampler's BPM plate for a loop's own tempo.

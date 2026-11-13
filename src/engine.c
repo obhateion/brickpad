@@ -110,6 +110,7 @@ typedef struct { double ph; float out, sh, prev; uint32_t rng; int armed; } LfoS
 static LfoState lfos[NSLOT][NLFO];
 static volatile float lfo_view[NSLOT][NLFO];   // the UI draws them
 static uint8_t lfo_note[NSLOT], has_mod[NSLOT];
+static float mod_prev[NSLOT] = {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1};   // last buffer's pitch factor: the voices glide from it across the buffer (2026-11-12: steps crackled)
 static float mod_pitch[NSLOT] = {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1}, m_vol[NSLOT], m_pan[NSLOT], m_sa[NSLOT], m_sb[NSLOT];
 static int8_t m_sp[NSLOT][16], m_ap[NSLOT][12], m_cp[NSLOT][8], m_cx[NSLOT][16], m_ax[NSLOT][16], m_gx[NSLOT][32];
 static FxSlot m_ins[NSLOT][NINS];
@@ -162,6 +163,7 @@ static void lfo_run(int n, double tempo) {
     double f32 = SR * 60.0 / (tempo < 20 ? 20 : tempo) / 8, now32 = pos32 - next32 / f32;   // where the count is at this buffer's start (1/32)
     for (int s = 0; s < NSLOT; s++) {
         const Track *t = &song.t[s]; int any = 0;
+        mod_prev[s] = mod_pitch[s];
         float pitch = 0, vol = 0, pan = 0, sa = 0, sb = 0, ins[NINS][6] = {{0}}, eng[LT_ENGN] = {0};
         float ov_pitch = -1, ov_vol = -1, ov_pan = -1, ov_sa = -1, ov_sb = -1, ov_ins[NINS][6], ov_eng[LT_ENGN];
         for (int i = 0; i < NINS; i++) for (int k = 0; k < 6; k++) ov_ins[i][k] = -1;
@@ -823,7 +825,9 @@ static void callback(void *u, Uint8 *stream, int len) {
             if (v->cut_in < 0) v->cut_in = 0;
         }
         if (v->delay >= n) { v->delay -= n; if (v->cut_in > 0) v->cut_in = v->cut_in > n ? v->cut_in - n : 0; continue; }
-        int k = v->delay; if (v->cut_in > 0) v->cut_in = v->cut_in > k ? v->cut_in - k : 0; v->delay = 0;
+        int k = v->delay;
+        float pmk = v->slot < NSLOT ? mod_prev[v->slot] : 1, pms = v->slot < NSLOT && n > k ? (mod_pitch[v->slot] - pmk) / (n - k) : 0;   // the pitch factor, a ramp over this buffer
+        if (v->cut_in > 0) v->cut_in = v->cut_in > k ? v->cut_in - k : 0; v->delay = 0;
         double tr = v->wbpm > 0 ? tempo / v->wbpm : 1;   // warp follows the live tempo
         if (v->warp == 2) v->rate = v->base * tr * (v->rate < 0 ? -1 : 1);
         const float *d = v->s ? v->s->d : NULL;
@@ -836,6 +840,7 @@ static void callback(void *u, Uint8 *stream, int len) {
         double einv = 0; int smp_v = !v->synth, cutf = smp_v && v->fout > FADE_FRAMES ? v->fout : FADE_FRAMES;
         if (smp_v) { v->adv = v->warp >= 3 ? tr : fabs(v->rate) * (v->slot < NSLOT ? mod_pitch[v->slot] : 1); if (v->fout > 0 && v->adv > 0) einv = 1.0 / (v->adv * v->fout); }
         for (; k < n; k++) {
+            pmk += pms;
             if (v->cut_in == 0 && v->fstep == 0) {
                 v->fstep = 1.f / cutf;
                 if (smp_v && v->adv > 0) {       // a cut fades over FADE OUT / XFADE: with XFADE it may read on past its end for that
@@ -853,7 +858,7 @@ static void callback(void *u, Uint8 *stream, int len) {
                 if (!cl_frame(&v->cl, v->s, v->slot < NSLOT && has_mod[v->slot] ? m_cp[v->slot] : trk(v->slot)->cp, v->slot < NSLOT && has_mod[v->slot] ? m_cx[v->slot] : song.cx[v->slot], track_scale(v->slot), SR * 60.0 / tempo * (song.beats > 0 ? song.beats : 4), &l, &r)) { v->on = 0; break; }
             } else if (v->synth) {
                 float x;
-                int md = v->slot < NSLOT && has_mod[v->slot]; float pm = md ? mod_pitch[v->slot] : 1, f0 = v->sy.freq;
+                int md = v->slot < NSLOT && has_mod[v->slot]; float pm = md ? pmk : 1, f0 = v->sy.freq;
                 if (pm != 1) { v->sy.freq = f0 * pm; v->sy.target *= pm; if (v->sy.pat >= 0) v->sy.pf *= pm; }   // pitch modulation around the note: GLIDE keeps working underneath
                 int alive = v->synth == 2 ? acid_frame(&v->sy, md ? m_ap[v->slot] : trk(v->slot)->ap, md ? m_ax[v->slot] : song.ax[v->slot], &x)
                           : vpatch ? synth_frame_patch(&v->sy, md ? m_sp[v->slot] : trk(v->slot)->sp, vgx, (const uint8_t (*)[2])song.gp[v->slot], vlfo ? vlfo[k] : 0, vsh, &x)
@@ -863,13 +868,13 @@ static void callback(void *u, Uint8 *stream, int len) {
                 l = r = x;
             } else if (v->warp == 5) {   // COMPLEX: phase vocoder, input moves by tr, pitch by rate
                 if (v->pos >= v->hi - 1) { v->on = 0; break; }
-                pv_read(&pvs[i], v->s, (int)v->lo, (int)v->hi, v->rate * (v->slot < NSLOT ? mod_pitch[v->slot] : 1), PV_H * tr / v->rate, &l, &r);
+                pv_read(&pvs[i], v->s, (int)v->lo, (int)v->hi, v->rate * pmk, PV_H * tr / v->rate, &l, &r);
                 v->pos += tr;
             } else if (v->warp >= 3) {   // TONES/TEXTURE: two Hann grains at pitch rate, restarted at the stretched position
                 if (v->pos >= v->hi - 1) { v->on = 0; break; }
                 l = r = 0;
                 for (int g = 0; g < 2; g++) {
-                    double p = v->gst[g] + v->gph[g] * v->rate * (v->slot < NSLOT ? mod_pitch[v->slot] : 1);
+                    double p = v->gst[g] + v->gph[g] * v->rate * pmk;
                     if (p < v->hi - 1) {
                         float w = 0.5f - 0.5f * cosf(2 * (float)M_PI * v->gph[g] / v->gsize), a, b;
                         read2(d, p, &a, &b); l += a * w; r += b * w;
@@ -885,8 +890,14 @@ static void callback(void *u, Uint8 *stream, int len) {
                 v->pos += tr;
             } else {
                 if (v->rate > 0 ? v->pos >= v->hi - 1 : v->pos <= v->lo) { v->on = 0; break; }
-                read2(d, v->pos, &l, &r);
-                v->pos += v->rate * (v->slot < NSLOT ? mod_pitch[v->slot] : 1);
+                double sp = v->rate * pmk, asp = sp < 0 ? -sp : sp;
+                if (asp < 1.5) read2(d, v->pos, &l, &r);
+                else {                   // read faster than 1.5x: the mean of up to 4 reads across the stretch it skips (2026-11-12: high PITCH crackled, aliasing)
+                    int m = asp > 4 ? 4 : (int)(asp + 0.5); double st = sp / m, top = v->hi - 1.0001; float a, b2; l = r = 0;
+                    for (int j = 0; j < m; j++) { double tp = v->pos + st * j; if (tp > top) tp = top; if (tp < v->lo) tp = v->lo; read2(d, tp, &a, &b2); l += a; r += b2; }
+                    l /= m; r /= m;
+                }
+                v->pos += sp;
             }
             float eg = v->fade;
             if (smp_v) {                     // SAMPLER DEEP: FADE IN from the start, FADE OUT before the end of what plays

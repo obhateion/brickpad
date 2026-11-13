@@ -1,6 +1,6 @@
 <p align="center"><img src="docs/images/banner.svg" alt="BrickPad" width="100%"></p>
 
-# BrickPad 1.1 alpha: перевод на русский
+# BrickPad 1.2 alpha: перевод на русский
 
 *Это перевод основного [README](README.md). Если тексты расходятся, верен английский.*
 
@@ -50,7 +50,7 @@
 
 ## Установка
 
-1. Скачай `brickpad-1.1-alpha-trimui-brick.zip` из
+1. Скачай `brickpad-1.2-alpha-trimui-brick.zip` из
    [последнего релиза](https://github.com/obhateion/brickpad/releases/latest) и распакуй.
 2. Скопируй `BrickPad.sh` и папку `brickpad` в `roms/ports/` на карте (на приставке это `/userdata/roms/ports/`).
 3. Положи свои WAV или OGG в `roms/ports/brickpad/samples/`, можно по папкам. **Сэмплов в комплекте нет.**

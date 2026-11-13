@@ -1,4 +1,4 @@
-# BrickPad 1.1 alpha: manual
+# BrickPad 1.2 alpha: manual
 
 BrickPad is a sampler, synthesizer and clip sequencer for the TrimUI Brick. Everything is done with the d-pad and
 the buttons; each screen shows the buttons that matter in its footer.
@@ -37,8 +37,10 @@ The 12 pads with name, icon, pattern, steps and state.
 ### INSTRUMENT
 Top row: the instrument (EDIT+arrows change the engine, EDIT opens presets or the file browser) and the pattern
 (EDIT opens the pattern window). Below: the steps or the piano roll, then the engine's panel.
-- Steps: EDIT sets a step. L1/R1 choose the lane: TRIG, NOTE, VELOCITY, CHANCE, REPEAT (ratchets), SLICE,
-  ACCENT / SLIDE on ACID, and four automation lanes. EDIT+arrows change the value under the cursor.
+- Steps: EDIT sets a step. L1/R1 choose the lane: NOTE (called PITCH on the sampler), VELOCITY, CHANCE, REPEAT
+  (ratchets), SLICE, ACCENT / SLIDE on ACID, and four automation lanes. On a sliced sample SLICE comes first.
+  EDIT+arrows change the value under the cursor. A new step starts from the last value set on each lane.
+  A step is removed only on the NOTE / PITCH lane: on the other lanes EDIT and OPTION+EDIT do not erase it.
 - STEP / ROLL switches the pattern to a **piano roll**: EDIT adds or removes a note, EDIT+left/right its length,
   EDIT+up/down its pitch, X+up/down velocity, X+left/right chance, L1/R1 the grid, Y back.
 - SHIFT+X: RANDOM, a generator for the pattern.
@@ -53,7 +55,8 @@ with a chance.
 ### FX
 The pad's two inserts with their parameters and a live picture; L1/R1 walk through the pads, return A (reverb),
 return B (delay) and the master. Y opens **MOD**: four LFOs per pad (shape, rate or tempo division, depth, target,
-start on a note of this or another pad). EDIT on a target lets you point at any knob.
+start on a note of this or another pad). EDIT on a target lets you point at any knob. OPTION+EDIT on TARGET unlinks
+the LFO.
 
 ### MIXER
 One strip per pad: two inserts, sends A and B, DK (duck), pan, fader, M (mute), S (solo), F (freeze); then the
@@ -81,10 +84,11 @@ Every synth engine has factory presets (EDIT on the instrument row) and room for
 
 ## 5. Effects, modulation, sidechain
 
-Inserts: compressor (can be keyed from another pad), distortion, chorus, flanger, phaser, filter, bitcrusher, tape,
+Inserts: compressor (SRC: keyed from another pad), distortion, chorus, flanger, phaser, filter, bitcrusher, tape,
 autopan, ring modulator, multiband. Sends: reverb and tempo delay.
 
 Automation: four lanes per pattern, any knob as the target, straight or bent segments. LFOs add on top.
+OPTION+EDIT on a lane's target (the header above the steps) unlinks it; its points stay.
 
 **DUCK window** (EDIT on a strip's DK row): a curve of 16 points of volume. LEFT/RIGHT choose a point, EDIT+up/down
 set it, EDIT+left/right draw on. Fields: TRIGGER (NOTE of the source pad, SOUND passing a threshold, GRID on the
@@ -109,7 +113,7 @@ written (`120bpm`, `Amin`) and from the sound otherwise.
 
 ## 9. Install, update, remove
 
-1. Unpack `brickpad-1.1-alpha-trimui-brick.zip`. Copy `BrickPad.sh` and the folder `brickpad` into `roms/ports/` on
+1. Unpack `brickpad-1.2-alpha-trimui-brick.zip`. Copy `BrickPad.sh` and the folder `brickpad` into `roms/ports/` on
    the card (on the Brick: `/userdata/roms/ports/`).
 2. Put WAV or OGG files into `roms/ports/brickpad/samples/`. No samples are included.
 3. Update the game list on the Brick and start BrickPad from Ports. Hold MENU for 3 seconds to quit.
