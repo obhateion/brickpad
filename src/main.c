@@ -1411,13 +1411,16 @@ static int par_row_near(int c, int r) {  // nearest filled row at or above r
     while (r > 0 && par_at(c, r) < 0) r--;
     return r;
 }
-static int cur_par(void) { if (srow >= 3) { int n; const GbCtl *c = pctl(&n); return c[clampi(gb_cur, 0, n - 1)].p; } return par_at(scol, par_row_near(scol, srow - 3)); }
+static int v2_sound(void); static int sound_par(void); static void sound_sync(void); static void sound_move(int k); static int sound_edit_arrow(int k);   // sound.h
+static int cur_par(void) { if (v2_sound()) return sound_par();   // UI v2: the card under the cursor
+    if (srow >= 3) { int n; const GbCtl *c = pctl(&n); return c[clampi(gb_cur, 0, n - 1)].p; } return par_at(scol, par_row_near(scol, srow - 3)); }
 static void par_focus(int p) {
     { int i = gb_find(p); if (i >= 0) { if (par_visible(p)) { gb_cur = i; srow = 3; scol = 0; } return; } }   // every pad has a panel; a hidden control keeps the cursor where it is
     for (int c = 0; c < 2; c++) for (int r = 0; r < PROWS; r++) if (par_col[c][r] == p) { scol = c; srow = 3 + par_row_near(c, r); return; }
 }
 static int v2_steps(void) { return ui_cat == PC_PATTERN && tab == T_SEQ && !hubbing && !patmenu && !perform && !cur_pat(sel)->mode && !is_auto(lane); }
 static void seq_clamp(void) {            // slot change or undo may hide the parameter under the cursor
+    if (ui_cat == PC_SOUND && tab == T_SEQ && !hubbing && !patmenu) sound_sync();   // SOUND (UI v2): its page and card exist
     if (spage > last_page()) spage = last_page();   // first: the panel returns early below
     if (v2_steps() && (srow < 1 || srow > 2)) { srow = 1; scol = 0; }   // STEPS (UI v2): only the steps
     if (v2_steps() && cur_step() >= cur_pat(sel)->len) set_step(cur_pat(sel)->len ? cur_pat(sel)->len - 1 : 0);
@@ -1665,6 +1668,7 @@ static void step_adjust(int st, int d, int big) {
     if (lane == L_TRIG || lane == L_NOTE || lane == L_SLICE) step_hear(st);   // the new note or slice sounds
 }
 static void seq_edit_arrow(int k) {     // EDIT + arrows
+    if (v2_sound() && sound_edit_arrow(k)) return;
     Pattern *p = cur_pat(sel);
     int d = (k == K_RIGHT || k == K_UP) ? 1 : -1, big = k == K_UP || k == K_DOWN;
     if (srow < 0 && scol == 1) { Track *t = &song.t[sel]; pat_switch((t->queued >= 0 ? t->queued : t->cur) + d); return; }   // the pattern field: the next one
@@ -1709,6 +1713,7 @@ static void seq_edit_arrow(int k) {     // EDIT + arrows
     }
 }
 static void seq_move(int k) {
+    if (v2_sound()) { sound_move(k); return; }
     if (v2_steps()) {                    // STEPS (UI v2): two rows of eight, the pages follow the cursor
         int len = cur_pat(sel)->len, d = k == K_RIGHT ? 1 : k == K_LEFT ? -1 : k == K_DOWN ? 8 : -8, n = cur_step() + d;
         if (n >= 0 && n < len) set_step(n);
@@ -3214,6 +3219,7 @@ static void listen_name(int s, char *b) {   // the listening note by name where 
 }
 static int asking, naming, exporting; static void ask_key(int k, int down); static void nm_key(int k, int down); static void export_key(int k, int down);
 #include "ui.h"
+#include "sound.h"
 static void key_event(int k, int down) {
     if (k < 0) return;
     if (k == K_PLAY && !down) play_release();
@@ -3394,6 +3400,7 @@ static void key_event(int k, int down) {
     if (tab == T_FX && (k == K_L1 || k == K_R1)) { fx_unit_step(k == K_R1 ? 1 : -1); return; }
     if (tab == T_FX && k == K_Y && fx_unit < NSLOT) { fx_page = !fx_page; return; }   // FX <> MOD
     if (tab == T_MIX && (k == K_L1 || k == K_R1)) { mcol = k == K_R1 ? (mcol < NSLOT ? (mcol / 4 + 1) * 4 : 0) : (mcol < 4 ? NSLOT : mcol <= NSLOT ? (mcol - 1) / 4 * 4 : NSLOT); if (mcol > NSLOT + 2) mcol = 0; if (mcol < NSLOT) sel = mcol; return; }
+    if (ui_cat == PC_SOUND && tab == T_SEQ && (k == K_L1 || k == K_R1)) { sound_page_step(k == K_R1 ? 1 : -1); return; }   // SOUND: the page
     if (tab == T_SEQ && (k == K_L1 || k == K_R1)) {   // the pad's own lanes, round
         int l[L_N], n = lane_list(l), i = 0; while (i < n && l[i] != lane) i++;
         lane = l[((i < n ? i : 0) + (k == K_R1 ? 1 : n - 1)) % n]; return; }
@@ -5688,7 +5695,7 @@ static void draw(void) {
     SDL_SetRenderDrawColor(R, C_BG.r, C_BG.g, C_BG.b, 255);
     SDL_RenderClear(R);
     ui_v2 = !exporting && !naming && !browsing && !slicing && !randing && !presetting && !theming && !iconing && !ducking
-            && (rolling || picking || hubbing || patmenu || recpage || v2_steps() || tab == T_PAT || (tab == T_GRID && perform != 2));   // the screens rebuilt after the mockups so far
+            && (rolling || picking || hubbing || patmenu || recpage || v2_steps() || v2_sound() || tab == T_PAT || (tab == T_GRID && perform != 2));   // the screens rebuilt after the mockups so far
     if (ui_v2) ui2_header(); else draw_header();
     if (exporting) draw_export();
     else if (naming) draw_naming();
@@ -5705,6 +5712,7 @@ static void draw(void) {
     else if (patmenu) draw_patmenu();
     else if (recpage) draw_record();
     else if (v2_steps()) draw_steps2();
+    else if (v2_sound()) draw_sound2();
     else switch (tab) {
     case T_GRID: draw_grid(); break; case T_SEQ: draw_seq(); break; case T_PAT: draw_pat(); break; case T_PRJ: draw_prj(); break;
     case T_MIX: draw_mixer(); break; case T_FX: draw_fx(); break;

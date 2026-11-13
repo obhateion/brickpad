@@ -35,7 +35,7 @@ static void rrect(int x, int y, int w, int h, int r, Col c) {   // a filled roun
 static void rframe(int x, int y, int w, int h, int r, int t, Col c, Col inside) {   // a rounded outline t thick
     rrect(x, y, w, h, r, c); rrect(x + t, y + t, w - 2 * t, h - 2 * t, r > t ? r - t : 1, inside);
 }
-static void ui_path(char *b, int n);
+static void ui_path(char *b, int n); static const char *snd_page_name(void); static void snd_page_count(char *b, int n);   // sound.h
 static void ui2_header(void) {           // NEON > PADS on the left, the transport and the tempo on the right
     rect(0, 0, W, V2_HEAD, C_CELL, 1);
     char b[160]; ui_path(b, sizeof b);
@@ -55,6 +55,7 @@ static void ui2_header(void) {           // NEON > PADS on the left, the transpo
         ftext(W - 20 - ftext_w(FT_MB, t), y, FT_MB, C_RED, t); return;
     }
     if (tab == T_PAT && !perform) return;   // A07: nothing on the right
+    if (v2_sound()) { snd_page_count(t, sizeof t); ftext(W - 20 - ftext_w(FT_MB, t), y, FT_MB, C_ENG(song.t[sel].type), t); return; }   // A08: 1/5
     if (v2_steps() || rolling) { snprintf(t, sizeof t, "P%02d", song.t[sel].cur + 1); ftext(W - 20 - ftext_w(FT_MB, t), y, FT_MB, C_ORANGE, t); return; }   // A05: the pattern
     snprintf(t, sizeof t, "%c %d", engine_playing() ? 1 : 2, (int)(song.tempo * tempo_mul + 0.5f));
     ftext(W - 20 - ftext_w(FT_MB, t), y, FT_MB, engine_playing() ? th_cur[TC_SMP] : C_DIM, t);
@@ -94,6 +95,7 @@ static void ui_path(char *b, int n) {    // NEON > INSTRUMENT > 06 GRAND > DEEP
     else if (picking) UI_ADD("ENGINE"); else if (presetting) UI_ADD("PRESETS"); else if (theming) UI_ADD("THEME");
     else if (iconing) UI_ADD("ICON"); else if (ducking) UI_ADD("DUCK");
     else if (recpage) UI_ADD("PATTERN > RECORD");
+    else if (v2_sound()) UI_ADD("SOUND > %s", snd_page_name());
     else if (v2_steps()) UI_ADD("PATTERN > STEPS");
     else if (ui_cat >= 0 && !(tab == T_PAT) && !(ui_cat == PC_SOUND && cl_deep)) UI_ADD("%s", cat_name[ui_cat]);
     else if (tab == T_PAT) UI_ADD("PATTERN > SELECT");
@@ -163,7 +165,7 @@ static void ui_cheat(void) {
 
 // The value popup: while EDIT+arrows turn a control of the instrument panel, its name, value and where it sits.
 static void ui_popup(void) {
-    if (!held[K_EDIT] || !used[K_EDIT] || tab != T_SEQ || srow < 3 || perform || ui_window()) return;
+    if (!held[K_EDIT] || !used[K_EDIT] || tab != T_SEQ || srow < 3 || perform || ui_window() || ui_v2) return;   // the cards show their values
     int p = cur_par(); if (p < 0 || p == P_SAMPLE) return;
     char v[96]; par_str(sel, p, v, sizeof v);
     enum { PW = 440, PH = 92, PX = (W - PW) / 2, PY = 92 };
