@@ -251,3 +251,89 @@ static void draw_sound2(void) {
 }
 static const char *snd_page_name(void) { return snd_page()->name; }
 static void snd_page_count(char *b, int n) { int k; const SndPage *pgs = snd_pages(song.t[sel].type, &k); snprintf(b, n, "%d/%d", (int)(snd_page() - pgs) + 1, k); }
+
+// ---- SOUND > FILES (A11): the folders on the left, the files on the right ----
+// The 1.2 browser's keys stay: UP/DOWN the list (folders first, then files), RIGHT/EDIT into a folder, LEFT up, hold EDIT a kit.
+// A folder under the cursor shows what is in it on the right; in a folder without folders the left side shows its neighbours.
+static const char *const fcat_name[CAT_N] = {"", "Kick", "Snare", "Clap", "Hat", "Open hat", "Cymbal", "Tom", "Perc", "Loop", "Bass", "Melodic", "Vox", "FX"};
+static int fl_list(const char *dir, Entry **out) {   // a folder's entries, kept until another folder is asked for (two at once)
+    static Entry *e[2]; static int n[2], next; static char key[2][512];
+    for (int i = 0; i < 2; i++) if (e[i] && !strcmp(key[i], dir)) { *out = e[i]; return n[i]; }
+    int i = next; next ^= 1;
+    if (!e[i]) e[i] = malloc(sizeof(Entry) * 512);
+    if (!e[i]) { *out = NULL; return 0; }
+    snprintf(key[i], sizeof key[i], "%s", dir); n[i] = list_dir(dir, e[i], 512); *out = e[i]; return n[i];
+}
+static void fl_name(char *b, int n, const char *s, int max) {   // too long: the start and the end, the middle as ..
+    int l = (int)strlen(s); if (l <= max) snprintf(b, n, "%s", s); else snprintf(b, n, "%.*s..%s", max - 8, s, s + l - 6);
+}
+static void draw_browse2(void) {
+    enum { LX = 26, LY = 76, LW = 293, LH = 625, RX = 338, RW = 659, RH = 61, ROWS = 10 };
+    Col ec = C_ENG(song.t[sel].type); char b[64];
+    int nd = 0; while (nd < bn && bent[nd].dir) nd++;
+    rrect(LX, LY, LW, LH, 10, C_CELL);
+    // the left side: this folder's folders (the cursor may be on one), else its neighbours with this one marked
+    const Entry *le = bent; int ln = nd, lon = bcur < nd ? bcur : -1, act = bcur < nd; Entry *pe = NULL;
+    if (!nd) { const char *sl = strrchr(bdir, '/');
+        if (sl) { char up[512]; snprintf(up, sizeof up, "%.*s", (int)(sl - bdir), bdir); int pn = fl_list(up, &pe); ln = 0; le = pe;
+            while (ln < pn && pe[ln].dir) { if (!strcmp(pe[ln].name, sl + 1)) lon = ln; ln++; } } }
+    { static int ltop; if (lon >= 0) { if (lon < ltop) ltop = lon; if (lon >= ltop + 10) ltop = lon - 9; } if (ltop > (ln > 10 ? ln - 10 : 0)) ltop = ln > 10 ? ln - 10 : 0;
+      for (int i = 0; i < 10 && ltop + i < ln; i++) { int k = ltop + i, y = LY + 12 + i * 57, on = k == lon;
+        if (on) rrect(LX + 10, y, LW - 20, 48, 8, act ? C_SELBG : mix(C_SELBG, C_CELL, 128));
+        fl_name(b, sizeof b, le[k].name, 13); for (char *q = b; *q; q++) if (*q >= 'a' && *q <= 'z') *q -= 32;
+        ftext(LX + 28, y + 12, on ? FT_MB : FT_M, on ? C_WHITE : C_DIM, b); }
+      if (!ln) ftext(LX + 28, LY + 24, FT_MB, C_WHITE, "SAMPLES"); }
+    // the right side: the files here, or what is in the folder under the cursor
+    const Entry *re = bent + nd; int rn = bn - nd, rcur = bcur - nd; char rdir[512]; snprintf(rdir, sizeof rdir, "%s", bdir);
+    if (act) { char p[1024]; snprintf(p, sizeof p, "%s/%s", bdir, bent[bcur].name); snprintf(rdir, sizeof rdir, "%.511s", p); Entry *fe; rn = fl_list(rdir, &fe); re = fe; rcur = -1; }
+    static int rtop; if (rcur >= 0) { if (rcur < rtop) rtop = rcur; if (rcur >= rtop + ROWS) rtop = rcur - ROWS + 1; } else if (act) rtop = 0;
+    if (rtop > (rn > ROWS ? rn - ROWS : 0)) rtop = rn > ROWS ? rn - ROWS : 0;
+    for (int i = 0; i < ROWS && rtop + i < rn; i++) { int k = rtop + i, y = LY + i * RH, on = k == rcur;
+        char fp[1024]; snprintf(fp, sizeof fp, "%s/%s", rdir, re[k].name);
+        int bad = !re[k].dir && idx_bad(fp), fill = on && browse_hold && ms_since(SDL_GetTicks(), browse_hold) > 150;
+        if (on) rrect(RX, y, RW, 50, 8, C_SELBG);
+        fl_name(b, sizeof b, re[k].name, 40); if (re[k].dir) strcat(b, "/");
+        ftext(RX + 23, y + 13, on ? FT_MB : FT_M, bad ? C_RED : act ? C_DIM : C_WHITE, b);
+        const char *tg = ""; char t2[24];
+        if (re[k].dir) tg = "folder";
+        else if (bad) tg = "broken";
+        else { int c = file_cat(fp); float bpm; int root; sample_name_info(fp, &bpm, &root);
+            if (c == CAT_LOOP && bpm > 0) { snprintf(t2, sizeof t2, "%d BPM", (int)(bpm + 0.5f)); tg = t2; } else tg = fcat_name[c % CAT_N]; }
+        ftext(RX + RW - 23 - ftext_w(FT_M, tg), y + 13, FT_M, on ? ec : C_DIM, tg);
+        if (fill) rect(RX + 12, y + 44, clampi(ms_since(SDL_GetTicks(), browse_hold), 0, HOLD_MS) * (RW - 24) / HOLD_MS, 4, browse_rand ? C_WHITE : ec, 1);
+    }
+    if (rn > ROWS) { int th = ROWS * RH - 11, tw = th * ROWS / rn; rect(RX + RW + 4, LY, 4, th, C_CELL, 1); rect(RX + RW + 4, LY + (th - tw) * rtop / (rn - ROWS), 4, tw, C_DIM, 1); }
+    if (!rn) ftext(RX + 23, LY + 13, FT_M, C_DIM, act ? "empty folder" : "no sounds here");
+    if (!fmenu && !fconfirm) draw_footer(act ? "EDIT OPEN  HOLD KIT  Y BACK  < UP  X FILES" : "EDIT LOAD  OPTION LISTEN  Y BACK  < UP  X FILES");
+    draw_fmenu();
+}
+
+// ---- SOUND > PRESETS (A12): the categories as tabs, the presets of the one under the cursor ----
+static void draw_presets2(void) {
+    int idx[NPRESET + NUSERP + 1], n = pr_list(idx, NPRESET + NUSERP + 1); Col ec = C_ENG(song.t[sel].type);
+    pr_cur = clampi(pr_cur, 0, n - 1);
+    #define PR_CAT(j) (idx[j] < 0 || idx[j] >= 1000 ? -1 : presets[idx[j]].cat)   // -1: MINE (SAVE CURRENT and the user's)
+    int tabs[NPRESET_CAT + 1], nt = 0, cur = PR_CAT(pr_cur), ct = 0;
+    for (int j = 0; j < n; j++) { int c = PR_CAT(j), seen = 0; for (int t = 0; t < nt; t++) if (tabs[t] == c) seen = 1; if (!seen) tabs[nt++] = c; }
+    for (int t = 0; t < nt; t++) if (tabs[t] == cur) ct = t;
+    int vis = nt < 4 ? nt : 4, first = clampi(ct - 1, 0, nt - vis), tw = 971 / vis;   // the tabs: four at most, the current one among them
+    for (int v = 0; v < vis; v++) { int t = first + v, x = 26 + v * tw, on = t == ct; const char *nm = tabs[t] < 0 ? "MINE" : preset_cat[tabs[t] % NPRESET_CAT];
+        if (on) rrect(x, 76, tw - 10, 38, 8, ec);
+        ftext(x + (tw - 10) / 2 - ftext_w(FT_MB, nm) / 2, 83, FT_MB, on ? C_BG : C_DIM, nm); }
+    if (first > 0) ftext(6, 83, FT_MB, C_DIM, "<"); if (first + vis < nt) ftext(1006, 83, FT_MB, C_DIM, ">");
+    int a = 0; while (a < n && PR_CAT(a) != cur) a++;
+    int e = a; while (e < n && PR_CAT(e) == cur) e++;
+    enum { ROWS = 9, RH = 61 }; int top = clampi(pr_cur - a - ROWS / 2, 0, e - a > ROWS ? e - a - ROWS : 0);
+    static const char *const en[4] = {"SAMPLER", "GRAND", "ACID", "CLOUD"};
+    for (int r = 0; r < ROWS && a + top + r < e; r++) { int j = a + top + r, i = idx[j], y = 130 + r * RH, on = j == pr_cur;
+        const char *nm = i < 0 ? "+ SAVE CURRENT" : i >= 1000 ? upre[i - 1000].name : presets[i].name;
+        if (on) rrect(26, y, 971, 50, 8, C_SELBG);
+        ftext(48, y + 12, on ? FT_LB : FT_M, i < 0 ? C_DIM : C_WHITE, nm);
+        const char *tg = i < 0 ? "" : i >= 1000 ? "USER" : en[song.t[sel].type & 3];
+        ftext(974 - ftext_w(FT_M, tg), y + 13, FT_M, on ? ec : C_DIM, tg); }
+    if (e - a > ROWS) { int th = ROWS * RH - 11, h = th * ROWS / (e - a); rect(1004, 130, 4, th, C_CELL, 1); rect(1004, 130 + (th - h) * top / (e - a - ROWS), 4, h, C_DIM, 1); }
+    int i = idx[pr_cur];
+    draw_footer(i < 0 ? "EDIT SAVE THE SOUND YOU HAD  Y BACK" : i >= 1000 ? "EDIT LOAD  L1/R1 CATEGORY  Y BACK  OPT LISTEN  OPT+EDIT DELETE"
+                : "EDIT LOAD  L1/R1 CATEGORY  Y BACK  OPT LISTEN");
+    #undef PR_CAT
+}

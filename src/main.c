@@ -3306,7 +3306,8 @@ static void key_event(int k, int down) {
             browse_hold = 0;             // anything else cancels the hold
             if (k == K_PLAY) { play_key(); return; }
             if (fm_key(k)) return;           // the file menu (X) and its question
-            if (k == K_Y) k = K_OPT;     // Y leaves here as in the editors
+            if (k == K_Y) { browse_close(); return; }   // Y leaves here as in the editors
+            if (k == K_OPT && !bmode) { browse_preview(); return; }   // UI v2 (A11): OPTION listens again
             browse_key(k);
         }
         return;
@@ -4617,6 +4618,10 @@ static void draw_seq(void) {
                 : song.t[sel].type == 0 ? "Y DEEP (FADES)  EDIT+ARROWS CHANGE  OPT+EDIT DEFAULT"
                                : "EDIT+ARROWS CHANGE  OPT+EDIT DEFAULT");
 }
+static void slice_card(int x, int y, int w, const char *lb, const char *v, Col ec, int on) {   // UI v2: a name and a value, as on the SOUND cards
+    if (on) rframe(x, y, w, 96, 8, 4, ec, C_CELL); else rrect(x, y, w, 96, 8, C_CELL);
+    ftext(x + 20, y + 12, FT_M, C_DIM, lb); ftext(x + w - 20 - ftext_w(FT_XB, v), y + 10, FT_XB, C_WHITE, v);
+}
 static void draw_slice(void) {
     const Sample *s = engine_sample(sel);
     if (!s || s->n < 2) { slicing = 0; return; }
@@ -4642,6 +4647,32 @@ static void draw_slice(void) {
     }
     int a = ed_start(s), b = ed_end(s), k = clampi(ed_m, 0, cnt - 1), ka = ed_pos(s, k), kb = ed_pos(s, k + 1);
     enum { WY = 118, WH = 396, CY = WY + WH / 2 };
+    if (ui_v2) {                         // UI v2 (after A09): the wave on a panel, the points as lines with numbers, cards below
+        Col ec = C_ENG(song.t[sel].type), yel = C_ORANGE; enum { PX = 26, PY = 80, PW = 971, PH = 400, IX = PX + 12, IW = PW - 24, MY = PY + PH / 2 };
+        rrect(PX, PY, PW, PH, 10, C_CELL);
+        for (int x = 0; x < IW; x += 3) { int px = x * WAVE_W / IW, f = ed_view + (int)((int64_t)px * span / WAVE_W);
+            int y0 = MY - (int)(clampf1(pk[px][1]) * (PH / 2 - 16)), y1 = MY - (int)(clampf1(pk[px][0]) * (PH / 2 - 16));
+            rect(IX + x, y0, 2, y1 - y0 + 1, f < a || f > b ? mix(ec, C_CELL, 190) : f >= ka && f < kb ? ec : mix(ec, C_CELL, 110), 1); }
+        for (int m = 0; m <= cnt; m++) {
+            int p = ed_pos(s, m); if (p < ed_view || p > ed_view + span) continue;
+            int x = IX + (int)((int64_t)(p - ed_view) * (IW - 1) / span), on = m == ed_m, edge = m == 0 || m == cnt;
+            rect(x - (on ? 1 : 0), PY + 8, on ? 3 : 2, PH - 16, on ? yel : edge ? C_WHITE : mix(C_WHITE, C_CELL, 60), 1);
+            char nb[8]; snprintf(nb, sizeof nb, "%s", m == 0 ? "S" : m == cnt ? "E" : ""); if (!nb[0]) snprintf(nb, sizeof nb, "%d", m + 1);
+            if (m < cnt || m == cnt) ftext(m == cnt ? x - 8 - ftext_w(FT_S, nb) : x + 8, PY + 10, FT_S, on ? yel : C_DIM, nb);
+        }
+        if (span < s->n) { rect(PX, PY + PH + 8, PW, 6, C_CELL, 1); rect(PX + (int)((int64_t)ed_view * PW / s->n), PY + PH + 8, (int)((int64_t)span * PW / s->n) + 2, 6, C_DIM, 1); }
+        char v1[32], v2[32], v3[32];
+        par_str(sel, P_SLICES, v1, sizeof v1);
+        if (ed_m == 0) snprintf(v2, sizeof v2, "START %d.%d%%", t->start / 10, t->start % 10);
+        else if (ed_m == cnt) snprintf(v2, sizeof v2, "END %d.%d%%", t->end / 10, t->end % 10);
+        else snprintf(v2, sizeof v2, "%d  %.3f S", ed_m + 1, mpos / (double)SR);
+        snprintf(v3, sizeof v3, "%d  %d MS", k + 1, (kb - ka) / (SR / 1000));
+        slice_card(32, 500, 473, "SLICES", v1, ec, 0); slice_card(518, 500, 473, "POINT", v2, ec, 1);
+        slice_card(32, 608, 473, "SLICE", v3, ec, 0);
+        snprintf(v1, sizeof v1, "X%d", span < s->n ? s->n / span : 1); slice_card(518, 608, 473, "ZOOM", v1, ec, 0);
+        draw_footer("EDIT SPLIT  EDIT+<> MOVE  Y BACK  <> POINT  ^v ZOOM  OPT LISTEN  OPT+EDIT DELETE");
+        return;
+    }
     dotfield(16, WY, WAVE_W, WH, 31, C_GREY);
     rect(16, CY, WAVE_W, 1, C_LINE, 1);
     frame(16, WY, WAVE_W, WH, 1, C_LINE);
@@ -5694,17 +5725,17 @@ static void draw(void) {
       last = scr; }
     SDL_SetRenderDrawColor(R, C_BG.r, C_BG.g, C_BG.b, 255);
     SDL_RenderClear(R);
-    ui_v2 = !exporting && !naming && !browsing && !slicing && !randing && !presetting && !theming && !iconing && !ducking
-            && (rolling || picking || hubbing || patmenu || recpage || v2_steps() || v2_sound() || tab == T_PAT || (tab == T_GRID && perform != 2));   // the screens rebuilt after the mockups so far
+    ui_v2 = !exporting && !naming && !(browsing && bmode) && !randing && !theming && !iconing && !ducking
+            && (browsing || presetting || slicing || rolling || picking || hubbing || patmenu || recpage || v2_steps() || v2_sound() || tab == T_PAT || (tab == T_GRID && perform != 2));   // the screens rebuilt after the mockups so far
     if (ui_v2) ui2_header(); else draw_header();
     if (exporting) draw_export();
     else if (naming) draw_naming();
-    else if (browsing) draw_browse();
+    else if (browsing) { if (bmode) draw_browse(); else draw_browse2(); }
     else if (slicing) draw_slice();
     else if (rolling) draw_roll();
     else if (randing) draw_rnd();
     else if (picking) draw_pick();
-    else if (presetting) draw_presets();
+    else if (presetting) draw_presets2();
     else if (theming) draw_theme();
     else if (iconing) draw_icons();
     else if (ducking) draw_duck();
