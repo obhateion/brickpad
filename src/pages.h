@@ -227,8 +227,12 @@ static void draw_mix2(void) {
 static int mx_pg, mx_r, mx_fz;            // the page; RETURNS: the row in a column (0 level, 1-2 two parameters); FREEZE: the row
 static int v2_mixer(void) { return ui_cat < 0 && tab == T_MIX && !ducking && !perform; }
 static const int8_t mx_ret_k[3][2] = {{RV_SIZE, RV_DECAY}, {DL_TIME, DL_FB}, {MS_COMP, MS_LIM}};
+static void mixer2_fix(void) {            // the cursor belongs to the page: pads on PADS, a unit on RETURNS
+    if (mx_pg == 1 && (mcol < NSLOT || mcol > NSLOT + 2)) mcol = NSLOT; if (mx_pg != 1 && mcol >= NSLOT) mcol = sel; mx_r = clampi(mx_r, 0, 2);
+}
 static void mixer2_page(int d) { mx_pg = (mx_pg + d + 3) % 3; if (mx_pg == 0) { mcol = sel; mrow = MX_VOL; } else if (mx_pg == 1) { mcol = NSLOT; mx_r = 0; mrow = MX_VOL; } else mx_fz = 0; }
 static void mixer2_move(int k) {
+    mixer2_fix();
     if (mx_pg == 0) { if (k == K_LEFT) mcol = (mcol + NSLOT - 1) % NSLOT; else if (k == K_RIGHT) mcol = (mcol + 1) % NSLOT; sel = mcol; mrow = MX_VOL; return; }
     if (mx_pg == 1) { if (k == K_LEFT && mcol > NSLOT) mcol--; else if (k == K_RIGHT && mcol < NSLOT + 2) mcol++; else if (k == K_UP && mx_r) mx_r--; else if (k == K_DOWN && mx_r < 2) mx_r++;
         mrow = mx_r ? MX_PAN : MX_VOL; return; }
@@ -237,7 +241,7 @@ static void mixer2_move(int k) {
 }
 static int mixer2_fz_pad(void) { int n = 0; for (int s = 0; s < NSLOT; s++) if (has_sound(s)) { if (n == mx_fz) return s; n++; } return -1; }   // -1: EXPORT
 static void mixer2_arrow(int k) {         // EDIT+arrows
-    int d = k == K_RIGHT || k == K_UP ? 1 : -1, big = k == K_UP || k == K_DOWN;
+    int d = k == K_RIGHT || k == K_UP ? 1 : -1, big = k == K_UP || k == K_DOWN; mixer2_fix();
     if (mx_pg == 0) { act_pad_volume_step(mcol, d * (big ? 5 : 1)); return; }
     if (mx_pg == 1) { int u = mcol - NSLOT;
         if (mx_r == 0) { if (u == 2) act_master_step(d * (big ? 5 : 1)); else act_unit_param_add(mcol, u ? DL_LEVEL : RV_LEVEL, d * (big ? 5 : 1)); }
@@ -245,11 +249,13 @@ static void mixer2_arrow(int k) {         // EDIT+arrows
         else act_unit_param_add(mcol, mx_ret_k[u][mx_r - 1], d * (big && !(u == 1 && mx_r == 1) ? 5 : 1)); }
 }
 static int mixer2_tap(void) {             // EDIT: RETURNS opens the unit's every parameter; FREEZE freezes, or exports
+    mixer2_fix();
     if (mx_pg == 1) { fx_unit = mcol; frow = fcol = 0; set_tab(T_FX); return 1; }
     if (mx_pg == 2) { int s = mixer2_fz_pad(); if (s < 0) { export_open(); return 1; } freeze_set(s, !frozen(s)); if (!frozen(s)) toast("UNFROZEN"); return 1; }
     return 0;
 }
 static void draw_mixer2(void) {
+    mixer2_fix();
     static const char *const pgn[3] = {"PADS", "RETURNS", "FREEZE"};
     for (int i = 0; i < 3; i++) { int x = 26 + i * 324, on = i == mx_pg; if (on) rrect(x, 70, 314, 34, 8, C_ORANGE);
         ftext(x + 157 - ftext_w(FT_MB, pgn[i]) / 2, 75, FT_MB, on ? C_BG : C_DIM, pgn[i]); }

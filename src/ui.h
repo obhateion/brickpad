@@ -7,7 +7,6 @@ enum { STRIP_HIDDEN, STRIP_THIN, STRIP_BIG };
 #define C_CAT(c) th_cur[TC_PAT + (c)]
 static const char *const cat_name[PC_N] = {"PATTERN", "SOUND", "FX", "MOD", "MIX"};
 static void draw_footer(const char *hint);
-static int ui_strip = STRIP_THIN;        // PROJECT > SYSTEM > INTERFACE (step 6)
 static char ui_hint[256];                // this frame's whole footer hint: the cheat sheet shows all of it
 static int ui_v2;                        // this frame draws a rebuilt screen: the mockups' header and footer (draw())
 
@@ -88,6 +87,7 @@ static void ui2_footer(const char *h) {  // at most three key chips: the key in 
     rect(0, V2_FOOT, W, H - V2_FOOT, C_CELL, 1);
     int x = 18, y = V2_FOOT + 10, left = 3;
     if (msg_t && SDL_GetTicks() - msg_t < 1500) { int w = ftext_w(FT_MB, msg) + 24; rrect(x, y, w, 32, 6, C_ORANGE); ftext(x + 12, y + 4, FT_MB, C_BG, msg); return; }
+    if (!hint_on) return;                // PROJECT > SYSTEM > FOOTER HINTS off: SHIFT still shows every key
     while (*h && left--) {
         const char *e = strstr(h, "  "); int n = e ? (int)(e - h) : (int)strlen(h), k = (int)strcspn(h, " "); char b[64];
         if (k > n) k = n;
@@ -350,6 +350,7 @@ static void draw_steps2(void) {
     if (pages > 1) snprintf(b, sizeof b, "%d steps \3 %s \3 page %d/%d", p->len, div_name[p->div % 6], page + 1, pages);
     else snprintf(b, sizeof b, "%d steps \3 %s", p->len, div_name[p->div % 6]);
     ftext(26, 660, FT_M, C_DIM, b);
+    if (!pat_used(p)) { const char *m = "empty: EDIT puts a note on the step"; ftext(512 - ftext_w(FT_M, m) / 2, 660, FT_M, C_ORANGE, m); }
     if (cs < p->len && p->trig[cs]) { char nb[12]; step_value(p, cs, L_TRIG, nsl, nb); snprintf(b, sizeof b, "step %d \3 %s \3 vel %d", cs + 1, nb, p->vel[cs]); }
     else snprintf(b, sizeof b, "step %d", cs + 1);
     ftext(W - 28 - ftext_w(FT_M, b), 660, FT_M, C_WHITE, b);

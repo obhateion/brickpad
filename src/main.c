@@ -1948,19 +1948,24 @@ static void pat_play(void) {             // PLAY in the window: the pattern unde
 }
 
 // ---------- PROJECT ----------
-enum { J_TEMPO, J_SWING, J_KEY, J_SCALE, J_LAUNCH, J_METRO, J_BEATS, J_COUNT, J_QUANT, J_MASTER, J_THEME, J_LIB, J_NEW, J_SNAP, J_PROJ, J_SAVE, J_SAVEAS, J_EXPORT, J_HINT, J_N };
+enum { J_TEMPO, J_SWING, J_KEY, J_SCALE, J_LAUNCH, J_METRO, J_BEATS, J_COUNT, J_QUANT, J_MASTER, J_THEME, J_LIB, J_NEW, J_SNAP, J_PROJ, J_SAVE, J_SAVEAS, J_EXPORT, J_HINT, J_STRIP, J_VIEW, J_LOCK, J_N };
 // The sections of PROJECT (2026-11-09): the left column chooses one, the middle shows its settings
 enum { JS_SONG, JS_PLAY, JS_REC, JS_FILE, JS_SYS, JS_N };
 static const char *const prj_sec_name[JS_N] = {"SONG", "PLAY", "RECORD", "FILE", "SYSTEM"};
 static const char *const prj_sec_hint[JS_N] = {"TEMPO KEY SCALE", "LAUNCH CLICK MASTER", "COUNT-IN QUANTISE", "OPEN SAVE NEW", "THEME LIBRARY"};
 static const int8_t prj_sec[JS_N][6] = {{J_TEMPO, J_SWING, J_KEY, J_SCALE, J_SNAP, J_BEATS}, {J_LAUNCH, J_METRO, J_MASTER, -1},
-                                        {J_COUNT, J_QUANT, -1}, {J_PROJ, J_SAVE, J_SAVEAS, J_EXPORT, J_NEW, -1}, {J_THEME, J_LIB, J_HINT, -1}};
+                                        {J_COUNT, J_QUANT, -1}, {J_PROJ, J_SAVE, J_SAVEAS, J_EXPORT, J_NEW, -1}, {J_VIEW, J_STRIP, J_HINT, J_LOCK, J_THEME, J_LIB}};
 static const char *const prj_help[J_N] = {"THE PROJECT'S SPEED. EDIT TAPS IT, L1/R1 HELD NUDGE WHILE PLAYING", "LATE EVEN 1/16 STEPS: A SHUFFLE",
     "THE TONIC EVERY PAD PLAYS IN (A PAD CAN HAVE ITS OWN)", "WHICH NOTES THE DEGREES, KEYS AND RANDOM USE",
     "A CLIP STARTS OR STOPS ON THIS GRID, AS IN ABLETON", "A CLICK ON EVERY BEAT WHILE PLAYING", "BEATS IN A BAR: LAUNCH AND RECORDING COUNT THEM",
     "BEATS COUNTED IN BEFORE A TAKE FROM STOP", "WHERE RECORDED HITS LAND ON THE STEPS", "THE WHOLE MIX, THE SAME FADER AS IN MIXER",
-    "COLOURS OF BRICKPAD, KEPT FOR EVERY PROJECT", "CHECKS EVERY SAMPLE ONCE, SLOWLY, MARKS BROKEN FILES", "EDIT TWICE: AN EMPTY PROJECT (UNDO BRINGS IT BACK)", "ON: EDIT+<> ON A STEP WALKS THE PAD'S SCALE ONLY, AS ON THE M8", "THE OPEN PROJECT; * = CHANGES NOT SAVED. EDIT: THE PROJECTS", "EDIT: WRITE THE PROJECT TO ITS FILE", "EDIT: TYPE A NAME, THEN SAVE UNDER IT", "EDIT: RENDER BARS OF THE PROJECT TO exports/NAME.wav", "CURSOR 10 S ON A PANEL CONTROL: A LINE ON WHAT IT DOES"};
-static const char *prj_name[J_N] = {"TEMPO", "SWING", "KEY", "SCALE", "CLIP LAUNCH", "METRONOME", "BEATS/BAR", "COUNT-IN", "REC QUANT", "MASTER VOL", "THEME", "CHECK LIBRARY", "NEW PROJECT", "SCALE SNAP", "PROJECT", "SAVE", "SAVE AS", "EXPORT WAV", "HOVER HINTS"};
+    "COLOURS OF BRICKPAD, KEPT FOR EVERY PROJECT", "CHECKS EVERY SAMPLE ONCE, SLOWLY, MARKS BROKEN FILES", "EDIT TWICE: AN EMPTY PROJECT (UNDO BRINGS IT BACK)", "ON: EDIT+<> ON A STEP WALKS THE PAD'S SCALE ONLY, AS ON THE M8", "THE OPEN PROJECT; * = CHANGES NOT SAVED. EDIT: THE PROJECTS", "EDIT: WRITE THE PROJECT TO ITS FILE", "EDIT: TYPE A NAME, THEN SAVE UNDER IT", "EDIT: RENDER BARS OF THE PROJECT TO exports/NAME.wav", "THE KEYS OF THE SCREEN IN THE FOOTER. OFF: A CLEAN FOOTER, SHIFT STILL SHOWS THEM ALL",
+    "THE TWELVE PADS UNDER THE PATH WHILE A PAD IS OPEN: ENGINE, CLIP, WHICH ONE", "ADVANCED: EVERYTHING. SIMPLE: PLAY, NOTES, SOUND, LARGE (MENU+ARROW). HOLD F1+F2 TO LEAVE IT",
+    "IN THE SIMPLE VIEW NOTHING CAN BE DELETED OR OVERWRITTEN"};
+static const char *prj_name[J_N] = {"TEMPO", "SWING", "KEY", "SCALE", "CLIP LAUNCH", "METRONOME", "BEATS/BAR", "COUNT-IN", "REC QUANT", "MASTER VOL", "THEME", "CHECK LIBRARY", "NEW PROJECT", "SCALE SNAP", "PROJECT", "SAVE", "SAVE AS", "EXPORT WAV", "FOOTER HINTS", "PAD STRIP", "VIEW", "KID LOCK"};
+static int ui_strip = 1, ui_simple, ui_lock;   // PROJECT > SYSTEM: the pad strip (0 hidden, 1 thin), the simple view, its kid lock (ui.cfg beside the binary)
+static void ui_cfg_save(void) { char b[32]; int n = snprintf(b, sizeof b, "%d %d %d\n", ui_strip, ui_simple, ui_lock); write_whole("ui.cfg", b, n); }
+static void ui_cfg_load(void) { FILE *f = fopen("ui.cfg", "r"); if (f) { int a = 1, b = 0, c = 0; if (fscanf(f, "%d %d %d", &a, &b, &c) >= 1) { ui_strip = a != 0; ui_simple = b != 0; ui_lock = c != 0; } fclose(f); } }
 static int hint_on = 1;                    // HOVER HINTS (hints.cfg beside the binary: "0" = off)
 static void hint_set(int on) { hint_on = on; write_whole("hints.cfg", on ? "1\n" : "0\n", 2); }
 static void hint_load(void) { FILE *f = fopen("hints.cfg", "r"); if (f) { int v = 1; if (fscanf(f, "%d", &v) == 1) hint_on = v != 0; fclose(f); } }
@@ -2132,7 +2137,11 @@ static int mcol;
 static void prj_edit_arrow(int k) {
     int d = (k == K_RIGHT || k == K_UP) ? 1 : -1, big = k == K_UP || k == K_DOWN;
     if (!jcol) return;                   // on the sections: the arrows only move
-    if (jcur == J_LIB || jcur == J_NEW || jcur >= J_PROJ) return;   // actions, not values (SCALE SNAP is a value)
+    if (jcur == J_LIB || jcur == J_NEW || (jcur >= J_PROJ && jcur < J_HINT)) return;   // actions, not values (SCALE SNAP is a value)
+    if (jcur == J_STRIP) { ui_strip = !ui_strip; ui_cfg_save(); return; }
+    if (jcur == J_VIEW) { ui_simple = !ui_simple; ui_cfg_save(); return; }
+    if (jcur == J_LOCK) { ui_lock = !ui_lock; ui_cfg_save(); return; }
+    if (jcur == J_HINT) { hint_set(!hint_on); return; }
     if (jcur == J_THEME) { theme_pick(d); return; }
     edit_begin();
     switch (jcur) {
@@ -2142,6 +2151,9 @@ static void prj_edit_arrow(int k) {
     case J_METRO: act_metro_toggle(); break;
     case J_SNAP: act_snap_toggle(); break;
     case J_HINT: hint_set(!hint_on); break;
+    case J_STRIP: ui_strip = !ui_strip; ui_cfg_save(); break;
+    case J_VIEW: ui_simple = !ui_simple; ui_cfg_save(); break;
+    case J_LOCK: ui_lock = !ui_lock; ui_cfg_save(); break;
     case J_KEY: act_key_step(d * (big ? 7 : 1)); break;
     case J_SCALE: act_scale_step(d); break;
     case J_BEATS: act_beats_step(d); break;
@@ -2184,7 +2196,7 @@ static void prj_tap(void) {
         if (ntaps == 5) { memmove(taps, taps + 1, 4 * sizeof *taps); ntaps = 4; }
         taps[ntaps++] = now;
         if (ntaps >= 2) { edit_begin(); song.tempo = clampi((int)(60000.0 * (ntaps - 1) / (now - taps[0]) + 0.5), 40, 300); }
-    } else if (jcur == J_LAUNCH || jcur == J_METRO || jcur == J_COUNT || jcur == J_QUANT || jcur == J_SNAP || jcur == J_HINT) prj_edit_arrow(K_RIGHT);
+    } else if (jcur == J_LAUNCH || jcur == J_METRO || jcur == J_COUNT || jcur == J_QUANT || jcur == J_SNAP || jcur == J_HINT || jcur == J_STRIP || jcur == J_VIEW || jcur == J_LOCK) prj_edit_arrow(K_RIGHT);
 }
 
 // ---------- SLICE EDITOR ----------
@@ -3244,6 +3256,7 @@ static int asking, naming, exporting; static void ask_key(int k, int down); stat
 #include "ui.h"
 #include "sound.h"
 #include "pages.h"
+#include "simple.h"
 static void key_event(int k, int down) {
     if (k < 0) return;
     if (k == K_PLAY && !down) play_release();
@@ -3262,6 +3275,7 @@ static void key_event(int k, int down) {
     if (exporting) { export_key(k, down); return; }
     if (asking) { ask_key(k, down); return; }
     if (naming) { nm_key(k, down); return; }
+    if (ui_simple && simple_key(k, down)) return;   // the simple view: its own keys (NOTES lets the steps' keys through)
     if (k == K_EDIT && down && !browsing && !slicing && !rolling && !theming && !iconing && !perform && tab == T_SEQ && srow >= 3 && is_synth(sel) && cur_par() != P_SAMPLE) gb_audition();
     if (k == K_EDIT && down && !browsing && !slicing && !rolling && !theming && !iconing && !perform && tab == T_SEQ && srow >= 1 && srow <= 2 && !cur_pat(sel)->mode) {
         Pattern *p = cur_pat(sel); int st = cur_step();
@@ -4785,6 +4799,9 @@ static void prj_value(int i, char *b) {
     case J_METRO: snprintf(b, 32, song.metro ? "ON" : "OFF"); break;
     case J_SNAP: snprintf(b, 32, song.snap ? "ON" : "OFF"); break;
     case J_HINT: snprintf(b, 32, hint_on ? "ON" : "OFF"); break;
+    case J_STRIP: snprintf(b, 32, ui_strip ? "THIN" : "HIDDEN"); break;
+    case J_VIEW: snprintf(b, 32, ui_simple ? "SIMPLE" : "ADVANCED"); break;
+    case J_LOCK: snprintf(b, 32, ui_lock ? "ON" : "OFF"); break;
     case J_PROJ: snprintf(b, 32, "%.20s%s", prj_cur[0] ? prj_cur : "UNTITLED", prj_dirty() ? " *" : ""); break;
     case J_SAVE: snprintf(b, 32, prj_dirty() ? "UNSAVED CHANGES" : prj_cur[0] ? "SAVED" : "NOT SAVED YET"); break;
     case J_SAVEAS: b[0] = 0; break;
@@ -5766,8 +5783,9 @@ static void draw(void) {
       last = scr; }
     SDL_SetRenderDrawColor(R, C_BG.r, C_BG.g, C_BG.b, 255);
     SDL_RenderClear(R);
-    ui_v2 = 1; v2_normalize();           // every screen is a rebuilt one
-    ui2_header();
+    ui_v2 = 1;                           // every screen is a rebuilt one
+    if (ui_simple && !exporting && !naming && !asking) { draw_simple(); goto shown; }
+    v2_normalize(); ui2_header();
     if (exporting) draw_export2();
     else if (naming) draw_naming2();
     else if (browsing) { if (bmode) draw_prjbrowse2(); else draw_browse2(); }
@@ -5798,6 +5816,7 @@ static void draw(void) {
     }
     ui_popup(); ui_cheat();
     if (asking) draw_ask2();
+shown:;
     Uint64 tp = SDL_GetPerformanceCounter(); draw_build_ms += (tp - t_draw0) * 1000.0 / SDL_GetPerformanceFrequency();
     SDL_RenderPresent(R);
     draw_present_ms += (SDL_GetPerformanceCounter() - tp) * 1000.0 / SDL_GetPerformanceFrequency();
@@ -5851,7 +5870,7 @@ int main(int argc, char **argv) {
     logmsg("audio: %s", SDL_GetCurrentAudioDriver());
     idx_load();
     load_state(); prj_startup();
-    theme_load(); presets_load(); hint_load();
+    theme_load(); presets_load(); hint_load(); ui_cfg_load();
     if (test_secs) {  // demo beat for automated checks
         song.tempo = 128; song.swing = 20;
         for (int i = 0; i < 16; i++) {
