@@ -82,7 +82,7 @@ static Col mix(Col a, Col b, int t) {    // t 0..255: a to b
 }
 
 enum { T_GRID, T_SEQ, T_PAT, T_FX, T_MIX, T_PRJ, T_N };
-static const char *tab_name[T_N] = {"GRID", "INSTRUMENT", "PATTERNS", "FX", "MIXER", "PROJECT"};
+static const char *tab_name[T_N] = {"PADS", "INSTRUMENT", "PATTERNS", "FX", "MIXER", "PROJECT"};
 
 static SDL_Renderer *R;
 static FILE *logf;
@@ -2275,7 +2275,7 @@ static void edit_arrow(int k) {
 }
 static void edit_tap(void) {
     switch (tab) {
-    case T_GRID: if (gsel_launch()) break; if (has_sound(sel)) act_clip_toggle(sel); else pick_open(); break;   // an empty slot has nothing to play: choose an instrument
+    case T_GRID: if (has_sound(sel)) set_tab(T_SEQ); else pick_open(); break;   // UI v2: EDIT opens the pad, an empty one asks for an engine
     case T_SEQ: seq_tap(); break;
     case T_PAT: pat_tap(); break;
     case T_PRJ: prj_tap(); break;
@@ -3534,47 +3534,55 @@ static void draw_keys(void) {
       text(1008 - 9 * 16, 630, 2, C_DIM, "MENU EXIT"); }
     draw_footer("PADS PLAY  SHIFT+<> SCALE  SHIFT+L1/R1 KEY  SHIFT+^v OCT");
 }
+// HOME > PADS (UI v2, mockup A01): twelve tiles, the engine's stripe and tag, the name, where the pattern goes, the clip's
+// progress. EDIT opens the pad, an empty one asks for an engine; single clips start in PADS (MENU).
 static void draw_grid(void) {
     Uint32 now = SDL_GetTicks();
     if (perform == 2) { draw_keys(); return; }
-    enum { GX = 16, GY = 90, CW = 248, CH = 200, BAR = 30 };
-    cell_lines(GX, GY, CW, CH, 4, 3);
+    enum { GX = 16, GY = 94, GAP = 8, CW = (992 - 3 * GAP) / 4, CH = (590 - 2 * GAP) / 3 };
+    static const char *const eng_tag[4] = {"SMP", "GRD", "ACD", "CLD"};
     for (int i = 0; i < NSLOT; i++) {
-        int x = GX + (i % 4) * CW, y = GY + (i / 4) * CH, cur = i == sel;
-        Track *t = &song.t[i]; Uint32 age = now - flash[i];
-        const Sample *s = engine_sample(i); int snd = has_sound(i);
-        if (flash[i] && age < 180) rect(x + 1, y + 1, CW - 1, CH - 1, mix(C_CELL, C_ORANGE, 255 - (int)age * 255 / 180), 1);
-        rect(x + 1, y + BAR, CW - 1, 1, C_LINE, 1);
-        int gs = !cur && gsel_in(i);         // in the selection: a paler plate
-        if (cur) rect(x, y, CW + (i % 4 == 3 ? 0 : 1), BAR, perform ? C_DIM : C_ORANGE, 1);    // the title bar of the selected pad is a plate
-        else if (gs) rect(x + 1, y + 1, CW - 1, BAR - 1, mix(C_CELL, C_ORANGE, 110), 1);
-        text(x + 12, y + 7, 2, cur ? C_BG : gs ? C_WHITE : C_DIM, pad_label[cell_key[i]]);
-        textf(x + CW - 24, y + 11, 1, cur ? C_BG : C_GREY, "%02d", i + 1);
-        { int w = engine_playing() ? engine_want(i) : -1, blink = (now / 250) % 2;   // waiting for the quantum: blinks
-          if ((t->on && w != 0) || (w >= 0 && blink)) chevrons(x + CW - 80, y + 8, 14, 3, cur ? C_BG : C_PLAY); }   // the clip plays
-        icon(track_icon(t) > 0 ? track_icon(t) - 1 : slot_icon(i), x + 12, y + 42, cur && !perform ? C_ORANGE : track_icon(t) > 0 ? C_WHITE : !snd ? C_LINE : t->on ? C_DIM : C_GREY);
-        draw_route(x + 56, y + 50, i, t->on ? C_WHITE : C_DIM, C_ORANGE, 0);   // the pattern and where it goes next
-        if (t->mute) tag(x + CW - 84, y + 46, C_RED, C_BG, "MUTE");
-        if (frozen(i)) tag(x + CW - 148, y + 4, frz_have[i] ? C_PLAY : C_GREY, C_BG, "FRZ");   // frozen: plays its recording (grey: not rendered yet)
-        textf(x + 12, y + 86, 2, !snd ? C_GREY : t->mute ? C_DIM : C_WHITE, "%.13s", snd ? slot_name(i) : slot_want[i][0] ? file_base(slot_want[i]) : "EMPTY");
-        (void)s;
-        if (slot_bad[i]) tag(x + CW - 28, y + 82, C_RED, C_BG, "!");
-        const Pattern *p = cur_pat(i);
-        step_matrix(p, x + 13, y + 112, 78, t->on ? engine_step(i) : -1, t->mute);
-        if (t->mute) hatch(x + 13, y + 112, 222, 78, 6, 2, C_BG);    // crossed out, still readable
+        int x = GX + (i % 4) * (CW + GAP), y = GY + (i / 4) * (CH + GAP);
+        Track *t = &song.t[i]; Uint32 age = now - flash[i]; int snd = has_sound(i);
+        Col ec = C_ENG(t->type), ink = t->mute ? C_DIM : C_WHITE;
+        if (!snd) {                      // empty: a dark place with a plus, or the file it misses
+            rect(x, y, CW, CH, C_BG, 1); frame(x, y, CW, CH, 1, C_LINE);
+            textf(x + 16, y + 14, 1, C_GREY, "%02d", i + 1);
+            if (slot_want[i][0]) { text(x + 16, y + 40, 2, C_RED, "MISSING"); textf(x + 16, y + 66, 2, C_DIM, "%.13s", file_base(slot_want[i])); }
+            else text(x + CW / 2 - 12, y + CH / 2 - 12, 3, C_GREY, "+");
+        } else {
+            Col bg = flash[i] && age < 180 ? mix(C_CELL, ec, 140 - (int)age * 140 / 180) : gsel_in(i) && i != sel ? C_SELBG : C_CELL;
+            rect(x, y, CW, CH, bg, 1);
+            rect(x, y, 6, CH, t->mute ? mix(ec, C_BG, 150) : ec, 1);   // the engine's stripe
+            textf(x + 20, y + 14, 1, C_DIM, "%02d", i + 1);
+            icon(track_icon(t) > 0 ? track_icon(t) - 1 : slot_icon(i), x + CW - 46, y + 12, track_icon(t) > 0 ? C_DIM : C_GREY);
+            const char *nm = slot_name(i); int n = (int)strlen(nm);
+            if (n <= 7) text(x + 20, y + 32, 3, ink, nm); else textf(x + 20, y + 36, 2, ink, "%.10s", nm);   // clear of the icon
+            text(x + 20, y + 66, 2, t->mute ? C_DIM : ec, eng_tag[t->type & 3]);
+            int ex = draw_route(x + 20, y + CH - 58, i, t->on ? C_WHITE : C_DIM, C_ORANGE, 0);   // the pattern and where it goes
+            { int w = engine_playing() ? engine_want(i) : -1;   // the clip plays (blinks while it waits for the quantum)
+              if ((t->on && w != 0) || (w >= 0 && (now / 250) % 2)) chevrons(ex + 10, y + CH - 56, 12, 2, C_PLAY); }
+            int fx = x + CW - 12;            // marks on the right of that line
+            if (slot_bad[i]) fx -= tag(fx - 28, y + CH - 62, C_RED, C_BG, "!") + 6;
+            if (t->mute) { fx -= 28; tag(fx, y + CH - 62, C_RED, C_BG, "M"); fx -= 6; }
+            if (frozen(i)) { fx -= 60; tag(fx, y + CH - 62, frz_have[i] ? th_cur[TC_CLD] : C_GREY, C_BG, "FRZ"); }
+            rect(x + 20, y + CH - 22, CW - 40, 6, C_LINE, 1);   // the clip's progress
+            const Pattern *p = cur_pat(i); int st = t->on ? engine_step(i) : -1;
+            if (st >= 0 && p->len > 0) rect(x + 20, y + CH - 22, (CW - 40) * (st % p->len + 1) / p->len, 6, t->mute ? C_DIM : ec, 1);
+        }
     }
     if (gsel_on()) {                         // one frame round the whole selection
-        int c0 = gsel_a % 4, c1 = sel % 4, r0 = gsel_a / 4, r1 = sel / 4, t;
-        if (c0 > c1) { t = c0; c0 = c1; c1 = t; } if (r0 > r1) { t = r0; r0 = r1; r1 = t; }
-        frame(GX + c0 * CW, GY + r0 * CH, (c1 - c0 + 1) * CW + (c1 == 3 ? 0 : 1), (r1 - r0 + 1) * CH + 1, 2, C_ORANGE);
-    } else
-    { int x = GX + (sel % 4) * CW, y = GY + (sel / 4) * CH; frame(x, y, CW + (sel % 4 == 3 ? 0 : 1), CH + 1, 2, perform ? C_DIM : C_ORANGE); }
-    char missing[96]; snprintf(missing, sizeof missing, "MISSING %.32s  %s", file_base(slot_want[sel]), engine_sample(sel) ? "EDIT CLIP" : "EDIT LOAD");
+        int c0 = gsel_a % 4, c1 = sel % 4, r0 = gsel_a / 4, r1 = sel / 4, tt;
+        if (c0 > c1) { tt = c0; c0 = c1; c1 = tt; } if (r0 > r1) { tt = r0; r0 = r1; r1 = tt; }
+        frame(GX + c0 * (CW + GAP) - 4, GY + r0 * (CH + GAP) - 4, (c1 - c0 + 1) * (CW + GAP) - GAP + 8, (r1 - r0 + 1) * (CH + GAP) - GAP + 8, 2, C_ORANGE);
+    }
+    { int x = GX + (sel % 4) * (CW + GAP), y = GY + (sel / 4) * (CH + GAP); frame(x - 2, y - 2, CW + 4, CH + 4, 2, perform ? C_DIM : C_WHITE); }
+    char missing[96]; snprintf(missing, sizeof missing, "MISSING %.32s  %s", file_base(slot_want[sel]), engine_sample(sel) ? "EDIT OPEN" : "EDIT LOAD");
     draw_footer(perform ? "PAD CLIP/HIT  SHIFT+PAD OTHER  PLAY PAD CLIP"
-                        : gsel_on() ? "EDIT/PLAY ALL SELECTED  Y MUTE  SHIFT+Y FREEZE  ARROW ENDS IT"
+                        : gsel_on() ? "PLAY ALL SELECTED  Y MUTE  SHIFT+Y FREEZE  ARROW ENDS IT"
                         : slot_want[sel][0] ? missing
-                        : has_sound(sel) ? "EDIT CLIP  PLAY ALL  Y MUTE  SHIFT+Y FREEZE  SHIFT+DPAD SEL"
-                                             : "EDIT LOAD SAMPLE  X ICON  MENU PERFORM");
+                        : has_sound(sel) ? "EDIT OPEN  PLAY ALL  Y MUTE  SHIFT+Y FREEZE  SHIFT+DPAD SEL"
+                                             : "EDIT CHOOSE ENGINE  X ICON  MENU PADS");
 }
 static void slice_label(char *b, const Pattern *p, int i, int ns) {   // "16+": the step also plays what follows slice 16
     int k = (p->slice[i] < 0 ? i : p->slice[i]) % (ns ? ns : NSTEP);
