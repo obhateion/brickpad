@@ -4,6 +4,7 @@
 #pragma once
 
 enum { STRIP_HIDDEN, STRIP_THIN, STRIP_BIG };
+#define C_CAT(c) th_cur[TC_PAT + (c)]
 static const char *const cat_name[PC_N] = {"PATTERN", "SOUND", "FX", "MOD", "MIX"};
 static void draw_footer(const char *hint);
 static int ui_strip = STRIP_THIN;        // PROJECT > SYSTEM > INTERFACE (step 6)
@@ -37,10 +38,30 @@ static void rframe(int x, int y, int w, int h, int r, int t, Col c, Col inside) 
     rrect(x, y, w, h, r, c); rrect(x + t, y + t, w - 2 * t, h - 2 * t, r > t ? r - t : 1, inside);
 }
 static int v2_fx(void); static int fx2_slot; static int scene_count(void); static int v2_mixer(void); static int mx_pg; static int v2_lfo(void); static int v2_auto(void); static void modmenu_open(void); static void ui_path(char *b, int n); static const char *snd_page_name(void); static void snd_page_count(char *b, int n);   // sound.h
+static int in_pad(void); static int ui_window(void);
+static int scening_window(void) { return picking || exporting || naming || theming || iconing || browsing; }   // a window over a HOME screen
 static void ui2_header(void) {           // NEON > PADS on the left, the transport and the tempo on the right
-    rect(0, 0, W, V2_HEAD, C_CELL, 1);
+    int strip = ui_strip != STRIP_HIDDEN && in_pad() && !picking, hh = strip ? 48 : V2_HEAD;   // inside a pad: the pads under the path (L2)
+    rect(0, 0, W, hh, C_CELL, 1);
+    if (strip) for (int i = 0; i < NSLOT; i++) {   // 12 pads: the engine's colour, how far its clip has played, the open one framed
+        int px = 22 + i * 82, pw = 72, on = song.t[i].on && engine_playing(), has = has_sound(i);
+        Col c = has ? C_ENG(song.t[i].type) : C_LINE; if (song.t[i].mute) c = mix(c, C_BG, 170);
+        if (i == sel) rframe(px - 5, 50, pw + 10, 19, 5, 2, C_WHITE, C_CELL);
+        if (!has) { rframe(px, 53, pw, 13, 4, 1, C_LINE, C_BG); continue; }
+        rect(px, 53, pw, 4, c, 1);
+        if (on) { int len = cur_pat(i)->len, st = engine_step(i); if (len > 0 && st >= 0) rect(px, 61, pw * (st % len + 1) / len, 4, c, 1); }
+        else if (pat_used(cur_pat(i))) rect(px, 61, pw / 4, 4, mix(c, C_BG, 150), 1);
+    }
     char b[160]; ui_path(b, sizeof b);
-    int x = 20, y = (V2_HEAD - fv2[FT_M].h) / 2;
+    int x = 20, y = (hh - fv2[FT_M].h) / 2;
+    if (!in_pad() && !perform && !ui_window() && !scening_window()) {   // HOME: its four screens side by side (F1/F2), the open one bright
+        static const char *const hn[4] = {"PADS", "SCENES", "MIXER", "PROJECT"}; int at = tab == T_PRJ ? 3 : tab == T_MIX ? 2 : scening ? 1 : 0;
+        char *e = strstr(b, " > "); if (e) *e = 0;
+        x += ftext(x, y, FT_M, C_DIM, b); x += ftext(x, y, FT_M, C_DIM, " \177 ");
+        for (int i = 0; i < 4; i++) { if (i == at) { int w = ftext_w(FT_MB, hn[i]); rrect(x - 8, y - 5, w + 16, fv2[FT_MB].h + 8, 6, C_SELBG); x += ftext(x, y, FT_MB, C_WHITE, hn[i]) + 26; }
+            else x += ftext(x, y, FT_M, C_DIM, hn[i]) + 26; }
+        b[0] = 0;
+    }
     for (const char *p = b; *p; ) {
         const char *e = strstr(p, " > "); int n = e ? (int)(e - p) : (int)strlen(p); char w[64];
         snprintf(w, sizeof w, "%.*s", n, p);
@@ -140,35 +161,48 @@ static int ui_pairs(const char *h) {     // how many "KEY action" pairs a hint h
 }
 
 // The cheat sheet: every combination of this screen (its whole hint) and the ones that work everywhere.
-static const char *const ui_everywhere[] = {"PLAY PLAY / STOP", "F1/F2 SCREENS", "F1+F2 PROJECT", "MENU PADS / KEYS",
-    "MENU+PLAY RECORD", "MENU 3 S QUIT", "SHIFT+L2 UNDO", "SHIFT+OPT COPY", "SHIFT+EDIT PASTE", "OPT+EDIT DELETE", 0};
-static const char *const ui_more_grid[] = {"Y MUTE", "X ICON", "SHIFT+X NAME", "SHIFT+Y FREEZE", "SHIFT+ARROWS SELECT", "EDIT+<> VOLUME", "OPT LISTEN", 0};
-static const char *const ui_more_seq[] = {"L1/R1 LANE", "X+<> PAD", "XX DOUBLE CLIP", "SHIFT+X RANDOM", "SHIFT+<> PAGE", "Y DEEP", "OPT+ARROWS NOTE", 0};
-static const char *const ui_more_fx[] = {"L1/R1 UNIT", "X+<> PAD", "Y FX / MOD", 0};
-static const char *const ui_more_mix[] = {"Y MUTE", "X SOLO", "L1/R1 GROUP", 0};
-static const char *const ui_more_prj[] = {"L1/R1 TEMPO NUDGE", 0};
-static void ui_pair(int x, int y, const char *p, int n) {   // a key cap and its action
-    int w = (int)strcspn(p, " "); if (w > n) w = n; char b[64];
-    snprintf(b, sizeof b, "%.*s", w, p); rect(x - 4, y - 4, w * 16 + 8, 24, C_LINE, 1); text(x, y, 2, C_WHITE, b);
-    snprintf(b, sizeof b, "%.*s", n - w, p + w); text(x + w * 16, y, 2, C_DIM, b);
+static void disc2(int cx, int cy, int r, Col c);
+static void ui_shade(int a) {            // the screen under an overlay goes dark
+    SDL_SetRenderDrawBlendMode(R, SDL_BLENDMODE_BLEND); SDL_SetRenderDrawColor(R, C_BG.r, C_BG.g, C_BG.b, (Uint8)a);
+    SDL_Rect r = {0, 0, W, V2_FOOT}; SDL_RenderFillRect(R, &r); SDL_SetRenderDrawBlendMode(R, SDL_BLENDMODE_NONE);
 }
-static void ui_cheat(void) {
-    if (!held[K_SHIFT] || used[K_SHIFT] || !shift_t || ms_since(SDL_GetTicks(), shift_t) < 350) return;
-    enum { X0 = 32, Y0 = 92, BW = 960, BH = H - 92 - 84 };
-    rect(X0, Y0, BW, BH, C_CELL, 1); frame(X0, Y0, BW, BH, 2, C_ORANGE);
-    text(X0 + 20, Y0 + 16, 2, C_ORANGE, "THIS SCREEN"); text(X0 + 500, Y0 + 16, 2, C_ORANGE, "EVERYWHERE");
-    int y = Y0 + 52;
-    for (const char *h = ui_hint; *h && y < Y0 + BH - 28; y += 32) {
-        const char *e = strstr(h, "  "); int n = e ? (int)(e - h) : (int)strlen(h);
-        ui_pair(X0 + 24, y, h, n > 28 ? 28 : n);
-        if (!e) { y += 32; break; }
-        h = e; while (*h == ' ') h++;
+static int ui_pair(int x, int y, const char *p, int n) {   // a key chip and what it does, small; returns the width
+    int w = (int)strcspn(p, " "); if (w > n) w = n; char b[64];
+    snprintf(b, sizeof b, "%.*s", w, p); int kw = ftext_w(FT_S, b) + 16; rrect(x, y, kw, 24, 5, C_SELBG); ftext(x + 8, y + 2, FT_S, C_ORANGE, b);
+    snprintf(b, sizeof b, "%.*s", n - w > 0 ? n - w - 1 : 0, p + w + (n > w)); for (char *q = b; *q; q++) if (*q >= 'A' && *q <= 'Z') *q += 32;
+    return kw + 8 + ftext(x + kw + 8, y + 2, FT_S, C_WHITE, b);
+}
+static void ui_jump_box(int x, int y, int c) {   // a category of the jump cross: the open one filled
+    int on = ui_cat == c || (hubbing && hub_cur == c); Col cc = C_CAT(c);
+    if (on) rrect(x, y, 270, 86, 10, cc); else rframe(x, y, 270, 86, 10, 3, cc, C_CELL);
+    ftext(x + 135 - ftext_w(FT_LB, cat_name[c]) / 2, y + 28, FT_LB, on ? C_BG : cc, cat_name[c]);
+}
+static void ui_cheat(void) {              // SHIFT held alone: inside a pad the jump cross (L3), and every combination of this screen
+    if (!held[K_SHIFT] || used[K_SHIFT] || !shift_t || ms_since(SDL_GetTicks(), shift_t) < 250) return;
+    int pad = in_pad() && !perform && !picking, y0 = pad ? 520 : 96;
+    ui_shade(215); rrect(14, y0 - 14, 996, V2_FOOT - y0 + 8, 10, C_CELL);
+    if (pad) {
+        const char *t = "hold SHIFT and press an arrow"; ftext(512 - ftext_w(FT_MB, t) / 2, 92, FT_MB, C_WHITE, t);
+        ui_jump_box(377, 136, PC_PATTERN); ui_jump_box(90, 262, PC_MIX); ui_jump_box(664, 262, PC_SOUND); ui_jump_box(377, 388, PC_FX);
+        disc2(512, 305, 58, C_SELBG); char b[24]; snprintf(b, sizeof b, "%02d", sel + 1); ftext(512 - ftext_w(FT_LB, b) / 2, 278, FT_LB, C_WHITE, b);
+        snprintf(b, sizeof b, "%.8s", slot_name(sel) ? slot_name(sel) : "EMPTY"); ftext(512 - ftext_w(FT_S, b) / 2, 312, FT_S, C_DIM, b);
+        ftext(377 + 135 - ftext_w(FT_S, "MOD: from the pad's list") / 2, 484, FT_S, C_DIM, "MOD: from the pad's list");
+    } else ftext(26, 66, FT_MB, C_ORANGE, "KEYS OF THIS SCREEN");
+    static const char *const every[] = {"PLAY play / stop", "F1/F2 next pad, or screen of HOME", "F1+F2 PROJECT", "Y back", "MENU PADS / KEYS", "MENU+PLAY record",
+        "SHIFT+L2 undo", "SHIFT+OPT copy", "SHIFT+EDIT paste", "OPT+EDIT delete", "MENU-3-S quit", 0};
+    int x = 26, y = y0, rows = (V2_FOOT - 8 - y0) / 30, r = 0, colw = 0;
+    for (int pass = 0; pass < 2; pass++) {
+        const char *h = pass ? NULL : ui_hint;
+        for (int i = 0; pass ? every[i] != NULL : *h != 0; i++) {
+            const char *p = pass ? every[i] : h, *e = pass ? NULL : strstr(h, "  "); int n = e ? (int)(e - h) : (int)strlen(p);
+            if (r >= rows) { r = 0; x += colw + 28; colw = 0; }
+            if (x < 900) { int w = ui_pair(x, y + r * 30, p, n); if (w > colw) colw = w; r++; }
+            if (pass) continue;
+            if (!e) break;
+            h = e; while (*h == ' ') h++;
+        }
+        if (!pass && r) { r = 0; x += colw + 28; colw = 0; }   // the keys that work everywhere start a column
     }
-    const char *const *more = perform ? NULL : tab == T_GRID ? ui_more_grid : tab == T_SEQ ? ui_more_seq : tab == T_FX ? ui_more_fx : tab == T_MIX ? ui_more_mix : tab == T_PRJ ? ui_more_prj : NULL;
-    for (int i = 0; more && more[i] && y < Y0 + BH - 28; i++) if (!strstr(ui_hint, more[i])) { ui_pair(X0 + 24, y, more[i], (int)strlen(more[i])); y += 32; }   // not twice
-    y = Y0 + 52;
-    for (int i = 0; ui_everywhere[i]; i++, y += 32) ui_pair(X0 + 504, y, ui_everywhere[i], (int)strlen(ui_everywhere[i]));
-    text(X0 + 20, Y0 + BH - 24, 1, C_DIM, "LET GO OF SHIFT TO CLOSE");
 }
 
 // The value popup: while EDIT+arrows turn a control of the instrument panel, its name, value and where it sits.
@@ -189,7 +223,6 @@ static void ui_popup(void) {
 // The pad hub (UI v2): PATTERN SOUND FX MOD MIX of the selected pad. EDIT opens one, Y goes back up (category -> hub ->
 // HOME), F1/F2 the next pad on the same page, SHIFT+arrow jumps: UP PATTERN, RIGHT SOUND, DOWN FX, LEFT MIX.
 // Until steps 4-5 rebuild them, the categories open the screens of 1.2 for this pad.
-#define C_CAT(c) th_cur[TC_PAT + (c)]
 static void hub_open(void) { set_tab(T_GRID); hubbing = 1; }
 static void patmenu_open(void) { set_tab(T_SEQ); ui_cat = hub_cur = PC_PATTERN; patmenu = 1; }
 static void cat_open(int c) {

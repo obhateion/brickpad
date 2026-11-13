@@ -2446,10 +2446,11 @@ static void icon_key(int k, int down) {
 static int fx_unit;                      // what the FX tab shows: a pad 0..11, 12 RETURN A, 13 RETURN B, 14 MASTER
 static void tab_step(int d) {            // F1 left, F2 right, round: GRID SEQ+INST FX MIXER (user, 2026-11-09); PROJECT goes back
     static const int order[4] = {T_GRID, T_SEQ, T_FX, T_MIX};
-    if (tab == T_PRJ) { set_tab(prj_back == T_PAT ? T_SEQ : prj_back); return; }
-    {                                    // UI v2: HOME is PADS, SCENES, MIXER (PROJECT: F1+F2); the pad's pages are inside the pad
-        int at = tab == T_MIX ? 2 : tab == T_GRID && scening ? 1 : 0, to = (at + (d > 0 ? 1 : 2)) % 3;
-        set_tab(to == 2 ? T_MIX : T_GRID); scening = to == 1; return;
+    {                                    // UI v2: HOME is PADS, SCENES, MIXER, PROJECT (also F1+F2); the pad's pages are inside the pad
+        int at = tab == T_PRJ ? 3 : tab == T_MIX ? 2 : tab == T_GRID && scening ? 1 : 0, to = (at + (d > 0 ? 1 : 3)) % 4;
+        if (to == 3) prj_back = T_GRID;
+        set_tab(to == 3 ? T_PRJ : to == 2 ? T_MIX : T_GRID); scening = to == 1; if (to == 2 && sel < NSLOT) mcol = sel;
+        return;
     }
     int i = 0, cur = tab == T_PAT ? T_SEQ : tab; while (i < 4 && order[i] != cur) i++;
     int nt = order[((i < 4 ? i : 0) + (d > 0 ? 1 : 3)) % 4];
@@ -3416,6 +3417,8 @@ static void key_event(int k, int down) {
         cl_deep = song.t[sel].type == 1 ? (cl_deep + 1) % 3 : !cl_deep; gb_cur = cl_deep ? 1 : 0; return; }
     if (tab == T_PAT && k == K_Y) { pat_close(0); return; }   // the pattern window: Y goes back
     if (tab == T_GRID && k == K_Y && held[K_SHIFT]) { freeze_key(); return; }
+    if (tab == T_PRJ && k == K_Y) { if (jcol) jcol = 0; else { ui_cat = -1; set_tab(T_GRID); } return; }   // UI v2: Y is back, always
+    if (v2_mixer() && mx_pg && k == K_Y) { mx_pg = 0; mcol = sel; mrow = MX_VOL; return; }                 // RETURNS, FREEZE: back to the faders
     if (tab == T_GRID && k == K_Y && gsel_mute()) return;
     if (tab == T_GRID && k == K_Y) { act_mute_toggle(sel); toast(song.t[sel].mute ? "MUTE ON" : "MUTE OFF"); return; }   // a live move: no undo step
     if (tab == T_GRID && k == K_X && held[K_SHIFT]) { naming_pad(); return; }
