@@ -262,10 +262,12 @@ static int mixer2_tap(void) {             // EDIT: RETURNS opens the unit's ever
 }
 static void draw_mixer2(void) {
     mixer2_fix();
-    if (mx_pg == 0) {                     // A21: twelve faders in the pads' engine colours
-        for (int s = 0; s < NSLOT; s++) { int cx = 66 + s * 81, on = s == mcol, top = 86, bot = 640, h = (bot - top) * song.t[s].vol / 100;
+    mx_meters();
+    if (mx_pg == 0) {                     // A21: twelve faders in the pads' engine colours, each with its icon and its level meter
+        for (int s = 0; s < NSLOT; s++) { int cx = 66 + s * 81, on = s == mcol, top = 128, bot = 640, h = (bot - top) * song.t[s].vol / 100;
             Col c = has_sound(s) ? (on ? C_ORANGE : C_ENG(song.t[s].type)) : C_LINE; char b[4];
-            if (on) rframe(cx - 38, top - 10, 76, 638, 8, 3, C_WHITE, C_BG);
+            if (on) rframe(cx - 38, 76, 76, 638, 8, 3, C_WHITE, C_BG);
+            if (has_sound(s)) { icon(slot_icon(s), cx - 16, 84, song.t[s].mute ? C_DIM : on ? C_WHITE : C_GREY); meter_bar(cx + 24, top, 8, bot - top, mx_show[s]); }
             if (on) { char vv[8]; snprintf(vv, sizeof vv, "%d", song.t[s].vol); char nn[24]; snprintf(nn, sizeof nn, "%02d VOLUME", s + 1); ui_focus(nn, vv, song.t[s].vol, c); }
             rect(cx - 8, top, 16, bot - top, C_CELL, 1); if (has_sound(s)) { rect(cx - 8, bot - h, 16, h, c, 1); rect(cx - 22, bot - h - 5, 44, 10, C_WHITE, 1); }
             snprintf(b, sizeof b, "%02d", s + 1); ftext(cx - ftext_w(FT_MB, b) / 2, 652, FT_MB, on ? C_WHITE : C_DIM, b);
@@ -278,6 +280,7 @@ static void draw_mixer2(void) {
             ftext(x + 20, 92, FT_MB, C_WHITE, cn[u]);
             int lv = u == 2 ? song.master : *unit_param(NSLOT + u, u ? DL_LEVEL : RV_LEVEL, &lo, &hi, &def), fh = 380 * lv / 100;
             rect(x + 142, 168, 26, 380, C_LINE, 1); rect(x + 142, 548 - fh, 26, fh, c, 1);
+            meter_bar(x + 180, 168, 10, 380, mx_show[NSLOT + u]);
             if (on && mx_r == 0) rframe(x + 134, 160, 42, 396, 6, 3, C_WHITE, C_CELL), rect(x + 142, 168, 26, 380, C_LINE, 1), rect(x + 142, 548 - fh, 26, fh, c, 1);
             for (int r = 0; r < 2; r++) { int k = mx_ret_k[u][r], y = 570 + r * 62, v; char b[16];
                 if (u == 2) { v = song.mix.ms[k] ? 100 : 0; snprintf(b, sizeof b, "%s", song.mix.ms[k] ? "ON" : "OFF"); }

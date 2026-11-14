@@ -35,7 +35,7 @@ static int simple_key(int k, int down) {  // 1 = the key is used up here; 0 = NO
                           sv_exit = 0; if (!used[k]) sv_pad(k == K_F2 ? 1 : -1); }
         return 1; }
     if (k == K_MENU) { menu_down = down && !held[K_SHIFT] ? SDL_GetTicks() : 0; if (!down && !used[K_MENU]) { sv_mode = (sv_mode + 1) % 3; simple_sync(); } return 1; }
-    if (held[K_MENU] && k <= K_RIGHT) { if (down) { used[K_MENU] = 1; if (k != K_LEFT) sv_mode = k == K_UP ? 0 : k == K_RIGHT ? 1 : 2; simple_sync(); } return 1; }
+    if (held[K_MENU] && k <= K_RIGHT) { if (down) { used[K_MENU] = 1; menu_down = 0; if (k != K_LEFT) sv_mode = k == K_UP ? 0 : k == K_RIGHT ? 1 : 2; simple_sync(); } return 1; }
     if (k == K_PLAY) { if (down && !held[K_SHIFT]) play_key(); return 1; }
     if (!has_sound(sel) && sv_mode) return 1;
     if (sv_mode == 1) {

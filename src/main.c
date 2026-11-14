@@ -3263,6 +3263,8 @@ static void listen_name(int s, char *b) {   // the listening note by name where 
 static int asking, naming, exporting; static void ask_key(int k, int down); static void nm_key(int k, int down); static void export_key(int k, int down);
 #include "ui.h"
 #include "sound.h"
+static void icon(int id, int x, int y, Col c); static int slot_icon(int i);   // pages.h: the pads' icons and meters, drawn further down
+static float mx_show[NSLOT + 3]; static void mx_meters(void); static void meter_bar(int x, int y, int w, int h, float v);
 #include "pages.h"
 #include "simple.h"
 static void key_event(int k, int down) {
@@ -3557,6 +3559,7 @@ static void icon_sc(int id, int x, int y, int sc, Col c) {
 static void icon(int id, int x, int y, Col c) { icon_sc(id, x, y, 2, c); }
 static int slot_icon(int i) {            // the type comes from the path: asked only when the path changes
     static char seen[NSLOT][256]; static int cat[NSLOT]; const char *p = song.t[i].path;
+    if (track_icon(&song.t[i])) return track_icon(&song.t[i]) - 1;   // the one picked with X (ICON), else by the sound
     if (song.t[i].type == 1) return IC_M_SYNTH;
     if (song.t[i].type == 2) return IC_M_BASS_BOX;
     if (song.t[i].type == 3) return IC_M_GRAINS;
@@ -3690,6 +3693,7 @@ static void draw_grid(void) {
             char b[24]; snprintf(b, sizeof b, "%02d", i + 1); ftext(x + 25, y + 12, FT_M, C_DIM, b);
             snprintf(b, sizeof b, "%.10s", slot_name(i)); ftext(x + 25, y + 42, FT_XB, ink, b);
             ftext(x + 25, y + 94, FT_M, t->mute ? C_DIM : ec, eng_tag[t->type & 3]);
+            icon(slot_icon(i), x + CW - 46, y + 86, t->mute ? C_DIM : ink);   // the pad's icon (X), by the engine's name
             { char r[24]; const Pattern *p0 = &t->pat[t->cur]; (void)p0;   // where the pattern goes, small
               int tg = t->queued >= 0 ? t->queued : -9; if (tg >= 0) snprintf(r, sizeof r, "P%d \177 P%d", t->cur + 1, tg + 1); else snprintf(r, sizeof r, "P%d", t->cur + 1);
               ftext(x + 25, y + 132, FT_S, t->on ? C_WHITE : C_DIM, r); }
@@ -5827,6 +5831,7 @@ static void draw(void) {
     ui_popup(); ui_cheat();
     if (asking) draw_ask2();
 shown:;
+    ui_quit_hold();
     Uint64 tp = SDL_GetPerformanceCounter(); draw_build_ms += (tp - t_draw0) * 1000.0 / SDL_GetPerformanceFrequency();
     SDL_RenderPresent(R);
     draw_present_ms += (SDL_GetPerformanceCounter() - tp) * 1000.0 / SDL_GetPerformanceFrequency();
