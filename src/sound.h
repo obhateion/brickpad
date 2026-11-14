@@ -76,7 +76,7 @@ static void sound_sync(void) {           // after any change of pad, engine or m
     if (sp_cur < -1) sp_cur = -1;
 }
 static void sound_page_step(int d) {     // L1/R1
-    int n; const SndPage *pgs = snd_pages(song.t[sel].type, &n); int *pp = &sp_pg[song.t[sel].type & 3];
+    int n; snd_pages(song.t[sel].type, &n); int *pp = &sp_pg[song.t[sel].type & 3];
     *pp = (*pp + d + n) % n; sp_cur = 0; pt_pick = 0;
     sound_sync();
 }

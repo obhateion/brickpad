@@ -8,7 +8,6 @@ enum { STRIP_HIDDEN, STRIP_THIN, STRIP_BIG };
 static const char *const cat_name[PC_N] = {"PATTERN", "SOUND", "FX", "MOD", "MIX"};
 static void draw_footer(const char *hint);
 static char ui_hint[256];                // this frame's whole footer hint: the cheat sheet shows all of it
-static int ui_v2;                        // this frame draws a rebuilt screen: the mockups' header and footer (draw())
 
 // ---- the kit of the mockups: text in their sizes, rounded cards, the header and the footer ----
 enum { V2_HEAD = 60, V2_FOOT = 718 };    // the header ends, the footer starts
@@ -148,33 +147,7 @@ static void ui_path(char *b, int n) {    // NEON > INSTRUMENT > 06 GRAND > DEEP
     else if (tab == T_FX && fx_page && fx_unit < NSLOT) UI_ADD("MOD");
 #undef UI_ADD
 }
-static void ui_top(void) {               // the first header row: the path, the page, the pad strip
-    char b[160]; ui_path(b, sizeof b);
-    int max = 52, len = (int)strlen(b); const char *s = len > max ? b + len - max : b;   // too long: the end counts
-    int x = 16;
-    for (const char *p = s; *p; ) {      // the last part bright, the separators faint
-        const char *e = strstr(p, " > "); int n = e ? (int)(e - p) : (int)strlen(p); char w[64];
-        snprintf(w, sizeof w, "%.*s", n, p); text(x, 10, 2, e ? C_DIM : C_WHITE, w); x += n * 16;
-        if (!e) break;
-        text(x + 8, 10, 2, C_GREY, ">"); x += 32; p = e + 3;
-    }
-    int scr = tab == T_GRID ? 1 : tab == T_SEQ || tab == T_PAT ? 2 : tab == T_FX ? 3 : tab == T_MIX ? 4 : 5;
-    textf(1008 - 3 * 16, 10, 2, C_ORANGE, "%d/5", scr);
-    if (ui_strip == STRIP_HIDDEN) return;
-    for (int i = 0; i < NSLOT; i++) {    // 12 pads: the engine's colour, how far the clip has played, the selected one
-        int px = 16 + i * 83, pw = 79, on = song.t[i].on && engine_playing();
-        Col c = has_sound(i) ? C_ENG(song.t[i].type) : C_LINE, dim = mix(c, C_BG, 170);
-        if (song.t[i].mute) c = dim = mix(c, C_BG, 200);
-        rect(px, 34, pw, 6, has_sound(i) ? dim : C_CELL, 1);
-        if (has_sound(i) && on) { int len = cur_pat(i)->len, st = engine_step(i); if (len > 0 && st >= 0) rect(px, 34, pw * (st % len + 1) / len, 6, c, 1); }
-        if (i == sel) frame(px - 2, 31, pw + 4, 12, 2, C_WHITE);
-    }
-}
 
-static int ui_pairs(const char *h) {     // how many "KEY action" pairs a hint has (they are split by two spaces)
-    int n = 0; while (*h) { n++; const char *e = strstr(h, "  "); if (!e) break; h = e; while (*h == ' ') h++; }
-    return n;
-}
 
 // The cheat sheet: every combination of this screen (its whole hint) and the ones that work everywhere.
 static void disc2(int cx, int cy, int r, Col c);
