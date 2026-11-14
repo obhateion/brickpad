@@ -157,8 +157,15 @@ static void snd_picture(const SndPage *pg, int x, int y, int w, int h, Col ec) {
         snd_wave(x + 12, y + 8, w - 24, h - 36, mix(ec, C_CELL, 150), mix(ec, C_CELL, 200), 0);
         if (s && s->n > 1) { int ww = w - 24 > 960 ? 960 : w - 24, px = x + 12 + ww * t->cp[CP_POS] / 100, sw = ww * t->cp[CP_SPRAY] / 200;   // where the grains come from
             int x0 = px - sw < x + 12 ? x + 12 : px - sw, x1 = px + sw > x + 12 + ww ? x + 12 + ww : px + sw;
-            unsigned r = (unsigned)(SDL_GetTicks() / 140) * 2654435761u;   // A16: the grains as dots round the position, a new cloud every 140 ms
-            int n = 10 + t->cp[CP_DENSITY] * 30 / 100, rad = 3 + t->cp[CP_SIZE] / 14, hh = h - 52;
+            float gp[CL_GRAINS], genv = 0, scan = 0; int ng = engine_cloud_grains(sel, gp, CL_GRAINS, &genv, &scan);
+            int rad = 3 + t->cp[CP_SIZE] / 14, hh = h - 52;
+            if (ng > 0) {                 // sounding: every grain where it reads now, MOTION carrying the band along
+                float c0 = t->cp[CP_POS] / 100.f + scan; c0 -= floorf(c0); px = x + 12 + (int)(c0 * ww);
+                for (int i = 0; i < ng; i++) { float p = c0 + gp[i]; p -= floorf(p);
+                    disc2(x + 12 + (int)(p * ww), y + 16 + (i * 37 % 100) * hh / 100, rad, mix(ec, C_WHITE, (int)(60 + genv * 160))); }
+                rect(px, y + 8, 2, h - 36, C_WHITE, 1); if (s) ftext(x + 20, y + h - 28, FT_S, C_DIM, s->name); break; }
+            unsigned r = (unsigned)(SDL_GetTicks() / 140) * 2654435761u;   // silent, A16: the grains as dots round the position, a new cloud every 140 ms
+            int n = 10 + t->cp[CP_DENSITY] * 30 / 100;
             for (int i = 0; i < n; i++) { r = r * 1103515245u + 12345u; int gx = x0 + (int)((r >> 8) % (unsigned)(x1 - x0 + 1)); r = r * 1103515245u + 12345u; int gy = y + 16 + (int)((r >> 8) % (unsigned)hh);
                 disc2(gx, gy, rad, mix(ec, C_WHITE, (int)((r >> 4) % 90))); }
             rect(px, y + 8, 2, h - 36, C_WHITE, 1); }
@@ -177,6 +184,26 @@ static void snd_picture(const SndPage *pg, int x, int y, int w, int h, Col ec) {
     case GF_ENV: snd_env(x + 16, y + 8, w - 32, h - 16, t->sp[SP_ATTACK], t->sp[SP_DECAY], t->sp[SP_SUSTAIN], t->sp[SP_RELEASE], ec); break;
     }
 }
+static void snd_live(const SndPage *pg, int x, int y, int w, int h) {   // what sounds now, over the picture (1.2 had it on its panels)
+    const Track *t = &song.t[sel]; float env, fc;
+    if ((pg->gfx == GF_WAVE || pg->gfx == GF_SLICES) && t->type == 0 && engine_sample(sel)) {   // where each voice reads the sample
+        float pos[8]; int k = engine_sample_live(sel, pos, 8), ww = w - 24 > 960 ? 960 : w - 24;
+        for (int i = 0; i < k; i++) rect(x + 12 + (int)(pos[i] * ww), y + 8, 2, h - 36, C_ORANGE, 1);
+    } else if ((pg->gfx == GF_FILTER || pg->gfx == GF_ENV) && (t->type == 1 || t->type == 2) && engine_synth_live(sel, &env, &fc)) {
+        if (pg->gfx == GF_FILTER) {       // the cutoff now, on the same scale as the picture's (20 Hz .. 20 kHz over 8..88 %)
+            float f = log10f(fc > 20 ? fc / 20.f : 1.f) / 3; if (f > 1) f = 1;
+            rect(x + 12 + (w - 24) * (8 + (int)(f * 80)) / 100, y + 14, 3, h - 28, C_ORANGE, 1);
+        } else { int top = y + 18, bot = y + h - 18, ly = bot - (int)(env * (bot - top));   // the envelope's level now
+            rect(x + 16, ly, w - 32, 1, mix(C_ORANGE, C_CELL, 120), 1); disc2(x + w - 30, ly, 7, C_ORANGE); }
+    }
+}
+static int snd_tags(int p, char tg[][4]) {   // the automation lanes (A1..) and LFOs (L1..) moving this parameter now
+    int b = auto_bind_target(p), n = 0; if (b < 0) return 0;
+    const AutoLane *al = song.aut[sel][song.t[sel].cur];
+    for (int a = 0; a < NAUTO && n < 4; a++) if (al[a].target == b) snprintf(tg[n++], 4, "A%d", a + 1);
+    for (int j = 0; j < NLFO && n < 4; j++) if (song.lfo[sel][j].target == b && song.lfo[sel][j].depth) snprintf(tg[n++], 4, "L%d", j + 1);
+    return n;
+}
 static const char *snd_label(int p) {
     switch (p) { case P_VOICE: return "MODE"; case P_DIR: return "DIRECTION"; case P_TYPE: return "ENGINE"; case P_VOL: return "VOLUME";
                  case P_SAMPLE: return "PRESETS"; case P_BPM: return "LOOP BPM"; }
@@ -188,7 +215,9 @@ static void snd_card(int x, int y, int w, int h, int p, int on, Col ec) {
     else par_str(sel, p, v, sizeof v);
     if (on) rframe(x, y, w, h, 8, 4, ec, C_CELL); else rrect(x, y, w, h, 8, C_CELL);
     const char *lb = snd_label(p); ftext(x + 20, y + 12, FT_M, C_DIM, lb);
-    int room = w - 52 - ftext_w(FT_M, lb), f = ftext_w(FT_XB, v) <= room ? FT_XB : ftext_w(FT_LB, v) <= room ? FT_LB : FT_M;
+    char tg[4][4]; int nt = snd_tags(p, tg), tx = x + 30 + ftext_w(FT_M, lb);   // A1 / L1 badges after the name: this card moves by itself
+    for (int i = 0; i < nt; i++) { Col bc = tg[i][0] == 'A' ? C_CAT(PC_MOD) : C_WHITE; rrect(tx, y + 12, 38, 24, 4, bc); ftext(tx + 19 - ftext_w(FT_S, tg[i]) / 2, y + 14, FT_S, C_BG, tg[i]); tx += 44; }
+    int room = w - 52 - ftext_w(FT_M, lb) - nt * 44, f = ftext_w(FT_XB, v) <= room ? FT_XB : ftext_w(FT_LB, v) <= room ? FT_LB : FT_M;
     if (ftext_w(f, v) > room) v[room / fv2[f].w > 0 ? room / fv2[f].w : 0] = 0;
     ftext(x + w - 20 - ftext_w(f, v), y + 10 + (fv2[FT_XB].h - fv2[f].h) / 2, f, C_WHITE, v);
     if (on) { int lo, hi, st, bg; par_limits(sel, p, &lo, &hi, &st, &bg); ui_focus(lb, v, par_is_number(p) && bg > 1 && hi > lo ? (par_get(sel, p) - lo) * 100 / (hi - lo) : -1, ec); }
@@ -241,7 +270,7 @@ static void draw_sound2(void) {
     int y0 = 127;
     if (pg->gfx != GF_NONE) {            // the picture; the cursor on it: the file (the sampler, CLOUD) or the presets
         if (sp_cur < 0) rframe(26, 127, 971, 243, 8, 4, ec, C_CELL); else rrect(26, 127, 971, 243, 8, C_CELL);
-        snd_picture(pg, 26, 127, 971, 243, ec);
+        snd_picture(pg, 26, 127, 971, 243, ec); snd_live(pg, 26, 127, 971, 243);
         y0 = 390;
     }
     int rows = (c + 1) / 2, pic = pg->gfx != GF_NONE, h = pic ? 148 : 270, dy = pic ? 162 : 286;   // four cards on screen, as the mockups

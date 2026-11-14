@@ -49,6 +49,30 @@ static void fx2_picture(int x, int y, int w, int h, const FxSlot *f, Col c) {   
         px = nx; py = ny;
     }
 }
+static void fx2_live(int x, int y, int w, int h, const FxSlot *f, Col c) {   // what the insert does now (1.2's FX screen), over the picture
+    char b[48]; int u = fx_budget_used();       // what the inserts take of the processor when all sound; the limit is 40 %
+    snprintf(b, sizeof b, "FX LOAD %d%% / %d%%", (u + 5) / 10, FX_BUDGET / 10); rrect(x - 6, y + 6, ftext_w(FT_S, b) + 12, 28, 4, C_CELL); ftext(x, y + 10, FT_S, u >= FX_BUDGET ? C_RED : C_DIM, b);
+    if (!f->type) return;
+    if (f->on && !ui_fx_live(fx_unit, fx2_slot)) { const char *m = "OVER BUDGET: NOT RUNNING"; int mw = ftext_w(FT_MB, m) + 24;
+        rrect(x + w - mw, y + 8, mw, 32, 6, C_RED); ftext(x + w - mw + 12, y + 12, FT_MB, C_BG, m); return; }
+    int live = f->on && engine_playing(); if (!live) return;
+    float v[6]; engine_fx_view(fx_unit, fx2_slot, v);
+    if (f->type == FX_COMP) {                    // the gain reduction now
+        float gr = v[1] > 24 ? 24 : v[1] < 0 ? 0 : v[1]; int bw = 300, bx = x + w - bw;
+        snprintf(b, sizeof b, "GAIN REDUCTION %.1f DB", gr > 0.05f ? -gr : 0.f); rrect(bx - 8, y + 4, bw + 16, 50, 4, C_CELL); ftext(bx, y + 10, FT_S, gr > 0.1f ? C_ORANGE : C_DIM, b);
+        rect(bx, y + 36, bw, 10, C_LINE, 1); rect(bx + bw - (int)(bw * gr / 24), y + 36, (int)(bw * gr / 24), 10, C_ORANGE, 1);
+    } else if (f->type == FX_FILTER && v[0] > 0) {   // the cutoff now (the LFO moves it), on the picture's scale
+        float p = log2f(v[0] / 20) / 10; if (p < 0) p = 0; if (p > 1) p = 1;
+        int lx = x + (int)((0.15f + p * 0.7f) * w); rect(lx, y + 12, 3, h - 24, C_WHITE, 1);
+        if (v[0] < 1000) snprintf(b, sizeof b, "%.0f HZ", v[0]); else snprintf(b, sizeof b, "%.1f KHZ", v[0] / 1000);
+        rrect(x + w - ftext_w(FT_S, b) - 8, y + 6, ftext_w(FT_S, b) + 12, 28, 4, C_CELL); ftext(x + w - ftext_w(FT_S, b), y + 10, FT_S, C_WHITE, b);
+    } else if (f->type == FX_MULTI) {            // each band: its level in, the gain it gets now
+        static const char *const bn[3] = {"LOW", "MID", "HIGH"}; int bw = 200;
+        for (int k = 0; k < 3; k++) { int bx = x + w - (3 - k) * (bw + 16); float lv = v[k] < -72 ? -72 : v[k] > 0 ? 0 : v[k], g = v[3 + k];
+            snprintf(b, sizeof b, "%s %+.0f DB", bn[k], g); rrect(bx - 6, y + 4, bw + 12, 48, 4, C_CELL); ftext(bx, y + 10, FT_S, g > 0.5f ? C_ORANGE : C_DIM, b);
+            rect(bx, y + 36, bw, 8, C_LINE, 1); rect(bx, y + 36, (int)((lv + 72) / 72 * bw), 8, c, 1); }
+    }
+}
 static void fx2_card(int x, int y, int w, int h, const FxSlot *f, FxCard cd, int on, Col ec) {
     char v[24]; const char *lb; int val, lo = 0, hi = 1;
     if (cd.row == 1) { lb = "ON"; snprintf(v, sizeof v, "%s", f->on ? "ON" : "OFF"); val = f->on; }
@@ -73,6 +97,7 @@ static void draw_fx2(void) {
     int rows = (n + 1) / 2, ph = 186, h = 162, dy = 174, y0 = 153 + ph + 16;   // four cards, the rest by pages
     if (fx2_cur < 0) rframe(26, 153, 971, ph, 8, 4, ec, C_CELL); else rrect(26, 153, 971, ph, 8, C_CELL);
     fx2_picture(46, 153, 931, ph, f, ec);
+    fx2_live(46, 153, 931, ph, f, ec);
     int vis = 2, first = (fx2_cur < 0 ? 0 : fx2_cur / 2) / 2 * 2;
     for (int i = first * 2; i < n && i < (first + vis) * 2; i++)
         fx2_card(i & 1 ? 518 : 32, y0 + (i / 2 - first) * dy, 473, h, f, c[i], i == fx2_cur, ec);
@@ -278,6 +303,7 @@ static void draw_mixer2(void) {
         for (int u = 0; u < 3; u++) { int x = 32 + u * 324, on = mcol == NSLOT + u, lo, hi, def; Col c = u == 2 ? th_cur[TC_SMP] : C_CAT(PC_MIX);
             if (on) rframe(x, 76, 310, 626, 8, 4, C_CAT(PC_MIX), C_CELL); else rrect(x, 76, 310, 626, 8, C_CELL);
             ftext(x + 20, 92, FT_MB, C_WHITE, cn[u]);
+            if (u == 2) { char g[24]; snprintf(g, sizeof g, "GR %.1f DB", engine_master_gr() > 0.05f ? -engine_master_gr() : 0.f); ftext(x + 290 - ftext_w(FT_S, g), 94, FT_S, C_DIM, g); }   // the limiter/comp now
             int lv = u == 2 ? song.master : *unit_param(NSLOT + u, u ? DL_LEVEL : RV_LEVEL, &lo, &hi, &def), fh = 380 * lv / 100;
             rect(x + 142, 168, 26, 380, C_LINE, 1); rect(x + 142, 548 - fh, 26, fh, c, 1);
             meter_bar(x + 180, 168, 10, 380, mx_show[NSLOT + u]);
