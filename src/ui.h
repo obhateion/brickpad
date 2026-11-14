@@ -188,7 +188,9 @@ static void ui_shade(int a) {            // the screen under an overlay goes dar
 }
 static int ui_pair(int x, int y, const char *p, int n) {   // a key chip and what it does, small; returns the width
     int w = (int)strcspn(p, " "); if (w > n) w = n; char b[64];
-    snprintf(b, sizeof b, "%.*s", w, p); int kw = ftext_w(FT_S, b) + 16; rrect(x, y, kw, 24, 5, C_SELBG); ftext(x + 8, y + 2, FT_S, C_ORANGE, b);
+    snprintf(b, sizeof b, "%.*s", w, p); int kw = ftext_w(FT_S, b) + 16; rrect(x, y, kw, 24, 5, C_SELBG);
+    { int lb = C_SELBG.r * 3 + C_SELBG.g * 6 + C_SELBG.b, lo = C_ORANGE.r * 3 + C_ORANGE.g * 6 + C_ORANGE.b, lw = C_WHITE.r * 3 + C_WHITE.g * 6 + C_WHITE.b;
+      ftext(x + 8, y + 2, FT_S, abs(lo - lb) * 2 >= abs(lw - lb) ? C_ORANGE : C_WHITE, b); }   // small keys: the key colour unless a theme makes it fade (GAMEBOY)
     snprintf(b, sizeof b, "%.*s", n - w > 0 ? n - w - 1 : 0, p + w + (n > w)); for (char *q = b; *q; q++) if (*q >= 'A' && *q <= 'Z') *q += 32;
     return kw + 8 + ftext(x + kw + 8, y + 2, FT_S, C_WHITE, b);
 }
