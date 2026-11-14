@@ -1911,15 +1911,15 @@ static void pat_play(void) {             // PLAY in the window: the pattern unde
 }
 
 // ---------- PROJECT ----------
-enum { J_TEMPO, J_SWING, J_KEY, J_SCALE, J_LAUNCH, J_METRO, J_BEATS, J_COUNT, J_QUANT, J_MASTER, J_THEME, J_LIB, J_NEW, J_SNAP, J_PROJ, J_SAVE, J_SAVEAS, J_EXPORT, J_HINT, J_STRIP, J_VIEW, J_LOCK, J_NAV, J_DRAWER, J_ABOUT, J_N };
+enum { J_TEMPO, J_SWING, J_KEY, J_SCALE, J_LAUNCH, J_METRO, J_BEATS, J_COUNT, J_QUANT, J_MASTER, J_THEME, J_LIB, J_NEW, J_SNAP, J_PROJ, J_SAVE, J_SAVEAS, J_EXPORT, J_HINT, J_STRIP, J_VIEW, J_LOCK, J_NAV, J_DRAWER, J_MXFX, J_ABOUT, J_N };
 // The sections of PROJECT (2026-11-09): the left column chooses one, the middle shows its settings
 // 2026-11-14 (user): INTERFACE holds how BrickPad looks and moves, ABOUT every key of it by topic (the sheet SHIFT used to show)
-enum { JS_SONG, JS_PLAY, JS_REC, JS_FILE, JS_UI, JS_SYS, JS_ABOUT, JS_N };
+enum { JS_SONG, JS_PLAY, JS_REC, JS_FILE, JS_UI, JS_MIX, JS_SYS, JS_ABOUT, JS_N };
 enum { AB_N = 11 }; static int ab_pg;   // ABOUT: its topics, the one shown
-static const char *const prj_sec_name[JS_N] = {"SONG", "PLAY", "RECORD", "FILE", "INTERFACE", "SYSTEM", "ABOUT"};
+static const char *const prj_sec_name[JS_N] = {"SONG", "PLAY", "RECORD", "FILE", "INTERFACE", "MIXER", "SYSTEM", "ABOUT"};
 static const int8_t prj_sec[JS_N][6] = {{J_TEMPO, J_SWING, J_KEY, J_SCALE, J_SNAP, J_BEATS}, {J_LAUNCH, J_METRO, J_MASTER, -1},
                                         {J_COUNT, J_QUANT, -1}, {J_PROJ, J_SAVE, J_SAVEAS, J_EXPORT, J_NEW, -1},
-                                        {J_VIEW, J_STRIP, J_NAV, J_DRAWER, J_HINT, J_LOCK}, {J_THEME, J_LIB, -1}, {J_ABOUT, -1}};
+                                        {J_VIEW, J_STRIP, J_NAV, J_HINT, J_LOCK, -1}, {J_DRAWER, J_MXFX, -1}, {J_THEME, J_LIB, -1}, {J_ABOUT, -1}};
 static const char *const prj_help[J_N] = {"THE PROJECT'S SPEED. EDIT TAPS IT, L1/R1 HELD NUDGE WHILE PLAYING", "LATE EVEN 1/16 STEPS: A SHUFFLE",
     "THE TONIC EVERY PAD PLAYS IN (A PAD CAN HAVE ITS OWN)", "WHICH NOTES THE DEGREES, KEYS AND RANDOM USE",
     "A CLIP STARTS OR STOPS ON THIS GRID, AS IN ABLETON", "A CLICK ON EVERY BEAT WHILE PLAYING", "BEATS IN A BAR: LAUNCH AND RECORDING COUNT THEM",
@@ -1928,13 +1928,15 @@ static const char *const prj_help[J_N] = {"THE PROJECT'S SPEED. EDIT TAPS IT, L1
     "THE TWELVE PADS UNDER THE PATH INSIDE A PAD: HIDDEN, THIN BARS OR BIG TILES WITH NAMES", "ADVANCED: EVERYTHING. SIMPLE: PLAY, NOTES, SOUND, LARGE (F1/F2). HOLD F1+F2 TO LEAVE IT",
     "SIMPLE VIEW ONLY, FOR A CHILD: NOTES CANNOT BE ERASED AND THE DICE IS OFF. THE ADVANCED VIEW IGNORES IT",
     "INSIDE A PAD: A LIST OF ITS CATEGORIES, OR A TREE WITH EVERY PAGE (<> LEVEL, ^v CHOOSE, EDIT OPEN)",
-    "THE MIXER'S DRAWER WITH THE RETURNS, THE MASTER AND THE PAD'S EFFECTS: THE SIDE IT SLIDES OUT OF", NULL};
-static const char *prj_name[J_N] = {"TEMPO", "SWING", "KEY", "SCALE", "CLIP LAUNCH", "METRONOME", "BEATS/BAR", "COUNT-IN", "REC QUANT", "MASTER VOL", "THEME", "CHECK LIBRARY", "NEW PROJECT", "SCALE SNAP", "PROJECT", "SAVE", "SAVE AS", "EXPORT WAV", "FOOTER HINTS", "PAD STRIP", "VIEW", "KID LOCK", "PAD MENU", "MIXER DRAWER", "ABOUT"};
+    "THE MIXER'S DRAWER WITH THE RETURNS, THE MASTER AND THE PAD'S EFFECTS: THE SIDE IT SLIDES OUT OF",
+    "EFFECTS AND SENDS IN SMALL ON EVERY STRIP. OFF: A CLEANER MIXER. THE DRAWER ALWAYS SHOWS THEM IN FULL", NULL};
+static const char *prj_name[J_N] = {"TEMPO", "SWING", "KEY", "SCALE", "CLIP LAUNCH", "METRONOME", "BEATS/BAR", "COUNT-IN", "REC QUANT", "MASTER VOL", "THEME", "CHECK LIBRARY", "NEW PROJECT", "SCALE SNAP", "PROJECT", "SAVE", "SAVE AS", "EXPORT WAV", "FOOTER HINTS", "PAD STRIP", "VIEW", "KID LOCK", "PAD MENU", "MIXER DRAWER", "STRIP EFFECTS", "ABOUT"};
 static int ui_strip = 1, ui_simple, ui_lock;   // PROJECT > INTERFACE: the pad strip (0 hidden, 1 thin, 2 big), the simple view, its kid lock (ui.cfg beside the binary)
 static int ui_tree, ui_drawer_left;          // the pad menu as a tree (A23) instead of the list; the mixer's drawer on the left
-static void ui_cfg_save(void) { char b[48]; int n = snprintf(b, sizeof b, "%d %d %d %d %d\n", ui_strip, ui_simple, ui_lock, ui_tree, ui_drawer_left); write_whole("ui.cfg", b, n); }
-static void ui_cfg_load(void) { FILE *f = fopen("ui.cfg", "r"); if (f) { int a = 1, b = 0, c = 0, d = 0, e = 0;
-    if (fscanf(f, "%d %d %d %d %d", &a, &b, &c, &d, &e) >= 1) { ui_strip = clampi(a, 0, 2); ui_simple = b != 0; ui_lock = c != 0; ui_tree = d != 0; ui_drawer_left = e != 0; } fclose(f); } }
+static int ui_mxfx = 1;                      // PROJECT > MIXER > STRIP EFFECTS (2026-11-14, user): the strips show their effects and sends too
+static void ui_cfg_save(void) { char b[48]; int n = snprintf(b, sizeof b, "%d %d %d %d %d %d\n", ui_strip, ui_simple, ui_lock, ui_tree, ui_drawer_left, ui_mxfx); write_whole("ui.cfg", b, n); }
+static void ui_cfg_load(void) { FILE *f = fopen("ui.cfg", "r"); if (f) { int a = 1, b = 0, c = 0, d = 0, e = 0, g = 1;
+    if (fscanf(f, "%d %d %d %d %d %d", &a, &b, &c, &d, &e, &g) >= 1) { ui_strip = clampi(a, 0, 2); ui_simple = b != 0; ui_lock = c != 0; ui_tree = d != 0; ui_drawer_left = e != 0; ui_mxfx = g != 0; } fclose(f); } }
 static int hint_on = 1;                    // HOVER HINTS (hints.cfg beside the binary: "0" = off)
 static void hint_set(int on) { hint_on = on; write_whole("hints.cfg", on ? "1\n" : "0\n", 2); }
 static void hint_load(void) { FILE *f = fopen("hints.cfg", "r"); if (f) { int v = 1; if (fscanf(f, "%d", &v) == 1) hint_on = v != 0; fclose(f); } }
@@ -2108,6 +2110,7 @@ static void prj_edit_arrow(int k) {
     if (jcur == J_LIB || jcur == J_NEW || jcur == J_ABOUT || (jcur >= J_PROJ && jcur < J_HINT)) return;   // actions, not values (SCALE SNAP is a value)
     if (jcur == J_NAV) { ui_tree = !ui_tree; ui_cfg_save(); return; }
     if (jcur == J_DRAWER) { ui_drawer_left = !ui_drawer_left; ui_cfg_save(); return; }
+    if (jcur == J_MXFX) { ui_mxfx = !ui_mxfx; ui_cfg_save(); return; }
     if (jcur == J_STRIP) { ui_strip = (ui_strip + 1) % 3; ui_cfg_save(); return; }
     if (jcur == J_VIEW) { ui_simple = !ui_simple; ui_cfg_save(); return; }
     if (jcur == J_LOCK) { ui_lock = !ui_lock; ui_cfg_save(); return; }
@@ -2167,7 +2170,7 @@ static void prj_tap(void) {
         if (ntaps == 5) { memmove(taps, taps + 1, 4 * sizeof *taps); ntaps = 4; }
         taps[ntaps++] = now;
         if (ntaps >= 2) { edit_begin(); song.tempo = clampi((int)(60000.0 * (ntaps - 1) / (now - taps[0]) + 0.5), 40, 300); }
-    } else if (jcur == J_LAUNCH || jcur == J_METRO || jcur == J_COUNT || jcur == J_QUANT || jcur == J_SNAP || jcur == J_HINT || jcur == J_STRIP || jcur == J_VIEW || jcur == J_LOCK || jcur == J_NAV || jcur == J_DRAWER) prj_edit_arrow(K_RIGHT);
+    } else if (jcur == J_LAUNCH || jcur == J_METRO || jcur == J_COUNT || jcur == J_QUANT || jcur == J_SNAP || jcur == J_HINT || jcur == J_STRIP || jcur == J_VIEW || jcur == J_LOCK || jcur == J_NAV || jcur == J_DRAWER || jcur == J_MXFX) prj_edit_arrow(K_RIGHT);
 }
 
 // ---------- SLICE EDITOR ----------
@@ -3696,6 +3699,7 @@ static void prj_value(int i, char *b) {
     case J_LOCK: snprintf(b, 32, ui_lock ? "ON" : "OFF"); break;
     case J_NAV: snprintf(b, 32, ui_tree ? "TREE" : "LIST"); break;
     case J_DRAWER: snprintf(b, 32, ui_drawer_left ? "LEFT" : "RIGHT"); break;
+    case J_MXFX: snprintf(b, 32, ui_mxfx ? "ON" : "OFF"); break;
     case J_ABOUT: b[0] = 0; break;
     case J_PROJ: snprintf(b, 32, "%.20s%s", prj_cur[0] ? prj_cur : "UNTITLED", prj_dirty() ? " *" : ""); break;
     case J_SAVE: snprintf(b, 32, prj_dirty() ? "UNSAVED CHANGES" : prj_cur[0] ? "SAVED" : "NOT SAVED YET"); break;
