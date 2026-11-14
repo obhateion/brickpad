@@ -367,7 +367,9 @@ static void keep_damaged(void) {
     for (int i = 2; i < 10 && access(p, F_OK) == 0; i++) snprintf(p, sizeof p, STATE ".damaged%d", i);
     if (!rename(STATE, p)) logmsg("kept %s", p);
 }
+static void scene_save(void);
 static void save_state(void) {
+    scene_save();
     static Song saved;                   // the file is big now: write only when something changed
     if (!memcmp(&saved, &song, sizeof song)) return;
     if (write_whole(STATE, &song, sizeof song)) saved = song;
@@ -648,22 +650,7 @@ static void play_hold_tick(void) {
 // pattern is a sound, its button plays it. SHIFT+button does the other of the two; while a take records every button
 // plays by hand. SHIFT+F1/F2 choose a SCENE = one pattern number for every pad: pads with notes in it play it (from
 // the next quantum), the others stop, as a scene row does. PLAY as everywhere: tap = the selected pad's clip, hold = stop all.
-static int live_scene;
-static void live_scene_go(int d) {
-    int top = 0; for (int s = 0; s < NSLOT; s++) if (has_sound(s)) for (int q = NPAT - 1; q > top; q--) if (pat_used(&song.t[s].pat[q])) { top = q; break; }
-    int n = clampi(live_scene + d, 0, top), run = engine_playing(), any = 0;
-    live_scene = n;
-    for (int s = 0; s < NSLOT; s++) { Track *t = &song.t[s]; if (!has_sound(s)) continue;
-        if (pat_used(&t->pat[n])) {
-            any = 1;
-            if (run && t->on && engine_want(s) != 0) { if (t->cur != n) t->queued = (int8_t)n; }   // playing: the pattern changes on the quantum
-            else { t->cur = (int8_t)n; t->queued = -1; if (run) { if (engine_want(s) == 0) engine_launch(s, -1); else if (!t->on && engine_want(s) != 1) engine_launch(s, 1); } else t->on = 1; }
-        } else if (run) { if (engine_want(s) == 1) engine_launch(s, -1); else if (t->on && engine_want(s) != 0) engine_launch(s, 0); }
-        else t->on = 0;
-    }
-    if (!run && any && engine_counting() < 0) engine_transport(1);
-    char b[24]; snprintf(b, sizeof b, "SCENE %d", n + 1); toast(b);
-}
+// (2026-11-15: a scene is no longer a pattern number: it is a whole set of pads, see SCENES below.)
 // GRID selection (2026-11-11, user: "select pads as on the M8 and launch them in batches"): SHIFT+arrows stretch a
 // rectangle from the pad the cursor stood on (gsel_a) to the cursor; a plain arrow drops it. PLAY and EDIT then work on
 // every selected pad that has a clip: if one of them is not playing, those start and the rest go on; if all play, all
@@ -1941,6 +1928,115 @@ static int hint_on = 1;                    // HOVER HINTS (hints.cfg beside the 
 static void hint_set(int on) { hint_on = on; write_whole("hints.cfg", on ? "1\n" : "0\n", 2); }
 static void hint_load(void) { FILE *f = fopen("hints.cfg", "r"); if (f) { int v = 1; if (fscanf(f, "%d", &v) == 1) hint_on = v != 0; fclose(f); } }
 static Uint32 new_armed;                 // NEW PROJECT asked once, waiting for the second press
+// ---- SCENES (2026-11-15, user: "a scene is not tied to a pattern; a new scene is new empty pads"). A scene is a whole
+// Song of its own: twelve pads with their sounds, effects, patterns and chains. `song` is the scene that plays; the others
+// wait in scn[] with their samples loaded, and the engine takes the next one in on a launch quantum (engine_scene_swap).
+// Tempo, key, the master and the returns are the project's (scene_carry). Files: state.bin is the playing scene,
+// scenes.bin the others (a slot each); a project file is the playing scene, then a head and all of them.
+#define NSCENE 16
+#define SCN_FILE "scenes.bin"
+#define SCN_MAGIC 0x314E4353u
+typedef struct { uint32_t magic; int32_t n, cur, spare; } ScnHead;
+static Song *scn[NSCENE]; static Sample *scn_smp[NSCENE][NSLOT];   // scn[scn_cur] only receives the scene when it leaves
+static int scn_n = 1, scn_cur, scn_next = -1, scn_play; static uint8_t scn_ready[NSCENE], scn_dirty[NSCENE], scn_hdr;
+static void scn_rest(Song *g) { for (int s = 0; s < NSLOT; s++) { g->t[s].on = 0; g->t[s].queued = -1; } }
+static Sample *scn_sample(const char *path) {   // one file is held once, however many scenes play it
+    if (!path[0]) return NULL;
+    for (int s = 0; s < NSLOT; s++) { Sample *x = (Sample *)engine_sample(s); if (x && !strcmp(x->path, path)) { x->ref++; return x; } }
+    for (int i = 0; i < scn_n; i++) for (int s = 0; s < NSLOT; s++) { Sample *x = scn_smp[i][s]; if (x && !strcmp(x->path, path)) { x->ref++; return x; } }
+    return sample_load(path);
+}
+static void scn_unload(int i) { for (int s = 0; s < NSLOT; s++) { sample_free(scn_smp[i][s]); scn_smp[i][s] = NULL; } scn_ready[i] = 0; }
+static void scn_preload(int i) {          // reads files: a moment
+    if (scn_ready[i] || i == scn_cur || !scn[i]) return;
+    for (int s = 0; s < NSLOT; s++) scn_smp[i][s] = scn_sample(scn[i]->t[s].path);
+    scn_ready[i] = 1;
+}
+static void scene_poll(void) {            // every frame: the engine has taken the next scene in
+    Sample *old[NSLOT];
+    if (scn_next < 0 || !engine_scene_done(old)) return;
+    int a = scn_cur, b = scn_next;
+    memcpy(scn_smp[a], old, sizeof old); scn_ready[a] = 1; scn_dirty[a] = 1;
+    memset(scn_smp[b], 0, sizeof scn_smp[b]); scn_ready[b] = 0;      // the engine holds them now
+    scn_cur = b; scn_next = -1; scn_hdr = 1;
+    undo_n = undo_top = 0; cap_n = 0; memset(slot_want, 0, sizeof slot_want); memset(slot_bad, 0, sizeof slot_bad); frz_reset();   // undo does not cross scenes
+    if (scn_play) { scn_play = 0; if (!engine_playing() && engine_counting() < 0) engine_transport(1); }
+    char t[24]; snprintf(t, sizeof t, "SCENE %d", b + 1); toast(t);
+}
+static void scn_unwait(void) {            // a scene that waits for the bar gives way
+    scene_poll(); if (scn_next < 0) return;
+    engine_lock(1); int c = engine_scene_cancel(); engine_lock(0);
+    if (c) { scn_next = -1; scn_play = 0; } else scene_poll();
+}
+static void scenes_clear(void) {          // another project: one scene, the playing one
+    scn_unwait();
+    for (int i = 0; i < NSCENE; i++) { scn_unload(i); free(scn[i]); scn[i] = NULL; scn_dirty[i] = 0; }
+    scn_n = 1; scn_cur = 0; scn_hdr = 1; scn[0] = calloc(1, sizeof(Song));
+}
+static void scene_go(int n) {             // launch: on the quantum while playing, at once when stopped
+    scn_unwait();
+    if (n < 0 || n >= scn_n || n == scn_cur || scn_next >= 0 || !scn[n] || !scn[scn_cur]) return;
+    scn_preload(n);
+    static Song in; in = *scn[n]; int any = 0;
+    for (int s = 0; s < NSLOT; s++) { Track *t = &in.t[s]; t->queued = -1; t->cur = (int8_t)clampi(t->cur, 0, NPAT - 1);
+        t->on = (t->type || scn_smp[n][s]) && pat_used(&t->pat[t->cur]); any |= t->on; }
+    scn_play = any && !engine_playing() && engine_counting() < 0;
+    scn_next = n; engine_scene_swap(&in, scn[scn_cur], scn_smp[n]);
+}
+static void scene_step(int d) { scene_go(clampi((scn_next >= 0 ? scn_next : scn_cur) + d, 0, scn_n - 1)); }
+static void scene_new(int src) {          // src < 0: empty pads; else a copy of that scene
+    if (scn_n >= NSCENE) { toast("16 SCENES AT MOST"); return; }
+    if (mem_avail_mb() < 120) { toast("NOT ENOUGH MEMORY"); return; }
+    if (src >= 0 && src != scn_cur) scn_preload(src);
+    Song *g = malloc(sizeof *g); if (!g) return;
+    int i = scn_n; memset(scn_smp[i], 0, sizeof scn_smp[i]);
+    if (src < 0) { static Song keep; engine_lock(1); keep = song; song_defaults(); *g = song; song = keep; engine_lock(0); scene_carry(g, &song); }
+    else { *g = src == scn_cur || !scn[src] ? song : *scn[src]; scene_carry(g, &song);
+        for (int s = 0; s < NSLOT; s++) { Sample *x = src == scn_cur ? (Sample *)engine_sample(s) : scn_smp[src][s]; if (x) x->ref++; scn_smp[i][s] = x; } }
+    scn_rest(g); scn[i] = g; scn_ready[i] = 1; scn_dirty[i] = 1; scn_hdr = 1; scn_n++;
+    char t[32]; if (src < 0) snprintf(t, sizeof t, "SCENE %d \003 EMPTY", i + 1); else snprintf(t, sizeof t, "SCENE %d \003 COPY OF %d", i + 1, src + 1); toast(t);
+}
+static void scene_del(int i) {
+    scn_unwait();
+    if (i < 0 || i >= scn_n) return;
+    if (i == scn_cur || scn_n < 2) { toast("THIS SCENE IS OPEN"); return; }
+    scn_unload(i); free(scn[i]);
+    for (int k = i; k < scn_n - 1; k++) { scn[k] = scn[k + 1]; memcpy(scn_smp[k], scn_smp[k + 1], sizeof scn_smp[k]); scn_ready[k] = scn_ready[k + 1]; }
+    scn_n--; scn[scn_n] = NULL; memset(scn_smp[scn_n], 0, sizeof scn_smp[scn_n]); scn_ready[scn_n] = 0;
+    if (scn_cur > i) scn_cur--;
+    memset(scn_dirty, 1, sizeof scn_dirty); scn_hdr = 1; toast("SCENE DELETED");
+}
+static void scene_save(void) {            // only what changed: every scene has its own place in the file
+    int any = scn_hdr; for (int i = 0; i < scn_n; i++) any |= scn_dirty[i] && i != scn_cur;
+    if (!any) return;
+    FILE *f = fopen(SCN_FILE, "r+b"); if (!f) f = fopen(SCN_FILE, "w+b"); if (!f) return;
+    ScnHead h = {SCN_MAGIC, scn_n, scn_cur, 0}; int ok = fwrite(&h, sizeof h, 1, f) == 1;
+    for (int i = 0; i < scn_n && ok; i++) if (scn_dirty[i] && i != scn_cur && scn[i])
+        ok = !fseek(f, (long)sizeof h + (long)i * (long)sizeof(Song), SEEK_SET) && fwrite(scn[i], sizeof(Song), 1, f) == 1;
+    if (fflush(f) || fsync(fileno(f))) ok = 0; fclose(f);
+    if (ok) { memset(scn_dirty, 0, sizeof scn_dirty); scn_hdr = 0; }
+}
+static void scenes_read(const char *path, long off) {   // after the playing scene was loaded: the others, from this file
+    scenes_clear();
+    FILE *f = fopen(path, "rb"); if (!f) return;
+    ScnHead h;
+    if (fseek(f, off, SEEK_SET) || fread(&h, sizeof h, 1, f) != 1 || h.magic != SCN_MAGIC || h.n < 1 || h.n > NSCENE || h.cur < 0 || h.cur >= h.n) { fclose(f); return; }
+    free(scn[0]); scn[0] = NULL; int n = 0;
+    for (; n < h.n; n++) {
+        if (!(scn[n] = calloc(1, sizeof(Song)))) break;
+        if (n == h.cur) continue;
+        if (fseek(f, off + (long)sizeof h + (long)n * (long)sizeof(Song), SEEK_SET) || fread(scn[n], sizeof(Song), 1, f) != 1 || scn[n]->magic != song.magic) {
+            if (n > h.cur) { free(scn[n]); scn[n] = NULL; } else { h.cur = n; n++; }   // a cut file: the scenes before it stay
+            break; }
+        scene_carry(scn[n], &song); scn_rest(scn[n]);
+    }
+    fclose(f);
+    if (n < 1) { scn[0] = calloc(1, sizeof(Song)); n = 1; h.cur = 0; }
+    scn_n = n; scn_cur = h.cur < n ? h.cur : n - 1; scn_hdr = 1;
+    if (off) memset(scn_dirty, 1, sizeof scn_dirty);     // a project's scenes become the working copy's
+    for (int i = 0; i < scn_n; i++) if (mem_avail_mb() > 200) scn_preload(i);
+    logmsg("scenes: %d, open %d", scn_n, scn_cur + 1);
+}
 static char prj_cur[32];                  // the open project's name ("" = not saved under a name yet)
 static void prj_cfg_write(void); static void prj_mark_saved_empty(void);
 static void new_project(void) {
@@ -1954,6 +2050,7 @@ static void new_project(void) {
     cap_n = 0; spage = 0; sel = 0; memset(slot_want, 0, sizeof slot_want); memset(slot_bad, 0, sizeof slot_bad);   // nothing of the old project is missed in the new one
     int master = song.master;
     song_defaults(); song.master = master;       // same loudness as before
+    scenes_clear();
     sync_samples(); frz_reset();
     save_state();
     prj_cur[0] = 0; prj_cfg_write(); prj_mark_saved_empty();
@@ -3256,7 +3353,7 @@ static void key_event(int k, int down) {
     if (k == K_MENU) {
         if (down) browse_hold = 0;
         if (down) menu_down = held[K_SHIFT] ? 0 : SDL_GetTicks();   // SHIFT+MENU is the system's d-pad toggle, not ours
-        else { if (menu_down && SDL_GetTicks() - menu_down < 600) { int pm = perform; set_tab(T_GRID); perform = (pm + 1) % 3; if (perform == 1) live_scene = song.t[sel].cur; }   // GRID > PADS > KEYS
+        else { if (menu_down && SDL_GetTicks() - menu_down < 600) { int pm = perform; set_tab(T_GRID); perform = (pm + 1) % 3; }   // GRID > PADS > KEYS
             menu_down = 0; }
         return;
     }
@@ -3829,7 +3926,14 @@ static void prj_path(const char *name, char *p, int n) { snprintf(p, n, PRJ_DIR 
 static void prj_save(const char *name) {
     mkdir(PRJ_DIR, 0777);
     char p[96]; prj_path(name, p, sizeof p);
-    if (!write_whole(p, &song, sizeof song)) { toast("COULD NOT SAVE"); return; }
+    scene_poll();
+    size_t one = sizeof(Song), sz = one + (scn_n > 1 ? sizeof(ScnHead) + (size_t)scn_n * one : 0); char *buf = malloc(sz);   // the playing scene, then all of them
+    if (!buf) { toast("COULD NOT SAVE"); return; }
+    memcpy(buf, &song, one);
+    if (scn_n > 1) { ScnHead h = {SCN_MAGIC, scn_n, scn_cur, 0}; memcpy(buf + one, &h, sizeof h);
+        for (int i = 0; i < scn_n; i++) memcpy(buf + one + sizeof h + (size_t)i * one, i == scn_cur || !scn[i] ? &song : scn[i], one); }
+    int ok = write_whole(p, buf, sz); free(buf);
+    if (!ok) { toast("COULD NOT SAVE"); return; }
     snprintf(prj_cur, sizeof prj_cur, "%s", name); prj_cfg_write(); prj_mark_saved(); save_state(); sync();
     char b[48]; snprintf(b, sizeof b, "SAVED %s", name); toast(b);
 }
@@ -3837,7 +3941,7 @@ static void prj_load(const char *path) {
     rec = 0; combo_t = 0;
     if (engine_playing() || engine_counting() >= 0) transport_toggle();
     engine_stop_all(); cap_n = 0; spage = 0; undo_n = undo_top = 0;   // undo does not cross projects
-    load_from(path); save_state();
+    load_from(path); scenes_read(path, (long)sizeof(Song)); save_state();
     const char *b = strrchr(path, '/'); b = b ? b + 1 : path; int l = (int)strlen(b); if (l > 4) l -= 4; if (l > 31) l = 31;
     snprintf(prj_cur, sizeof prj_cur, "%.*s", l, b); prj_cfg_write(); prj_mark_saved();
     if (browsing) browse_close();
@@ -4109,6 +4213,9 @@ static const int ex_bars_v[7] = {1, 2, 4, 8, 16, 32, 64}, ex_tail_v[3] = {0, 2, 
 enum { EX_BARS, EX_FROM, EX_CLIPS, EX_TAIL, EX_STEMS, EX_GO, EX_ROWS };
 static int ex_row, ex_bars = 3, ex_from = 1, ex_all, ex_tail = 1, ex_stems, ex_run, ex_pad; static long ex_done, ex_total, ex_body, ex_skip; static FILE *ex_f;
 static char ex_path[160]; static int8_t ex_on[NSLOT], ex_solo[NSLOT]; static float ex_peak;
+static int ex_scn, ex_k, ex_home, ex_all0; static long ex_seg;   // 2026-11-15 (user): ONE MIX of a project with scenes = every scene in turn, BARS each
+static void ex_scene(int n) {            // the device is paused: the scene comes in on the next rendered step
+    float z[256]; scene_go(n); scn_play = 0; engine_scene_force(); if (!engine_playing()) engine_render(z, 128); scene_poll(); }
 static void export_open(void) {
     exporting = 1; ex_row = EX_GO; ex_run = 0;
     int any = 0; for (int s = 0; s < NSLOT; s++) if (song.t[s].on) any = 1;
@@ -4133,7 +4240,9 @@ static int ex_pass(void) {               // one file: the mix, or (STEMS) pad ex
     engine_transport(1);
     double bar_s = (song.beats > 0 ? song.beats : 4) * 60.0 / song.tempo;
     ex_skip = (long)(bar_s * (ex_from - 1) * SR + 0.5);   // FROM BAR: the bars before it are played, not written
-    ex_body = (long)(bar_s * ex_bars_v[ex_bars] * SR + 0.5); ex_total = ex_body + (long)ex_tail_v[ex_tail] * SR; ex_done = 0; ex_peak = 0;
+    ex_body = (long)(bar_s * ex_bars_v[ex_bars] * SR + 0.5); ex_seg = ex_body; ex_k = 0;
+    if (ex_scn) { ex_skip = 0; ex_body = ex_seg * scn_n; }
+    ex_total = ex_body + (long)ex_tail_v[ex_tail] * SR; ex_done = 0; ex_peak = 0;
     return 1;
 }
 static void export_start(void) {
@@ -4142,12 +4251,15 @@ static void export_start(void) {
     if (engine_playing() || engine_counting() >= 0) transport_toggle();
     for (int s = 0; s < NSLOT; s++) { ex_on[s] = song.t[s].on; ex_solo[s] = (int8_t)song.mix.pad[s].solo; }
     engine_pause(1); ex_pad = 0;
-    if (ex_pass()) ex_run = 1; else { engine_pause(0); toast(ex_stems ? "NO PAD TO EXPORT" : "COULD NOT EXPORT"); }
+    scene_poll(); ex_scn = !ex_stems && scn_n > 1; ex_home = scn_cur; ex_all0 = ex_all;
+    if (ex_scn) { if (scn_cur) ex_scene(0); ex_all = 1; }
+    if (ex_pass()) ex_run = 1; else { if (ex_scn) { ex_all = ex_all0; if (scn_cur != ex_home) ex_scene(ex_home); ex_scn = 0; } engine_pause(0); toast(ex_stems ? "NO PAD TO EXPORT" : "COULD NOT EXPORT"); }
 }
 static void export_finish(int keep) {
     engine_transport(0); { float z[256]; engine_render(z, 128); } engine_stop_all();
     if (ex_f) { if (keep) { fseek(ex_f, 0, SEEK_SET); wav_header(ex_f, ex_done); } fclose(ex_f); ex_f = NULL; if (!keep) unlink(ex_path); sync(); }
     if (keep && ex_stems) { ex_pad++; if (ex_pass()) return; }   // STEMS: the next pad
+    if (ex_scn) { ex_all = ex_all0; if (scn_cur != ex_home) ex_scene(ex_home); ex_scn = 0; }   // back in the scene that was open
     for (int s = 0; s < NSLOT; s++) { song.t[s].on = ex_on[s]; song.mix.pad[s].solo = (uint8_t)ex_solo[s]; }
     engine_pause(0); ex_run = 0;
     if (keep) { char b[200]; snprintf(b, sizeof b, ex_stems ? "STEMS IN exports/" : "EXPORTED %s", ex_path); toast(b); exporting = 0; } else toast("EXPORT CANCELLED");
@@ -4159,7 +4271,8 @@ static void export_tick(void) {          // a slice of the render per frame: abo
         if (ex_skip > 0) { engine_render(buf, 128); ex_skip -= 128; continue; }   // before FROM BAR
         if (ex_done >= ex_total) break;
         if (ex_done < ex_body && ex_done + 128 >= ex_body) engine_transport(0);   // the bars are done: the tail rings out
-        engine_render(buf, 128);
+        else if (ex_scn && ex_k + 1 < scn_n && ex_done + 256 >= ex_seg * (ex_k + 1)) { ex_k++; scene_go(ex_k); scn_play = 0; engine_scene_force(); }   // the next scene on the bar
+        engine_render(buf, 128); if (ex_scn) scene_poll();
         int fr = ex_total - ex_done < 128 ? (int)(ex_total - ex_done) : 128;
         for (int i = 0; i < 2 * fr; i++) { float v = buf[i]; if (fabsf(v) > ex_peak) ex_peak = fabsf(v); v = v > 1 ? 1 : v < -1 ? -1 : v; pcm[i] = (int16_t)lrintf(v * 32767); }
         if (fwrite(pcm, 4, fr, ex_f) != (size_t)fr) { toast("DISK FULL?"); export_finish(0); return; }
@@ -4290,7 +4403,7 @@ int main(int argc, char **argv) {
     if (engine_start(buffer)) { logmsg("audio: %s", SDL_GetError()); return 1; }
     logmsg("audio: %s", SDL_GetCurrentAudioDriver());
     idx_load();
-    load_state(); prj_startup();
+    load_state(); scenes_read(SCN_FILE, 0); prj_startup();
     theme_load(); presets_load(); hint_load(); ui_cfg_load();
     if (test_secs) {  // demo beat for automated checks
         song.tempo = 128; song.swing = 20;
@@ -4329,7 +4442,7 @@ int main(int argc, char **argv) {
         if (menu_down && now - menu_down > 3000) run = 0;
         combo_tick(now);
         browse_tick(now);
-        launch_tick(); rec_tick(); export_tick(); frz_tick();
+        scene_poll(); launch_tick(); rec_tick(); export_tick(); frz_tick();
         { int stuck = engine_watchdog(now); if (stuck) logmsg("audio: a callback hung %d ms, real-time priority dropped", stuck); }
         if (!test_secs) saver_pause(engine_playing() || engine_counting() >= 0);
         if (!test_secs && now - last_save > 10000) { save_state(); theme_save(); if (idx_dirty && lib_state != 1) idx_save(); last_save = now; }

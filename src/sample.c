@@ -387,7 +387,7 @@ void sample_name_info(const char *path, float *bpm, int *root) {
     *root = root_from_name(base);
 }
 
-void sample_free(Sample *s) { if (s) { free(s->d); free(s); } }
+void sample_free(Sample *s) { if (!s) return; if (s->ref > 0) { s->ref--; return; } free(s->d); free(s); }
 
 static int cmp(const void *a, const void *b) {
     const Entry *x = a, *y = b;

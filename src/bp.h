@@ -25,6 +25,7 @@ typedef struct Sample {
     float bpm;         // loops: from name or length
     int bars;
     int nons, ons[33]; // transient starts (frames), ons[0] = 0
+    int ref;           // other holders besides the first (2026-11-15: scenes share one loaded file); sample_free counts them down
     float npk, nld;    // NORMALIZE gains: PEAK (the loudest point to -1 dB), LOUD (the loud parts to one level, never past PEAK); 0 = not measured
 } Sample;
 
@@ -192,6 +193,15 @@ void engine_pause(int on);               // the audio device stops calling back 
 float engine_duck_view(int slot, float *gain);
 extern const float dk_beats[DK_NLEN];    // DUCK lengths and grid steps in beats: 1/16 1/8 1/4 1/2 1 BAR 2 BARS
 void engine_lock(int on);                // the callback is kept out while pointers change
+// Scenes (2026-11-15): a scene is a whole Song. `in` takes the place of `song` on the next launch quantum (at once when
+// stopped), `out` receives the one that played, smp[NSLOT] are the new scene's samples; engine_scene_done hands back
+// the old ones once. scene_carry copies what belongs to the project, not to a scene: tempo, key, master, the returns.
+void scene_carry(Song *d, const Song *s);
+void engine_scene_swap(Song *in, Song *out, Sample **smp);
+int engine_scene_pending(void);
+void engine_scene_force(void);
+int engine_scene_cancel(void);           // under engine_lock: 1 = it had not happened yet and will not
+int engine_scene_done(Sample **old);
 float *engine_freeze_buf(int slot, int pat, float *d, int n);   // gives the pattern its recording (NULL none); returns the old one to free
 const float *engine_freeze_get(int slot, int pat, int *n);   // the pattern's recording (NULL none)
 void engine_freeze_on(int slot, int on); // the pad plays its recordings / plays live

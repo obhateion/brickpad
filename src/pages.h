@@ -407,30 +407,42 @@ static void draw_duck2(void) {
     return;
 }
 
-// ---- SCENES (A02, HOME): a scene = one pattern number for every pad; a row each, a dot per pad that has notes in it ----
-static int sc_cur;
-static int scene_count(void) {           // up to the highest pattern any pad uses
-    int top = 0; for (int s = 0; s < NSLOT; s++) if (has_sound(s)) for (int q = NPAT - 1; q > top; q--) if (pat_used(&song.t[s].pat[q])) { top = q; break; }
-    return top + 1;
-}
+// ---- SCENES (A02, HOME): a row per scene, each its own twelve pads (a dot per pad with a sound, bigger with notes); the last row makes one ----
+static int sc_cur, sc_del = -1; static Uint32 sc_del_t;
+static int scene_count(void) { return scn_n; }
 static void scene_key(int k, int down) {
-    if (!down) { if (k == K_EDIT && !used[K_EDIT]) act_scene(sc_cur - live_scene); return; }
+    int rows = scn_n + (scn_n < NSCENE);
+    if (!down) {
+        if (k == K_EDIT && !used[K_EDIT]) {
+            if (sc_cur >= scn_n) { scene_new(-1); sc_cur = scn_n - 1; }
+            else if (sc_cur == scn_cur && scn_next < 0) toast("THIS SCENE IS OPEN");
+            else scene_go(sc_cur); }
+        return; }
+    if ((k == K_EDIT && held[K_OPT]) || (k == K_OPT && held[K_EDIT])) {   // twice: the scene goes
+        used[K_EDIT] = used[K_OPT] = 1; if (sc_cur >= scn_n) return;
+        if (sc_del == sc_cur && ms_since(SDL_GetTicks() | 1, sc_del_t) < 3000) { scene_del(sc_cur); sc_del = -1; sc_cur = clampi(sc_cur, 0, scn_n - 1); }
+        else { sc_del = sc_cur; sc_del_t = SDL_GetTicks() | 1; toast("AGAIN TO DELETE THE SCENE"); }
+        return; }
+    if (k == K_X) { scene_new(sc_cur >= scn_n ? scn_cur : sc_cur); sc_cur = scn_n - 1; return; }   // a copy: of this one, or of the open one
     if (k == K_Y) { scening = 0; return; }
     if (k == K_PLAY) { play_key(); return; }
-    if (k == K_UP || k == K_DOWN) sc_cur = clampi(sc_cur + (k == K_DOWN ? 1 : -1), 0, scene_count() - 1);
+    if (k == K_UP || k == K_DOWN) sc_cur = clampi(sc_cur + (k == K_DOWN ? 1 : -1), 0, rows - 1);
 }
 static void draw_scenes(void) {
-    if (!any_sound()) { ui_empty(26, 200, 971, 300, "NO PADS WITH A SOUND", "PADS: EDIT on an empty pad picks an engine"); draw_footer("Y BACK  F1/F2 HOME"); return; }
-    int n = scene_count(); sc_cur = clampi(sc_cur, 0, n - 1);
-    int top = clampi(sc_cur - 2, 0, n > 6 ? n - 6 : 0);
-    for (int r = 0; r < 6 && top + r < n; r++) { int q = top + r, y = 80 + r * 104, on = q == sc_cur; char b[16];
+    int n = scn_n, rows = n + (n < NSCENE); sc_cur = clampi(sc_cur, 0, rows - 1);
+    int top = clampi(sc_cur - 2, 0, rows > 6 ? rows - 6 : 0);
+    for (int r = 0; r < 6 && top + r < rows; r++) { int q = top + r, y = 80 + r * 104, on = q == sc_cur; char b[24];
         rrect(26, y, 971, 90, 8, on ? C_SELBG : C_CELL);
+        if (q >= n) { const char *h = "empty pads"; ftext(48, y + 30, FT_LB, on ? C_WHITE : C_DIM, "+ NEW SCENE"); ftext(974 - ftext_w(FT_M, h), y + 32, FT_M, C_DIM, h); continue; }
+        const Song *g = q == scn_cur ? &song : scn[q];
         snprintf(b, sizeof b, "SCENE %d", q + 1); ftext(48, y + 30, FT_LB, on ? C_WHITE : C_DIM, b);
-        if (q == live_scene) ftext(22 + 4, y + 32, FT_MB, th_cur[TC_SMP], "\001");
-        for (int s = 0; s < NSLOT; s++) { if (!has_sound(s)) continue; int x = 344 + s * 52, cy = y + 45, u = pat_used(&song.t[s].pat[q]);
-            disc2(x, cy, u ? 8 : 7, u ? C_ENG(song.t[s].type) : C_LINE); } }
-    if (n > 6) { int th = 6 * 104 - 14, tw = th * 6 / n; rect(1004, 80, 4, th, C_CELL, 1); rect(1004, 80 + (th - tw) * top / (n - 6), 4, tw, C_DIM, 1); }
-    draw_footer("EDIT LAUNCH  Y BACK  F1/F2 HOME");
+        if (q == scn_cur) ftext(22 + 4, y + 32, FT_MB, th_cur[TC_SMP], "\001");
+        else if (q == scn_next && (SDL_GetTicks() / 250) % 2) ftext(22 + 4, y + 32, FT_MB, C_ORANGE, "\001");   // waits for the bar
+        for (int s = 0; s < NSLOT && g; s++) { int has = q == scn_cur ? has_sound(s) : g->t[s].type || (scn_ready[q] ? scn_smp[q][s] != NULL : g->t[s].path[0] != 0), x = 344 + s * 52, cy = y + 45;
+            int u = has && pat_used(&g->t[s].pat[clampi(g->t[s].cur, 0, NPAT - 1)]);
+            disc2(x, cy, u ? 9 : has ? 6 : 3, has ? C_ENG(g->t[s].type) : C_LINE); } }
+    if (rows > 6) { int th = 6 * 104 - 14, tw = th * 6 / rows; rect(1004, 80, 4, th, C_CELL, 1); rect(1004, 80 + (th - tw) * top / (rows - 6), 4, tw, C_DIM, 1); }
+    draw_footer(sc_cur >= n ? "EDIT NEW EMPTY  X COPY OF THE OPEN ONE  Y BACK" : "EDIT LAUNCH  X COPY  OPT+EDIT DELETE  Y BACK  F1/F2 HOME");
 }
 
 // ---- PROJECT > INTERFACE > PAD MENU = TREE (the mockup's map, A-04): the hub drawn as the whole app: HOME's screens, the pad,
@@ -537,7 +549,7 @@ static const char *const ab_rows[AB_N][19] = {
      "SHIFT+L2 undo", "SHIFT+OPT copy", "SHIFT+EDIT paste", "MENU pads to play, again: keys, again: back", "MENU+PLAY record, twice: capture what was played",
      "MENU-3S quit BrickPad (hold)", "SHIFT+PLAY never: the system's own"},
     {"EDIT open the pad (an empty one: choose its engine)", "X start / stop the clip of this pad", "PLAY all clips", "Y mute", "SHIFT+Y freeze the pad",
-     "SHIFT+X name the pad", "SHIFT+DPAD select several pads", "F1/F2 PADS, SCENES, MIXER", "#SCENES", "EDIT launch the scene (a row of clips)",
+     "SHIFT+X name the pad", "SHIFT+DPAD select several pads", "F1/F2 PADS, SCENES, MIXER", "#SCENES", "EDIT launch the scene (its own twelve pads)", "X a copy of it", "OPT+EDIT twice: delete it", "+ NEW SCENE: empty pads",
      "#A SCENE APPEARS WITH EVERY PATTERN THAT HAS NOTES: UP TO 16"},
     {"EDIT open the category or the page", "ARROWS choose", "Y back up: page, category, HOME", "F1/F2 the next pad, the same page",
      "SHIFT+UP PATTERN", "SHIFT+RIGHT SOUND", "SHIFT+DOWN FX", "SHIFT+LEFT MIX", "#LOOK: THE ICON AND ITS COLOUR", "EDIT set", "L1/R1 the group of icons",

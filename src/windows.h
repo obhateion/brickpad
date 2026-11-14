@@ -17,12 +17,12 @@ static void w_box(int x, int y, int w, int h, Col c) { ui_shade(200); rframe(x, 
 static void w_center(int cx, int y, int f, Col c, const char *s) { ftext(cx - ftext_w(f, s) / 2, y, f, c, s); }
 
 static void draw_export2(void) {
-    Col ec = th_cur[TC_SMP]; char b[96]; double bar_s = (song.beats > 0 ? song.beats : 4) * 60.0 / song.tempo, sec = bar_s * ex_bars_v[ex_bars] + ex_tail_v[ex_tail];
+    Col ec = th_cur[TC_SMP]; char b[96]; double bar_s = (song.beats > 0 ? song.beats : 4) * 60.0 / song.tempo, sec = bar_s * ex_bars_v[ex_bars] * (!ex_stems && scn_n > 1 ? scn_n : 1) + ex_tail_v[ex_tail];
     static const char *const rn[5] = {"BARS", "FROM BAR", "CLIPS", "TAIL", "FILES"};
     for (int r = 0; r < 5; r++) {
         if (r == EX_BARS) snprintf(b, sizeof b, "%d", ex_bars_v[ex_bars]); else if (r == EX_FROM) snprintf(b, sizeof b, "%d", ex_from);
         else if (r == EX_CLIPS) snprintf(b, sizeof b, ex_all ? "ALL WITH NOTES" : "THE ONES PLAYING"); else if (r == EX_TAIL) snprintf(b, sizeof b, ex_tail_v[ex_tail] ? "%d S" : "NONE", ex_tail_v[ex_tail]);
-        else snprintf(b, sizeof b, ex_stems ? "ONE PER PAD" : "ONE MIX");
+        else if (!ex_stems && scn_n > 1) snprintf(b, sizeof b, "ONE MIX \003 ALL %d SCENES", scn_n); else snprintf(b, sizeof b, ex_stems ? "ONE PER PAD" : "ONE MIX");
         w_row(26, 80 + r * 82, 971, 72, rn[r], b, ex_row == r && !ex_run, ec); }
     w_btn(26, 496, 971, 84, ex_run ? "RENDERING" : "EXPORT", ex_row == EX_GO || ex_run, ec, 0);
     const char *nm = prj_cur[0] ? prj_cur : "UNTITLED";

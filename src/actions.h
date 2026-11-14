@@ -30,7 +30,7 @@ static int act_bend(int8_t *bc, int i, int d) { bc[i] = (int8_t)clampi(bc[i] + d
 // song
 static void act_undo(void) { undo(); }
 static void act_transport(void) { transport_toggle(); }
-static void act_scene(int d) { live_scene_go(d); }
+static void act_scene(int d) { scene_step(d); }
 
 // clipboards: a whole pad (with its DEEP pages), a mixer strip (inserts, sends, VOL, PAN), a pattern
 static Track copy_slot; static Cuts copy_cut; static int have_slot; static Pattern clip_board; static int have_clip;

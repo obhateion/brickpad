@@ -91,7 +91,7 @@ static void ui2_header(void) {           // NEON > PADS on the left, the transpo
     }
     if (tab == T_PAT && !perform) return;   // A07: nothing on the right
     if (browsing || presetting || slicing || ducking || tab == T_PRJ) return;
-    if (scening) { snprintf(t, sizeof t, "%d/%d", live_scene + 1, scene_count()); ftext(W - 20 - ftext_w(FT_MB, t), y, FT_MB, th_cur[TC_SMP], t); return; }   // A11, A12: nothing on the right
+    if (scening) { snprintf(t, sizeof t, "%d/%d", scn_cur + 1, scene_count()); ftext(W - 20 - ftext_w(FT_MB, t), y, FT_MB, th_cur[TC_SMP], t); return; }   // A11, A12: nothing on the right
     if (v2_sound()) { snd_page_count(t, sizeof t); ftext(W - 20 - ftext_w(FT_MB, t), y, FT_MB, C_ENG(song.t[sel].type), t); return; }   // A08: 1/5
     if (v2_steps() || rolling) { snprintf(t, sizeof t, "P%02d", song.t[sel].cur + 1); ftext(W - 20 - ftext_w(FT_MB, t), y, FT_MB, C_ORANGE, t); return; }   // A05: the pattern
     if (in_pad() || tab != T_GRID || scening) return;   // the mockups: the tempo on HOME only (A01)
