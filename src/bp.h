@@ -53,15 +53,18 @@ typedef struct {
     int16_t bpm;                    // 0 AUTO (detected), else manual loop tempo
     int8_t grain, flux;             // TONES/TEXTURE grain size (ms, 0 = per mode) and randomness 0..100
     int8_t scale, key;              // this pad's own key: 0 follows the project, else scale index + 1, pitch class + 1
-    uint8_t icon, icon_hi;          // 0 AUTO (by sound type), else icon id + 1 (src/icons.h); use track_icon/track_set_icon
+    uint8_t icon, icon_hi;          // 0 AUTO (by sound type), else icon id + 1 (src/icons.h); icon_hi bits 2..7: its colour (0 AUTO,
+                                    // else a theme colour, ui: icon_col); use track_icon/track_set_icon/track_icol/track_set_icol
     int8_t type;                    // 0 SAMPLER, 1 GRAND (parameters in sp), 2 ACID (ap), 3 CLOUD (cp, plays the sample)
     int8_t sp[16];                  // GRAND parameters, see SP_* in src/synth.h
     int8_t ap[12];                  // ACID parameters, see AP_* in src/acid.h (kept apart: switching loses nothing)
     int8_t cp[7];                   // CLOUD parameters, see CP_* in src/cloud.h (the last free bytes of the old reserved[])
     char path[256];
 } Track;
-static inline int track_icon(const Track *t) { return t->icon | t->icon_hi << 8; }
-static inline void track_set_icon(Track *t, int v) { t->icon = (uint8_t)v; t->icon_hi = (uint8_t)(v >> 8); }
+static inline int track_icon(const Track *t) { return t->icon | (t->icon_hi & 3) << 8; }
+static inline void track_set_icon(Track *t, int v) { t->icon = (uint8_t)v; t->icon_hi = (uint8_t)((t->icon_hi & ~3) | (v >> 8 & 3)); }
+static inline int track_icol(const Track *t) { return t->icon_hi >> 2; }
+static inline void track_set_icol(Track *t, int c) { t->icon_hi = (uint8_t)((t->icon_hi & 3) | (c & 63) << 2); }
 
 // Hand-edited slices: pos[k] = first frame of slice k (slice 0 starts at START).
 // pos[0] = follow mask: bit k means slice k has no step of its own and plays right after slice k-1.

@@ -294,7 +294,7 @@ static void draw_mixer2(void) {
         for (int s = 0; s < NSLOT; s++) { int cx = 66 + s * 81, on = s == mcol, top = 128, bot = 640, h = (bot - top) * song.t[s].vol / 100;
             Col c = has_sound(s) ? (on ? C_ORANGE : C_ENG(song.t[s].type)) : C_LINE; char b[4];
             if (on) rframe(cx - 38, 76, 76, 638, 8, 3, C_WHITE, C_BG);
-            if (has_sound(s)) { icon(slot_icon(s), cx - 16, 84, song.t[s].mute ? C_DIM : on ? C_WHITE : C_GREY); meter_bar(cx + 24, top, 8, bot - top, mx_show[s]); }
+            if (has_sound(s)) { icon(slot_icon(s), cx - 16, 84, song.t[s].mute ? C_DIM : pad_icol(s, on ? C_WHITE : C_GREY)); meter_bar(cx + 24, top, 8, bot - top, mx_show[s]); }
             if (on) { char vv[8]; snprintf(vv, sizeof vv, "%d", song.t[s].vol); char nn[24]; snprintf(nn, sizeof nn, "%02d VOLUME", s + 1); ui_focus(nn, vv, song.t[s].vol, c); }
             rect(cx - 8, top, 16, bot - top, C_CELL, 1); if (has_sound(s)) { rect(cx - 8, bot - h, 16, h, c, 1); rect(cx - 22, bot - h - 5, 44, 10, C_WHITE, 1); }
             snprintf(b, sizeof b, "%02d", s + 1); ftext(cx - ftext_w(FT_MB, b) / 2, 652, FT_MB, on ? C_WHITE : C_DIM, b);

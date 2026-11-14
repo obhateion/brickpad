@@ -110,25 +110,34 @@ static void draw_rnd2(void) {
     draw_footer(rn_row == RN_GO ? "EDIT GENERATE  Y BACK  SHIFT+L2 UNDO  PLAY LISTEN" : "EDIT+<> CHANGE  ^v ROW  Y BACK");
 }
 static void draw_icons2(void) {
-    enum { GX = 26, GY = 126, C = 66, PX = 826, PW = 171, rows = 8 };
+    enum { GX = 26, GY = 122, C = 60, PX = 790, PW = 207, rows = 8, SY = 616 };   // SY: the colour strip
     int now = track_icon(&song.t[sel]) - 1, g = icon_group(ic_cur), a = icon_grp_at[g], n = icon_grp_at[g + 1] - a; Col ec = C_ENG(song.t[sel].type);
     for (int i = 0, x = 26; i < ICON_GRP_N; i++) { int w = ftext_w(FT_MB, icon_grp_name[i]) + 28;      // the groups, L1/R1
         if (i == g) rrect(x, 76, w, 36, 8, ec);
         ftext(x + 14, 82, FT_MB, i == g ? C_BG : C_DIM, icon_grp_name[i]); x += w + 6; }
     for (int c = 0; c < ICON_COLS * rows && c < n; c++) {
         int x = GX + (c % ICON_COLS) * C, y = GY + (c / ICON_COLS) * C, i = a + c, on = i == ic_cur, id = icon_pal[i];
+        on = on && ic_pal < 0;
         rrect(x, y, C - 6, C - 6, 6, on ? ec : C_CELL);
-        if (id < 0) ftext(x + 6, y + 20, FT_S, on ? C_BG : C_DIM, "AUTO"); else icon_sc(id, x + 6, y + 6, 3, on ? C_BG : C_WHITE);
+        if (id < 0) ftext(x + 4, y + 17, FT_S, on ? C_BG : C_DIM, "AUTO"); else icon_sc(id, x + 3, y + 3, 3, on ? C_BG : pad_icol(sel, C_WHITE));
         if (id == now) rect(x + 2, y + 2, 8, 8, on ? C_BG : ec, 1);   // what the pad has now
     }
     int id = icon_pal[ic_cur], show = id >= 0 ? id : slot_icon(sel); char b[24];
     rrect(PX, GY, PW, rows * C - 6, 8, C_CELL);
     snprintf(b, sizeof b, "PAD %02d", sel + 1); ftext(PX + 20, GY + 14, FT_M, C_DIM, b);
-    icon_sc(show, PX + 22, GY + 60, 8, ec);
+    icon_sc(show, PX + 40, GY + 60, 8, pad_icol(sel, ec));
     const char *nm = id >= 0 ? icon_tab[id].name : "AUTO"; w_center(PX + PW / 2, GY + 210, FT_MB, C_WHITE, nm);
     if (id < 0) w_center(PX + PW / 2, GY + 240, FT_S, C_DIM, "by the sound's kind");
     snprintf(b, sizeof b, "%d / %d", ic_cur + 1, ICON_PAL_N); w_center(PX + PW / 2, GY + rows * C - 44, FT_S, C_DIM, b);
-    draw_footer("EDIT SET  L1/R1 GROUP  Y BACK  OPT LISTEN");
+    {   // one wide strip of colours from the theme (icon_col): AUTO first, then each colour as it is, lighter, deeper
+        int cur = track_icol(&song.t[sel]), sw = 971 / ICOL_N;
+        ftext(26, SY - 2, FT_S, ic_pal >= 0 ? C_WHITE : C_DIM, "COLOUR");
+        for (int c = 0; c < ICOL_N; c++) { int x = 26 + c * sw, y = SY + 24;
+            if (c == ic_pal) rframe(x - 3, y - 3, sw + 2, 52, 6, 3, C_WHITE, C_BG);
+            if (c) rrect(x, y, sw - 4, 46, 4, icon_col(c, C_WHITE)); else { rframe(x, y, sw - 4, 46, 4, 2, C_DIM, C_CELL); ftext(x + 2, y + 13, FT_S, C_DIM, "A"); }
+            if (c == cur) rect(x + (sw - 4) / 2 - 3, y + 50, 6, 6, C_WHITE, 1); }   // the pad's colour now
+    }
+    draw_footer(ic_pal >= 0 ? "<> COLOUR  EDIT SET  ^ ICONS  Y BACK" : "EDIT SET  L1/R1 GROUP  Y BACK  v (LAST ROW) COLOUR  OPT LISTEN");
 }
 static void draw_theme2(void) {
     static const char *chan[3] = {"R", "G", "B"}, *act[3] = {"SAVE", "SAVE AS", "DELETE"}; char b[48]; Col ec = th_cur[TC_SMP];

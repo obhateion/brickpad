@@ -83,7 +83,7 @@ static Uint32 combo_t; static double combo_pos;   // MENU+PLAY pressed then, wai
 #define COMBO_MS 300
 #define X_TWICE_MS 350               // two X taps this close double the clip
 static Uint32 x_tap_t;                // the first of them, 0 = none
-enum { ICON_COLS = 12 };
+enum { ICON_COLS = 12, ICOL_N = 1 + 9 * 3 };   // ICOL_N: AUTO + the icon colours (icon_col)
 static int iconing, ic_cur;
 static int ducking;                      // the DUCK window is open (below, with the mixer)
 static int tap_bpm(Uint32 *t, int *n);
@@ -2388,8 +2388,9 @@ static void pad_tonality(int k) {
 }
 // The icon palette of a pad: X on GRID.
 static int icon_group(int i) { int g = 0; while (g + 1 < ICON_GRP_N && i >= icon_grp_at[g + 1]) g++; return g; }
+static int ic_pal = -1;                  // the colour strip under the icons: the colour under the cursor, -1 = in the icons
 static void icon_open(void) {
-    iconing = 1; ic_cur = 0;
+    iconing = 1; ic_cur = 0; ic_pal = -1;
     for (int i = 0; i < ICON_PAL_N; i++) if (icon_pal[i] == track_icon(&song.t[sel]) - 1) ic_cur = i;
 }
 static void icon_key(int k, int down) {
@@ -2398,6 +2399,11 @@ static void icon_key(int k, int down) {
     if (k == K_PLAY) { play_key(); return; }
     if (k == K_OPT) { listen(sel); return; }
     if (k == K_Y || k == K_X) { leave_screen(); iconing = 0; return; }
+    if (ic_pal >= 0) {                   // the colours: <> choose, EDIT takes one (the window stays), UP back to the icons
+        if (k == K_LEFT || k == K_RIGHT) ic_pal = clampi(ic_pal + (k == K_RIGHT ? 1 : -1), 0, ICOL_N - 1);
+        else if (k == K_UP) ic_pal = -1;
+        else if (k == K_EDIT) { push_undo(); track_set_icol(&song.t[sel], ic_pal); toast(ic_pal ? "ICON COLOUR SET" : "ICON COLOUR AUTO"); }
+        return; }
     if (k == K_EDIT) { push_undo(); track_set_icon(&song.t[sel], icon_pal[ic_cur] + 1);
         char b[32]; snprintf(b, sizeof b, "ICON %s", ic_cur ? icon_tab[icon_pal[ic_cur]].name : "AUTO"); toast(b); leave_screen(); iconing = 0; return; }
     int g = icon_group(ic_cur), a = icon_grp_at[g], b = icon_grp_at[g + 1], col = (ic_cur - a) % ICON_COLS;
@@ -2406,7 +2412,7 @@ static void icon_key(int k, int down) {
     if (k == K_DOWN) {
         if (ic_cur + ICON_COLS < b) ic_cur += ICON_COLS;
         else if ((ic_cur - a) / ICON_COLS < (b - a - 1) / ICON_COLS) ic_cur = b - 1;
-        else if (g + 1 < ICON_GRP_N) ic_cur = clampi(b + col, 0, icon_grp_at[g + 2] - 1);
+        else ic_pal = track_icol(&song.t[sel]);   // under the last row: the colours (L1/R1 change the group)
     }
     if (k == K_UP) {
         if (ic_cur - ICON_COLS >= a) ic_cur -= ICON_COLS;
@@ -3184,7 +3190,7 @@ static void listen_name(int s, char *b) {   // the listening note by name where 
 static int asking, naming, exporting; static void ask_key(int k, int down); static void nm_key(int k, int down); static void export_key(int k, int down);
 #include "ui.h"
 #include "sound.h"
-static void icon(int id, int x, int y, Col c); static int slot_icon(int i);   // pages.h: the pads' icons and meters, drawn further down
+static void icon(int id, int x, int y, Col c); static int slot_icon(int i); static Col pad_icol(int s, Col dflt);   // pages.h: the pads' icons and meters, drawn further down
 static float mx_show[NSLOT + 3]; static void mx_meters(void); static void meter_bar(int x, int y, int w, int h, float v);
 #include "pages.h"
 #include "simple.h"
@@ -3410,6 +3416,15 @@ static void icon_sc(int id, int x, int y, int sc, Col c) {
     SDL_SetRenderDrawColor(R, c.r, c.g, c.b, 255); SDL_RenderFillRects(R, d, n);
 }
 static void icon(int id, int x, int y, Col c) { icon_sc(id, x, y, 2, c); }
+// The icons' colours (2026-11-14): taken from the theme itself, so they fit any theme, a custom one too: nine of its colours,
+// each as it is, lighter (toward the text) and deeper (toward the background). 0 = AUTO (the screen's own ink).
+static Col icon_col(int c, Col dflt) {
+    static const int8_t tok[9] = {TC_TEXT, TC_ACCENT, TC_ALERT, TC_PLAY, TC_SMP, TC_GRD, TC_CLD, TC_MIX, TC_DIM};
+    if (c <= 0 || c >= ICOL_N) return dflt;
+    Col t = th_cur[tok[(c - 1) / 3]]; int v = (c - 1) % 3;
+    return v == 0 ? t : v == 1 ? mix(t, th_cur[TC_TEXT], 100) : mix(t, th_cur[TC_BG], 90);
+}
+static Col pad_icol(int s, Col dflt) { return icon_col(track_icol(&song.t[s]), dflt); }
 static int slot_icon(int i) {            // the type comes from the path: asked only when the path changes
     static char seen[NSLOT][256]; static int cat[NSLOT]; const char *p = song.t[i].path;
     if (track_icon(&song.t[i])) return track_icon(&song.t[i]) - 1;   // the one picked with X (ICON), else by the sound
@@ -3450,7 +3465,7 @@ static void draw_grid(void) {
             char b[24]; snprintf(b, sizeof b, "%02d", i + 1); ftext(x + 25, y + 12, FT_M, C_DIM, b);
             snprintf(b, sizeof b, "%.10s", slot_name(i)); ftext(x + 25, y + 42, FT_XB, ink, b);
             ftext(x + 25, y + 94, FT_M, t->mute ? C_DIM : ec, eng_tag[t->type & 3]);
-            icon(slot_icon(i), x + CW - 46, y + 86, t->mute ? C_DIM : ink);   // the pad's icon (X), by the engine's name
+            icon(slot_icon(i), x + CW - 46, y + 86, t->mute ? C_DIM : pad_icol(i, ink));   // the pad's icon (X), by the engine's name
             { char r[24]; const Pattern *p0 = &t->pat[t->cur]; (void)p0;   // where the pattern goes, small
               int tg = t->queued >= 0 ? t->queued : -9; if (tg >= 0) snprintf(r, sizeof r, "P%d \177 P%d", t->cur + 1, tg + 1); else snprintf(r, sizeof r, "P%d", t->cur + 1);
               ftext(x + 25, y + 132, FT_S, t->on ? C_WHITE : C_DIM, r); }
