@@ -111,7 +111,7 @@ static void ui_path(char *b, int n) {    // NEON > INSTRUMENT > 06 GRAND > DEEP
     int inpad = hubbing || ui_cat >= 0;
     if (perform) UI_ADD("%s", perform == 2 ? "KEYS" : "PADS");
     else if (!inpad) UI_ADD("%s", tab == T_GRID ? (scening ? "SCENES" : "PADS") : tab == T_FX ? "MIXER" : tab_name[tab == T_PAT ? T_SEQ : tab]);
-    int pad = inpad || perform || tab == T_SEQ || tab == T_PAT ? sel : tab == T_FX && fx_unit < NSLOT ? fx_unit : -1;
+    int pad = inpad || perform || tab == T_SEQ || tab == T_PAT || (browsing && !bmode) || presetting || slicing || iconing ? sel : tab == T_FX && fx_unit < NSLOT ? fx_unit : -1;
     if (pad >= 0) UI_ADD("%02d %.14s", pad + 1, slot_name(pad) ? slot_name(pad) : "EMPTY");
     else if (tab == T_FX) UI_ADD("%s", fx_unit == NSLOT ? "RETURN A" : fx_unit == NSLOT + 1 ? "RETURN B" : "MASTER");
     if (exporting) UI_ADD("EXPORT"); else if (naming) UI_ADD("NAME"); else if (browsing) UI_ADD("%s", bmode ? "FILES" : "SOUND > FILE");
@@ -285,7 +285,7 @@ static void draw_hub(void) {              // the cards of A03: stripe, name in t
 // PATTERN (UI v2): its pages as a list, STEPS (the roll when the pattern is one) and SELECT; RECORD comes with A04.
 static void patmenu_key(int k, int down) {
     if (!down) { if (k == K_EDIT && !used[K_EDIT]) { patmenu = 0;
-        if (pm_cur == 1) pat_open(); else if (pm_cur == 2) recpage = 1; else if (cur_pat(sel)->mode) roll_open(); else { srow = 1; scol = 0; seq_clamp(); } } return; }
+        if (pm_cur == 1) pat_open(); else if (pm_cur == 2) recpage = 1; else if (cur_pat(sel)->mode) roll_open(); else { srow = 1; scol = 0; lane = lane_first(); seq_clamp(); } } return; }   // STEPS open on the notes
     if (k == K_Y) { hub_open(); hub_cur = PC_PATTERN; return; }
     if (k == K_PLAY) { play_key(); return; }
     if (k == K_OPT) { act_listen(sel); return; }

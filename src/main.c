@@ -1121,6 +1121,7 @@ static void browse_tick(Uint32 now) {
     }
 }
 static void prj_open_req(const char *path);
+static char blast[256];                  // the folder the last sound came from: an empty pad's browser opens there
 static void browse_key(int k) {
     if (k == K_UP || k == K_DOWN) {
         if (!bn) return;
@@ -1135,7 +1136,8 @@ static void browse_key(int k) {
         char p[1024]; snprintf(p, sizeof p, "%s/%s", bdir, bent[bcur].name);
         if (bent[bcur].dir) { if (strlen(p) < 500) browse_open(p); }
         else if (k == K_EDIT && bmode) prj_open_req(p);   // a project: open it (asks first when this one has changes)
-        else if (k == K_EDIT && strlen(p) < 256) { push_undo(); set_slot_file(sel, p); norm_new(sel); auto_setup(sel); browse_close(); }
+        else if (k == K_EDIT && strlen(p) < 256) { push_undo(); set_slot_file(sel, p); norm_new(sel); auto_setup(sel); snprintf(blast, sizeof blast, "%s", bdir); browse_close();
+            if (tab == T_GRID && ui_cat < 0 && !perform) { hubbing = 1; hub_cur = PC_PATTERN; } }   // UI v2: a pad that just got its sound opens (its list)
     } else if (k == K_OPT) browse_close();
 }
 static void neighbour_file(int pad, int dir) {
@@ -1157,7 +1159,7 @@ static int lane_list(int *l) {           // the lanes this pad has: a sampler sl
     static const int smp_l[] = {L_TRIG, L_VEL, L_PROB, L_REP, L_SLICE}, gb_l[] = {L_TRIG, L_VEL, L_PROB, L_REP},   // TRIG holds the note too (2026-11-09)
                      ab_l[] = {L_TRIG, L_VEL, L_PROB, L_REP, L_ACC, L_SLD};
     static const int sls_l[] = {L_SLICE, L_TRIG, L_VEL, L_PROB, L_REP};   // a sliced sample: SLC first (2026-11-12, user)
-    int ty = song.t[sel].type; const int *src = ty == 2 ? ab_l : ty ? gb_l : track_nslices(sel) > 1 ? sls_l : smp_l; int n = ty == 2 ? 6 : ty ? 4 : 5;
+    int ty = song.t[sel].type; const int *src = ty == 2 ? ab_l : ty ? gb_l : track_nslices(sel) > 1 ? sls_l : smp_l; int n = ty == 2 ? 6 : ty ? 4 : track_nslices(sel) > 1 ? 5 : 4;   // UI v2: no SLICE lane without slices
     if (song.t[sel].pat[song.t[sel].cur].mode) n = 1;   // ROLL: the roll itself (NOTE) and the automation lanes   // CLOUD: as GRAND
     for (int i = 0; i < n; i++) l[i] = src[i];
     for (int a = 0; a < NAUTO; a++) l[n++] = L_A1 + a;   // automation lanes on every pad
@@ -1785,6 +1787,7 @@ static void seq_delete(void) {
 static void browse_slot(void) {          // the browser, in the folder of the slot's sample
     const char *pth = song.t[sel].path, *sl = strrchr(pth, '/');
     char d[256]; snprintf(d, sizeof d, "%.*s", sl ? (int)(sl - pth) : 7, sl ? pth : "samples");
+    if (!sl && blast[0]) snprintf(d, sizeof d, "%s", blast);
     bmode = 0; browse_open(d);
 }
 static void move_cursor(int k);
@@ -1980,7 +1983,7 @@ static void new_project(void) {
     rec = 0; combo_t = 0;
     if (engine_playing() || engine_counting() >= 0) transport_toggle();
     engine_stop_all();
-    cap_n = 0; spage = 0;
+    cap_n = 0; spage = 0; sel = 0; memset(slot_want, 0, sizeof slot_want); memset(slot_bad, 0, sizeof slot_bad);   // nothing of the old project is missed in the new one
     int master = song.master;
     song_defaults(); song.master = master;       // same loudness as before
     sync_samples(); frz_reset();
@@ -5275,6 +5278,7 @@ static void pick_close(void) {
     picking = 0;
     for (int i = 0; i < 4; i++) if (pk_tex[i]) { SDL_DestroyTexture(pk_tex[i]); pk_tex[i] = NULL; }   // 3 MB each
 }
+static void hub_open(void);
 static void pick_take(int i) {
     pick_close();
     if (i == 0) { browse_slot(); return; }
@@ -5282,10 +5286,9 @@ static void pick_take(int i) {
     if (i == 1 && t->sp[SP_MARK] != SP_INIT) synth_defaults(t->sp);
     if (i == 2 && t->ap[AP_MARK] != AP_INIT) acid_defaults(t->ap);
     if (i == 3 && t->cp[CP_MARK] != CP_INIT) cl_defaults(t->cp);
-    cat_open(PC_SOUND);
-    cl_deep = 0; par_focus(P_SAMPLE);
+    cl_deep = 0; hub_open(); hub_cur = PC_PATTERN;   // UI v2: the pad is open now, its list first (PATTERN: the notes come next)
     if (i == 3) browse_slot();           // grains need a sample: the browser first
-    else toast(i == 1 ? "GRAND: HOLD EDIT TO HEAR" : "ACID: HOLD EDIT TO HEAR");
+    else toast(i == 1 ? "GRAND IS ON THE PAD: OPTION PLAYS IT" : "ACID IS ON THE PAD: OPTION PLAYS IT");
 }
 static void pick_key(int k, int down) {
     if (!down) { if (k == K_EDIT && !used[K_EDIT]) pick_take(pk_cur); return; }
