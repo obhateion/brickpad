@@ -90,6 +90,7 @@ static int tap_bpm(Uint32 *t, int *n);
 static void naming_pad(void);
 static int tab = T_GRID, browsing, slicing, theming, perform, sel = 5, undo_armed;
 static int hubbing, hub_cur, ui_cat = -1;   // UI v2: the pad hub is on screen; the category opened from it (-1 none), ui.h
+static int tr_lv = 2, tr_0, tr_pg;       // the hub as a tree (PROJECT > INTERFACE > PAD MENU): the level of the cursor, HOME's screen on level 0, the page on level 3
 enum { PC_PATTERN, PC_SOUND, PC_FX, PC_MOD, PC_MIX, PC_N };   // the categories inside a pad
 static int scening;                      // HOME > SCENES (A02) is on screen, over the pads
 static int modmenu, mm_cur;              // MOD's own list (LFO, AUTOMATION, DUCK), as PATTERN's
@@ -1910,23 +1911,30 @@ static void pat_play(void) {             // PLAY in the window: the pattern unde
 }
 
 // ---------- PROJECT ----------
-enum { J_TEMPO, J_SWING, J_KEY, J_SCALE, J_LAUNCH, J_METRO, J_BEATS, J_COUNT, J_QUANT, J_MASTER, J_THEME, J_LIB, J_NEW, J_SNAP, J_PROJ, J_SAVE, J_SAVEAS, J_EXPORT, J_HINT, J_STRIP, J_VIEW, J_LOCK, J_N };
+enum { J_TEMPO, J_SWING, J_KEY, J_SCALE, J_LAUNCH, J_METRO, J_BEATS, J_COUNT, J_QUANT, J_MASTER, J_THEME, J_LIB, J_NEW, J_SNAP, J_PROJ, J_SAVE, J_SAVEAS, J_EXPORT, J_HINT, J_STRIP, J_VIEW, J_LOCK, J_NAV, J_DRAWER, J_ABOUT, J_N };
 // The sections of PROJECT (2026-11-09): the left column chooses one, the middle shows its settings
-enum { JS_SONG, JS_PLAY, JS_REC, JS_FILE, JS_SYS, JS_N };
-static const char *const prj_sec_name[JS_N] = {"SONG", "PLAY", "RECORD", "FILE", "SYSTEM"};
+// 2026-11-14 (user): INTERFACE holds how BrickPad looks and moves, ABOUT every key of it by topic (the sheet SHIFT used to show)
+enum { JS_SONG, JS_PLAY, JS_REC, JS_FILE, JS_UI, JS_SYS, JS_ABOUT, JS_N };
+enum { AB_N = 11 }; static int ab_pg;   // ABOUT: its topics, the one shown
+static const char *const prj_sec_name[JS_N] = {"SONG", "PLAY", "RECORD", "FILE", "INTERFACE", "SYSTEM", "ABOUT"};
 static const int8_t prj_sec[JS_N][6] = {{J_TEMPO, J_SWING, J_KEY, J_SCALE, J_SNAP, J_BEATS}, {J_LAUNCH, J_METRO, J_MASTER, -1},
-                                        {J_COUNT, J_QUANT, -1}, {J_PROJ, J_SAVE, J_SAVEAS, J_EXPORT, J_NEW, -1}, {J_VIEW, J_STRIP, J_HINT, J_LOCK, J_THEME, J_LIB}};
+                                        {J_COUNT, J_QUANT, -1}, {J_PROJ, J_SAVE, J_SAVEAS, J_EXPORT, J_NEW, -1},
+                                        {J_VIEW, J_STRIP, J_NAV, J_DRAWER, J_HINT, J_LOCK}, {J_THEME, J_LIB, -1}, {J_ABOUT, -1}};
 static const char *const prj_help[J_N] = {"THE PROJECT'S SPEED. EDIT TAPS IT, L1/R1 HELD NUDGE WHILE PLAYING", "LATE EVEN 1/16 STEPS: A SHUFFLE",
     "THE TONIC EVERY PAD PLAYS IN (A PAD CAN HAVE ITS OWN)", "WHICH NOTES THE DEGREES, KEYS AND RANDOM USE",
     "A CLIP STARTS OR STOPS ON THIS GRID, AS IN ABLETON", "A CLICK ON EVERY BEAT WHILE PLAYING", "BEATS IN A BAR: LAUNCH AND RECORDING COUNT THEM",
     "BEATS COUNTED IN BEFORE A TAKE FROM STOP", "WHERE RECORDED HITS LAND ON THE STEPS", "THE WHOLE MIX, THE SAME FADER AS IN MIXER",
-    "COLOURS OF BRICKPAD, KEPT FOR EVERY PROJECT", "CHECKS EVERY SAMPLE ONCE, SLOWLY, MARKS BROKEN FILES", "EDIT TWICE: AN EMPTY PROJECT (UNDO BRINGS IT BACK)", "ON: EDIT+<> ON A STEP WALKS THE PAD'S SCALE ONLY, AS ON THE M8", "THE OPEN PROJECT; * = CHANGES NOT SAVED. EDIT: THE PROJECTS", "EDIT: WRITE THE PROJECT TO ITS FILE", "EDIT: TYPE A NAME, THEN SAVE UNDER IT", "EDIT: RENDER BARS OF THE PROJECT TO exports/NAME.wav", "THE KEYS OF THE SCREEN IN THE FOOTER. OFF: A CLEAN FOOTER, SHIFT STILL SHOWS THEM ALL",
-    "THE TWELVE PADS UNDER THE PATH INSIDE A PAD: HIDDEN, THIN BARS OR BIG TILES WITH NAMES", "ADVANCED: EVERYTHING. SIMPLE: PLAY, NOTES, SOUND, LARGE (MENU+ARROW). HOLD F1+F2 TO LEAVE IT",
-    "SIMPLE VIEW ONLY, FOR A CHILD: NOTES CANNOT BE ERASED AND THE DICE IS OFF. THE ADVANCED VIEW IGNORES IT"};
-static const char *prj_name[J_N] = {"TEMPO", "SWING", "KEY", "SCALE", "CLIP LAUNCH", "METRONOME", "BEATS/BAR", "COUNT-IN", "REC QUANT", "MASTER VOL", "THEME", "CHECK LIBRARY", "NEW PROJECT", "SCALE SNAP", "PROJECT", "SAVE", "SAVE AS", "EXPORT WAV", "FOOTER HINTS", "PAD STRIP", "VIEW", "KID LOCK"};
-static int ui_strip = 1, ui_simple, ui_lock;   // PROJECT > SYSTEM: the pad strip (0 hidden, 1 thin, 2 big), the simple view, its kid lock (ui.cfg beside the binary)
-static void ui_cfg_save(void) { char b[32]; int n = snprintf(b, sizeof b, "%d %d %d\n", ui_strip, ui_simple, ui_lock); write_whole("ui.cfg", b, n); }
-static void ui_cfg_load(void) { FILE *f = fopen("ui.cfg", "r"); if (f) { int a = 1, b = 0, c = 0; if (fscanf(f, "%d %d %d", &a, &b, &c) >= 1) { ui_strip = clampi(a, 0, 2); ui_simple = b != 0; ui_lock = c != 0; } fclose(f); } }
+    "COLOURS OF BRICKPAD, KEPT FOR EVERY PROJECT", "CHECKS EVERY SAMPLE ONCE, SLOWLY, MARKS BROKEN FILES", "EDIT TWICE: AN EMPTY PROJECT (UNDO BRINGS IT BACK)", "ON: EDIT+<> ON A STEP WALKS THE PAD'S SCALE ONLY, AS ON THE M8", "THE OPEN PROJECT; * = CHANGES NOT SAVED. EDIT: THE PROJECTS", "EDIT: WRITE THE PROJECT TO ITS FILE", "EDIT: TYPE A NAME, THEN SAVE UNDER IT", "EDIT: RENDER BARS OF THE PROJECT TO exports/NAME.wav", "THE KEYS OF THE SCREEN IN THE FOOTER. OFF: A CLEAN FOOTER. EVERY KEY IS IN PROJECT > ABOUT",
+    "THE TWELVE PADS UNDER THE PATH INSIDE A PAD: HIDDEN, THIN BARS OR BIG TILES WITH NAMES", "ADVANCED: EVERYTHING. SIMPLE: PLAY, NOTES, SOUND, LARGE (F1/F2). HOLD F1+F2 TO LEAVE IT",
+    "SIMPLE VIEW ONLY, FOR A CHILD: NOTES CANNOT BE ERASED AND THE DICE IS OFF. THE ADVANCED VIEW IGNORES IT",
+    "INSIDE A PAD: A LIST OF ITS CATEGORIES, OR A TREE WITH EVERY PAGE (<> LEVEL, ^v CHOOSE, EDIT OPEN)",
+    "THE MIXER'S DRAWER WITH THE RETURNS, THE MASTER AND THE PAD'S EFFECTS: THE SIDE IT SLIDES OUT OF", NULL};
+static const char *prj_name[J_N] = {"TEMPO", "SWING", "KEY", "SCALE", "CLIP LAUNCH", "METRONOME", "BEATS/BAR", "COUNT-IN", "REC QUANT", "MASTER VOL", "THEME", "CHECK LIBRARY", "NEW PROJECT", "SCALE SNAP", "PROJECT", "SAVE", "SAVE AS", "EXPORT WAV", "FOOTER HINTS", "PAD STRIP", "VIEW", "KID LOCK", "PAD MENU", "MIXER DRAWER", "ABOUT"};
+static int ui_strip = 1, ui_simple, ui_lock;   // PROJECT > INTERFACE: the pad strip (0 hidden, 1 thin, 2 big), the simple view, its kid lock (ui.cfg beside the binary)
+static int ui_tree, ui_drawer_left;          // the pad menu as a tree (A23) instead of the list; the mixer's drawer on the left
+static void ui_cfg_save(void) { char b[48]; int n = snprintf(b, sizeof b, "%d %d %d %d %d\n", ui_strip, ui_simple, ui_lock, ui_tree, ui_drawer_left); write_whole("ui.cfg", b, n); }
+static void ui_cfg_load(void) { FILE *f = fopen("ui.cfg", "r"); if (f) { int a = 1, b = 0, c = 0, d = 0, e = 0;
+    if (fscanf(f, "%d %d %d %d %d", &a, &b, &c, &d, &e) >= 1) { ui_strip = clampi(a, 0, 2); ui_simple = b != 0; ui_lock = c != 0; ui_tree = d != 0; ui_drawer_left = e != 0; } fclose(f); } }
 static int hint_on = 1;                    // HOVER HINTS (hints.cfg beside the binary: "0" = off)
 static void hint_set(int on) { hint_on = on; write_whole("hints.cfg", on ? "1\n" : "0\n", 2); }
 static void hint_load(void) { FILE *f = fopen("hints.cfg", "r"); if (f) { int v = 1; if (fscanf(f, "%d", &v) == 1) hint_on = v != 0; fclose(f); } }
@@ -2084,6 +2092,8 @@ static void prj_move(int k) {
         else if (k == K_RIGHT) jcol = 1;
         return;
     }
+    if (jsec == JS_ABOUT && k == K_UP && ab_pg > 0) { ab_pg--; return; }   // ABOUT: the arrows turn its topics
+    if (jsec == JS_ABOUT && k == K_DOWN) { if (ab_pg < AB_N - 1) ab_pg++; return; }
     if (k == K_LEFT) jcol = 0;
     else if (k == K_UP && i > 0) jcur = r[i - 1];
     else if (k == K_DOWN && i < n - 1) jcur = r[i + 1];
@@ -2095,7 +2105,9 @@ static int mcol;
 static void prj_edit_arrow(int k) {
     int d = (k == K_RIGHT || k == K_UP) ? 1 : -1, big = k == K_UP || k == K_DOWN;
     if (!jcol) return;                   // on the sections: the arrows only move
-    if (jcur == J_LIB || jcur == J_NEW || (jcur >= J_PROJ && jcur < J_HINT)) return;   // actions, not values (SCALE SNAP is a value)
+    if (jcur == J_LIB || jcur == J_NEW || jcur == J_ABOUT || (jcur >= J_PROJ && jcur < J_HINT)) return;   // actions, not values (SCALE SNAP is a value)
+    if (jcur == J_NAV) { ui_tree = !ui_tree; ui_cfg_save(); return; }
+    if (jcur == J_DRAWER) { ui_drawer_left = !ui_drawer_left; ui_cfg_save(); return; }
     if (jcur == J_STRIP) { ui_strip = (ui_strip + 1) % 3; ui_cfg_save(); return; }
     if (jcur == J_VIEW) { ui_simple = !ui_simple; ui_cfg_save(); return; }
     if (jcur == J_LOCK) { ui_lock = !ui_lock; ui_cfg_save(); return; }
@@ -2136,6 +2148,7 @@ static void prj_tap(void) {
     if (jcur == J_TEMPO) { static Uint32 tt[8]; static int tn; int b = tap_bpm(tt, &tn); char m[32];
         if (b) { edit_begin(); song.tempo = (int16_t)clampi(b, 40, 300); snprintf(m, sizeof m, "TAP  %d BPM", song.tempo); } else snprintf(m, sizeof m, "TAP: GO ON IN TIME");
         toast(m); return; }
+    if (jcur == J_ABOUT) { ab_pg = (ab_pg + 1) % AB_N; return; }
     if (jcur == J_PROJ) { prj_browse(); return; }
     if (jcur == J_SAVE) { if (prj_cur[0]) prj_save(prj_cur); else naming_open(0); return; }
     if (jcur == J_SAVEAS) { naming_open(0); return; }
@@ -2154,7 +2167,7 @@ static void prj_tap(void) {
         if (ntaps == 5) { memmove(taps, taps + 1, 4 * sizeof *taps); ntaps = 4; }
         taps[ntaps++] = now;
         if (ntaps >= 2) { edit_begin(); song.tempo = clampi((int)(60000.0 * (ntaps - 1) / (now - taps[0]) + 0.5), 40, 300); }
-    } else if (jcur == J_LAUNCH || jcur == J_METRO || jcur == J_COUNT || jcur == J_QUANT || jcur == J_SNAP || jcur == J_HINT || jcur == J_STRIP || jcur == J_VIEW || jcur == J_LOCK) prj_edit_arrow(K_RIGHT);
+    } else if (jcur == J_LAUNCH || jcur == J_METRO || jcur == J_COUNT || jcur == J_QUANT || jcur == J_SNAP || jcur == J_HINT || jcur == J_STRIP || jcur == J_VIEW || jcur == J_LOCK || jcur == J_NAV || jcur == J_DRAWER) prj_edit_arrow(K_RIGHT);
 }
 
 // ---------- SLICE EDITOR ----------
@@ -2386,7 +2399,7 @@ static void pad_tonality(int k) {
     else { int v = (track_key(sel) + (k == K_R1 ? 1 : 11)) % 12; t->key = v == song.key ? 0 : v + 1; }
     snprintf(b, sizeof b, "%s %s%s", note_name[track_key(sel)], scale_name[track_scale(sel)], t->scale || t->key ? "" : "  PROJECT"); toast(b);
 }
-// The icon palette of a pad: X on GRID.
+// The icon palette of a pad: LOOK in the pad's hub (X on GRID until 2026-11-14).
 static int icon_group(int i) { int g = 0; while (g + 1 < ICON_GRP_N && i >= icon_grp_at[g + 1]) g++; return g; }
 static int ic_pal = -1;                  // the colour strip under the icons: the colour under the cursor, -1 = in the icons
 static void icon_open(void) {
@@ -3295,14 +3308,14 @@ static void key_event(int k, int down) {
     if (theming) { theme_key(k, down); return; }
     if (iconing) { icon_key(k, down); return; }
     if (ducking) { duck_key(k, down); return; }
-    if (in_pad() && down && held[K_SHIFT] && k <= K_RIGHT) { used[K_SHIFT] = 1; cat_open(jump_cat(k)); return; }   // the jump
+    if (jump_ok() && down && held[K_SHIFT] && k <= K_RIGHT) { used[K_SHIFT] = 1; jump_hit = jump_cat(k); cat_open(jump_hit); return; }   // the jump (L3)
     if (hubbing) { hub_key(k, down); return; }
     if (patmenu) { patmenu_key(k, down); return; }
     if (modmenu) { modmenu_key(k, down); return; }
     if (scening) { scene_key(k, down); return; }
     if (recpage) { record_key(k, down); return; }
     if (ui_cat >= 0 && k == K_Y && tab != T_PAT && !pt_pick) {   // UI v2: Y goes back to the pad's hub, on release (Y+arrows BEND)
-        if (!down && !used[K_Y]) { int c = ui_cat; if (c == PC_PATTERN) patmenu_open(); else if (c == PC_MOD) modmenu_open(); else { hub_open(); hub_cur = c; } return; }
+        if (!down && !used[K_Y]) { int c = ui_cat; if (ui_tree) { hub_open(); hub_cur = c; } else if (c == PC_PATTERN) patmenu_open(); else if (c == PC_MOD) modmenu_open(); else { hub_open(); hub_cur = c; } return; }   // the tree has no lists in between
         if (!down || !(tab == T_SEQ && srow >= 1 && srow <= 2)) return;
     }
     if (!down) {                         // taps fire on release when no combo was used
@@ -3370,11 +3383,13 @@ static void key_event(int k, int down) {
     if (tab == T_PAT && k == K_Y) { pat_close(0); return; }   // the pattern window: Y goes back
     if (tab == T_GRID && k == K_Y && held[K_SHIFT]) { freeze_key(); return; }
     if (tab == T_PRJ && k == K_Y) { if (jcol) jcol = 0; else prj_leave(); return; }   // Y at the top: back where PROJECT was opened   // UI v2: Y is back, always
-    if (v2_mixer() && mx_pg && k == K_Y) { mx_pg = 0; mcol = sel; mrow = MX_VOL; return; }                 // RETURNS, FREEZE: back to the faders
+    if (v2_mixer() && mx_pg && !(mx_pg == 1 && mcol < NSLOT) && k == K_Y) { mx_pg = 0; mcol = sel; mrow = MX_VOL; return; }   // the drawer, FREEZE: back to the faders (on a strip Y mutes)
     if (tab == T_GRID && k == K_Y && gsel_mute()) return;
     if (tab == T_GRID && k == K_Y) { act_mute_toggle(sel); toast(song.t[sel].mute ? "MUTE ON" : "MUTE OFF"); return; }   // a live move: no undo step
     if (tab == T_GRID && k == K_X && held[K_SHIFT]) { naming_pad(); return; }
-    if (tab == T_GRID && k == K_X) { icon_open(); return; }
+    if (tab == T_GRID && k == K_X) {     // 2026-11-14 (user): X starts or stops this pad's clip, as a pad does in PADS; no notes yet: its sound
+        if (has_sound(sel)) { if (pat_used(cur_pat(sel))) act_clip_toggle(sel); else act_listen(sel); }
+        return; }
     if (tab == T_MIX && k == K_Y && mcol < NSLOT && held[K_SHIFT]) { used[K_SHIFT] = 1; act_solo_toggle(mcol); return; }   // A21: SHIFT+Y solo
     if (v2_fx() && k == K_X) { act_insert_onoff(fx_unit, fx2_slot); return; }   // A17: the insert on or off (the tab dims)
     if (tab == T_MIX && k == K_Y && mcol < NSLOT) { act_mute_toggle(mcol); return; }   // live moves: no undo step
@@ -3386,8 +3401,8 @@ static void key_event(int k, int down) {
     if (tab == T_FX && k == K_Y && fx_unit < NSLOT) { fx_page = !fx_page; return; }   // FX <> MOD
     if (v2_mix() && (k == K_L1 || k == K_R1)) return;   // MIX of a pad: one page
     if (v2_unit() && (k == K_L1 || k == K_R1)) { fx_unit = NSLOT + (fx_unit - NSLOT + (k == K_R1 ? 1 : 2)) % 3; frow = fcol = 0; return; }
-    if (v2_unit() && k == K_Y) { int u = fx_unit; set_tab(T_MIX); mx_pg = 1; mcol = u; mx_r = 0; mrow = MX_VOL; return; }   // back to RETURNS
-    if (v2_mixer() && (k == K_L1 || k == K_R1)) { mixer2_page(k == K_R1 ? 1 : -1); return; }   // UI v2: PADS, RETURNS, FREEZE
+    if (v2_unit() && k == K_Y) { int u = fx_unit; set_tab(T_MIX); mx_pg = 1; mcol = u; mx_r = 0; mrow = MX_VOL; return; }   // back to the drawer
+    if (v2_mixer() && (k == K_L1 || k == K_R1)) { mixer2_page(k == K_R1 ? 1 : -1); return; }   // UI v2: the faders, the drawer open, FREEZE
     if (tab == T_MIX && (k == K_L1 || k == K_R1)) { mcol = k == K_R1 ? (mcol < NSLOT ? (mcol / 4 + 1) * 4 : 0) : (mcol < 4 ? NSLOT : mcol <= NSLOT ? (mcol - 1) / 4 * 4 : NSLOT); if (mcol > NSLOT + 2) mcol = 0; if (mcol < NSLOT) sel = mcol; return; }
     if (ui_cat == PC_SOUND && tab == T_SEQ && (k == K_L1 || k == K_R1)) { sound_page_step(k == K_R1 ? 1 : -1); return; }   // SOUND: the page
     if (tab == T_SEQ && (k == K_L1 || k == K_R1)) {   // the pad's own lanes, round (PATTERN: without A1-A4, they are MOD's)
@@ -3489,8 +3504,8 @@ static void draw_grid(void) {
     draw_footer(perform ? "PAD CLIP/HIT  SHIFT+PAD OTHER  PLAY PAD CLIP  SHIFT+F1/F2 SCENE"
                         : gsel_on() ? "PLAY ALL SELECTED  Y MUTE  SHIFT+Y FREEZE  ARROW ENDS IT"
                         : slot_want[sel][0] ? missing
-                        : has_sound(sel) ? "EDIT OPEN  PLAY START  SHIFT MORE  Y MUTE  SHIFT+Y FREEZE  SHIFT+DPAD SEL  X ICON  SHIFT+X NAME"
-                                             : "EDIT CHOOSE ENGINE  X ICON  MENU PADS");
+                        : has_sound(sel) ? "EDIT OPEN  X CLIP  PLAY ALL  Y MUTE  SHIFT+Y FREEZE  SHIFT+DPAD SEL  SHIFT+X NAME"
+                                             : "EDIT CHOOSE ENGINE  MENU PADS");
 }
 static void slice_label(char *b, const Pattern *p, int i, int ns) {   // "16+": the step also plays what follows slice 16
     int k = (p->slice[i] < 0 ? i : p->slice[i]) % (ns ? ns : NSTEP);
@@ -3679,6 +3694,9 @@ static void prj_value(int i, char *b) {
     case J_STRIP: snprintf(b, 32, "%s", ui_strip == 2 ? "BIG" : ui_strip ? "THIN" : "HIDDEN"); break;
     case J_VIEW: snprintf(b, 32, ui_simple ? "SIMPLE" : "ADVANCED"); break;
     case J_LOCK: snprintf(b, 32, ui_lock ? "ON" : "OFF"); break;
+    case J_NAV: snprintf(b, 32, ui_tree ? "TREE" : "LIST"); break;
+    case J_DRAWER: snprintf(b, 32, ui_drawer_left ? "LEFT" : "RIGHT"); break;
+    case J_ABOUT: b[0] = 0; break;
     case J_PROJ: snprintf(b, 32, "%.20s%s", prj_cur[0] ? prj_cur : "UNTITLED", prj_dirty() ? " *" : ""); break;
     case J_SAVE: snprintf(b, 32, prj_dirty() ? "UNSAVED CHANGES" : prj_cur[0] ? "SAVED" : "NOT SAVED YET"); break;
     case J_SAVEAS: b[0] = 0; break;
@@ -3707,7 +3725,10 @@ static int frame_rate(Uint32 now) {      // frames per second for what is happen
 // ---------- MIXER and FX screens ----------
 static float mx_show[NSLOT + 3];         // meters as drawn: peaks with a fall
 static void mx_meters(void) {
+    static Uint32 last; Uint32 now = SDL_GetTicks() | 1;
     float m[NSLOT + 3]; engine_meters(m);
+    if (!last || ms_since(now, last) > 400) { memset(m, 0, sizeof m); memset(mx_show, 0, sizeof mx_show); }   // the engine holds its peaks until they are read: after a
+    last = now;                          // pause the first read is whatever sounded since, and the bars flicked on opening the mixer (2026-11-14, user)
     for (int i = 0; i < NSLOT + 3; i++) mx_show[i] = m[i] > mx_show[i] ? m[i] : mx_show[i] * 0.85f;
 }
 static void meter_bar(int x, int y, int w, int h, float v) {   // segments from the bottom; the top ones orange, red past the limiter
@@ -4208,7 +4229,7 @@ static void draw(void) {
         SDL_Rect s1 = {0, SY, W, sh}, d1 = {(W - dw) / 2, DY, dw, dh}, s2 = {0, V2_FOOT, W, H - V2_FOOT};
         SDL_RenderCopy(R, body, &s1, &d1); SDL_RenderCopy(R, body, &s2, &s2);
         ui2_header(); }
-    ui_popup(); ui_cheat();
+    ui_popup(); ui_cross();
     if (asking) draw_ask2();
 shown:;
     ui_quit_hold();

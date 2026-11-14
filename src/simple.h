@@ -1,6 +1,7 @@
-// UI v2, step 7: the simple view (PROJECT > SYSTEM > VIEW; mockups P1-P4). Three large screens over the same song and the
+// UI v2, step 7: the simple view (PROJECT > INTERFACE > VIEW; mockups P1-P4). Three large screens over the same song and the
 // same actions: PLAY (the pads as tiles), NOTES (the open pad's steps), SOUND (four knobs with plain names).
-// MENU + UP / RIGHT / DOWN (or MENU alone: the next one) changes the screen, F1/F2 the pad, F1+F2 held 3 s leaves the view.
+// F1/F2 change the screen, as they change the screens of HOME (2026-11-14, user; it was MENU), L1/R1 the pad (on PLAY: the
+// scene), F1+F2 held 3 s leaves the view.
 // KID LOCK: nothing is deleted or overwritten here (notes stay, the dice is off). main.c includes this once, after pages.h.
 #pragma once
 static int sv_mode, sv_knob; static Uint32 sv_exit;   // the screen; SOUND: the knob the arrows chose; when F1+F2 went down together
@@ -32,15 +33,15 @@ static int simple_key(int k, int down) {  // 1 = the key is used up here; 0 = NO
     if (k == K_F1 || k == K_F2) { int o = k == K_F1 ? K_F2 : K_F1;
         if (down && held[o]) { used[K_F1] = used[K_F2] = 1; sv_exit = SDL_GetTicks() | 1; }
         else if (!down) { if (sv_exit && ms_since(SDL_GetTicks(), sv_exit) >= 3000) { ui_simple = 0; ui_cfg_save(); set_tab(T_GRID); ui_cat = -1; }   // held long enough: out
-                          sv_exit = 0; if (!used[k]) sv_pad(k == K_F2 ? 1 : -1); }
+                          sv_exit = 0; if (!used[k]) { sv_mode = (sv_mode + (k == K_F2 ? 1 : 2)) % 3; simple_sync(); } }
         return 1; }
-    if (k == K_MENU) { menu_down = down && !held[K_SHIFT] ? SDL_GetTicks() : 0; if (!down && !used[K_MENU]) { sv_mode = (sv_mode + 1) % 3; simple_sync(); } return 1; }
-    if (held[K_MENU] && k <= K_RIGHT) { if (down) { used[K_MENU] = 1; menu_down = 0; if (k != K_LEFT) sv_mode = k == K_UP ? 0 : k == K_RIGHT ? 1 : 2; simple_sync(); } return 1; }
+    if (k == K_MENU) { menu_down = down && !held[K_SHIFT] ? SDL_GetTicks() : 0; return 1; }   // held: the way out of BrickPad, nothing else here
     if (k == K_PLAY) { if (down && !held[K_SHIFT]) play_key(); return 1; }
+    if (sv_mode && (k == K_L1 || k == K_R1)) { if (down) sv_pad(k == K_R1 ? 1 : -1); return 1; }   // NOTES, SOUND: the next pad with a sound
     if (!has_sound(sel) && sv_mode) return 1;
     if (sv_mode == 1) {
         if (cur_pat(sel)->mode) return 1;                    // a piano roll: shown as it is, edited in the advanced view
-        if (held[K_SHIFT] || k == K_SHIFT || k == K_Y || k == K_X || k == K_L1 || k == K_R1 || k == K_L2 || k == K_R2) return 1;
+        if (held[K_SHIFT] || k == K_SHIFT || k == K_Y || k == K_X || k == K_L2 || k == K_R2) return 1;
         if (ui_lock) { if ((k == K_OPT && held[K_EDIT]) || (k == K_EDIT && held[K_OPT])) return 1;
             if (k == K_EDIT && !down && !used[K_EDIT]) { const Pattern *p = cur_pat(sel); int st = cur_step(); if (st < p->len && p->trig[st]) { toast("KID LOCK: THE NOTE STAYS"); return 1; } } }
         return 0;
@@ -89,12 +90,12 @@ static void draw_simple(void) {
             snprintf(b, sizeof b, "%.11s", slot_name(i)); ftext(x + 18, y + 16, FT_LB, on || hit ? C_BG : t->mute ? C_DIM : C_WHITE, b);
             if (t->mute) ftext(x + CW - 76, y + CH - 40, FT_M, C_RED, "quiet");
             else if (!on && pat_used(cur_pat(i))) rect(x + 18, y + CH - 22, (CW - 36) * t->vol / 100, 6, mix(ec, C_BG, 90), 1); }
-        draw_footer("EDIT PLAY  EDIT+^v VOLUME  Y QUIET  L1/R1 SCENE  MENU SCREEN  F1+F2-HOLD LEAVE");
+        draw_footer("EDIT PLAY  F1/F2 SCREEN  L1/R1 SCENE  EDIT+^v VOLUME  Y QUIET  F1+F2-HOLD LEAVE");
     } else if (!has_sound(sel)) {
-        const char *m = "this pad is empty: F1/F2 goes to the next one"; ftext(512 - ftext_w(FT_M, m) / 2, 340, FT_M, C_DIM, m); draw_footer("F1/F2 PAD  MENU SCREEN");
+        const char *m = "this pad is empty: L1/R1 goes to the next one"; ftext(512 - ftext_w(FT_M, m) / 2, 340, FT_M, C_DIM, m); draw_footer("L1/R1 PAD  F1/F2 SCREEN");
     } else if (sv_mode == 1) {           // P2: sixteen steps, the notes on them
         const Pattern *p = cur_pat(sel); Col ec = C_ENG(song.t[sel].type); int nsl = track_nslices(sel), cs = cur_step(), page = cs / 16, st = song.t[sel].on ? engine_step(sel) : -1;
-        if (p->mode) { const char *m = "this pattern is a piano roll: it plays, the advanced view edits it"; ftext(512 - ftext_w(FT_M, m) / 2, 340, FT_M, C_DIM, m); draw_footer("F1/F2 PAD  MENU SCREEN"); }
+        if (p->mode) { const char *m = "this pattern is a piano roll: it plays, the advanced view edits it"; ftext(512 - ftext_w(FT_M, m) / 2, 340, FT_M, C_DIM, m); draw_footer("L1/R1 PAD  F1/F2 SCREEN"); }
         else {
             for (int c = 0; c < 16; c++) { int i = page * 16 + c, x = 28 + (c % 8) * 122, y = 78 + (c / 8) * 288, in = i < p->len, lit = in && p->trig[i];
                 Col fill = lit ? mix(C_CELL, ec, 70) : C_CELL;
@@ -106,7 +107,7 @@ static void draw_simple(void) {
             snprintf(b, sizeof b, "%d steps \003 %s", p->len, div_name[p->div % 6]); ftext(28, 668, FT_M, C_DIM, b);
             if (cs < p->len && p->trig[cs]) { char nb[12]; step_value(p, cs, lane, nsl, nb); snprintf(b, sizeof b, "step %d \003 %s \003 vel %d", cs + 1, nb, p->vel[cs]); } else snprintf(b, sizeof b, "step %d", cs + 1);
             ftext(W - 28 - ftext_w(FT_M, b), 668, FT_M, C_WHITE, b);
-            draw_footer("EDIT NOTE  EDIT+^v HIGHER/LOWER  F1/F2 PAD  MENU SCREEN");
+            draw_footer("EDIT NOTE  F1/F2 SCREEN  L1/R1 PAD  EDIT+^v HIGHER/LOWER");
         }
     } else {                             // P3: four knobs on the arrows, the dice
         SvKnob kn[4]; sv_knobs(sel, kn); static const char *const ar[4] = {"^", ">", "<", "v"}; static const int ord[4] = {0, 1, 2, 3};
@@ -121,7 +122,7 @@ static void draw_simple(void) {
         rrect(26, 488, 971, 190, 10, C_CELL);
         ftext(512 - ftext_w(FT_LB, "DICE") / 2, 536, FT_LB, ui_lock ? C_DIM : C_ENG(1), "DICE");
         t = ui_lock ? "the kid lock keeps this sound" : "SHIFT+X: a random sound"; ftext(512 - ftext_w(FT_M, t) / 2, 592, FT_M, C_DIM, t);
-        draw_footer("EDIT+<> TURN  ARROW KNOB  F1/F2 PAD  SHIFT+X DICE  MENU SCREEN");
+        draw_footer("EDIT+<> TURN  F1/F2 SCREEN  L1/R1 PAD  ARROW KNOB  SHIFT+X DICE");
     }
     if (sv_exit && held[K_F1] && held[K_F2]) {       // P4: the way out is a hold, with a ring that fills
         int el = (int)ms_since(now, sv_exit);

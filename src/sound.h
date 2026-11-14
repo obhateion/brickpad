@@ -49,6 +49,8 @@ static const SndPage *snd_pages(int type, int *n) {
     }
     *n = (int)(sizeof snd_smp / sizeof *snd_smp); return snd_smp;
 }
+static int snd_page_n(void) { int n; snd_pages(song.t[sel].type, &n); return n; }   // the pages by number: the tree lists and opens them
+static const char *snd_page_nm(int i) { int n; const SndPage *pg = snd_pages(song.t[sel].type, &n); return pg[clampi(i, 0, n - 1)].name; }
 static const SndPage *snd_page(void) { int n; const SndPage *pg = snd_pages(song.t[sel].type, &n); return &pg[clampi(sp_pg[song.t[sel].type & 3], 0, n - 1)]; }
 static int snd_cards(const SndPage *pg, int *out) {   // the cards on show: what the mode does not use is left out
     int c = 0; for (int i = 0; i < pg->n; i++) if (par_visible(pg->p[i])) out[c++] = pg->p[i];
@@ -79,6 +81,9 @@ static void sound_page_step(int d) {     // L1/R1
     int n; snd_pages(song.t[sel].type, &n); int *pp = &sp_pg[song.t[sel].type & 3];
     *pp = (*pp + d + n) % n; sp_cur = 0; pt_pick = 0;
     sound_sync();
+}
+static void snd_page_go(int i) {         // a page by its number (the tree)
+    int n; snd_pages(song.t[sel].type, &n); sp_pg[song.t[sel].type & 3] = clampi(i, 0, n - 1); sp_cur = 0; pt_pick = 0; sound_sync();
 }
 static void sound_move(int k) {          // two columns of cards; UP from the first row: the picture
     const SndPage *pg = snd_page(); int l[20], c = snd_cards(pg, l);
