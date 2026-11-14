@@ -56,7 +56,7 @@ static void fx2_card(int x, int y, int w, int h, const FxSlot *f, FxCard cd, int
         if (f->type == FX_COMP) { lb = "KEY"; if (val) snprintf(v, sizeof v, "PAD %d", val); else snprintf(v, sizeof v, "SELF"); }
         else { lb = mb_name[cd.row - 2]; snprintf(v, sizeof v, "%+d DB", val); } }
     else { int k = cd.row - 2; lb = fx_pname[f->type][k]; val = f->p[k]; fx_range(f->type, k, &lo, &hi); fx_pstr(f->type, k, val, v); }
-    if (on) rframe(x, y, w, h, 8, 4, ec, C_CELL); else rrect(x, y, w, h, 8, C_CELL);
+    if (on) { rframe(x, y, w, h, 8, 4, ec, C_CELL); ui_focus(lb, v, hi - lo > 3 ? (val - lo) * 100 / (hi - lo) : -1, ec); } else rrect(x, y, w, h, 8, C_CELL);
     ftext(x + 20, y + 12, FT_M, C_DIM, lb);
     ftext(x + w - 20 - ftext_w(FT_XB, v), y + 10, FT_XB, C_WHITE, v);
     if (hi - lo > 3) { int by = y + h - 26; rect(x + 20, by, w - 40, 8, C_LINE, 1); rect(x + 20, by, (w - 40) * clampi(val - lo, 0, hi - lo) / (hi - lo), 8, ec, 1); }
@@ -157,6 +157,7 @@ static void draw_lfo2(void) {
         ftext(x + 453 - ftext_w(FT_XB, b) > x + 140 ? x + 453 - ftext_w(FT_XB, b) : x + 140, y + 10, ftext_w(FT_XB, b) < 300 ? FT_XB : FT_M, C_WHITE, b);
         if (r == LR_DEPTH) { lo = -100; hi = 100; v = L->depth; } else if (r == LR_PHASE) { hi = 100; v = L->phase; } else if (r == LR_RATE && !L->sync) { hi = 100; v = L->rate; }
         if (hi > lo) { rect(x + 20, y + 140, 433, 8, C_LINE, 1); rect(x + 20, y + 140, 433 * (v - lo) / (hi - lo), 8, ec, 1); }
+        if (on) ui_focus(lr_name[r], b, hi > lo ? (v - lo) * 100 / (hi - lo) : -1, ec);
     }
     ui_cards_more(1004, 343, 348, first, (LR_N + 1) / 2);
     draw_footer(lrow == LR_TARGET ? "EDIT PICK ON SOUND  EDIT+<> TARGET  L1/R1 LFO  Y BACK  OPT+EDIT UNLINK" : "EDIT+ARROWS VALUE  L1/R1 LFO  Y BACK  OPT+EDIT LFO OFF");
@@ -220,7 +221,7 @@ static void draw_mix2(void) {
             case 5: if (pm->spare[DK_SRC]) snprintf(v, sizeof v, "PAD %d %d%%", pm->spare[DK_SRC], pm->spare[DK_AMT]); else snprintf(v, sizeof v, "OFF"); break;
             case 6: snprintf(v, sizeof v, "%s", t->mute ? "ON" : "OFF"); break;
             default: snprintf(v, sizeof v, "%s", pm->solo ? "ON" : "OFF"); }
-        if (on) rframe(x, y, 473, 296, 8, 4, ec, C_CELL); else rrect(x, y, 473, 296, 8, C_CELL);
+        if (on) { rframe(x, y, 473, 296, 8, 4, ec, C_CELL); ui_focus(nm[i], v, val >= 0 ? (val - lo) * 100 / (hi - lo) : -1, ec); } else rrect(x, y, 473, 296, 8, C_CELL);
         ftext(x + 20, y + 12, FT_M, C_DIM, nm[i]); ftext(x + 453 - ftext_w(FT_XB, v), y + 10, FT_XB, (i >= 4 && (i == 4 ? frozen(mcol) : i == 6 ? t->mute : i == 7 ? pm->solo : pm->spare[DK_SRC] != 0)) ? ec : C_WHITE, v);
         if (val >= 0 || i == 1) { int by = y + 296 - 30; rect(x + 20, by, 433, 8, C_LINE, 1);
             if (i == 1) { int cx = x + 20 + 433 / 2, w = 433 * t->pan / 100; if (w > 0) rect(cx, by, w, 8, ec, 1); else rect(cx + w, by, -w, 8, ec, 1); rect(cx, by - 4, 2, 16, C_WHITE, 1); }
@@ -265,6 +266,7 @@ static void draw_mixer2(void) {
         for (int s = 0; s < NSLOT; s++) { int cx = 66 + s * 81, on = s == mcol, top = 86, bot = 640, h = (bot - top) * song.t[s].vol / 100;
             Col c = has_sound(s) ? (on ? C_ORANGE : C_ENG(song.t[s].type)) : C_LINE; char b[4];
             if (on) rframe(cx - 38, top - 10, 76, 638, 8, 3, C_WHITE, C_BG);
+            if (on) { char vv[8]; snprintf(vv, sizeof vv, "%d", song.t[s].vol); char nn[24]; snprintf(nn, sizeof nn, "%02d VOLUME", s + 1); ui_focus(nn, vv, song.t[s].vol, c); }
             rect(cx - 8, top, 16, bot - top, C_CELL, 1); if (has_sound(s)) { rect(cx - 8, bot - h, 16, h, c, 1); rect(cx - 22, bot - h - 5, 44, 10, C_WHITE, 1); }
             snprintf(b, sizeof b, "%02d", s + 1); ftext(cx - ftext_w(FT_MB, b) / 2, 652, FT_MB, on ? C_WHITE : C_DIM, b);
             if (song.t[s].mute) ftext(cx - 6, 678, FT_MB, C_RED, "M"); else if (song.mix.pad[s].solo) ftext(cx - 6, 678, FT_MB, C_ORANGE, "S"); }
@@ -309,6 +311,7 @@ static void draw_duck2(void) {
         rect(x, PY + PH - 14 - h, bw - 6, h > 1 ? h : 1, on ? C_WHITE : onn ? ec : C_DIM, 1);
         rect(x, PY + PH - 14 - rh, bw - 6, 3, mix(C_WHITE, ec, 120), 1); }
     { float g = 1, v = engine_duck_view(sel, &g); if (v >= 0) rect(PX + 14 + (int)((PW - 28) * v), PY + 6, 2, PH - 12, C_WHITE, 1); }
+    if (dk_row == 0) { char nn[16], vv[8]; snprintf(nn, sizeof nn, "POINT %d", dk_pt + 1); snprintf(vv, sizeof vv, "%d%%", cv[dk_pt]); ui_focus(nn, vv, cv[dk_pt], ec); }
     static const char *const fn2[DF_N] = {"TRIGGER", "SOURCE", "DEPTH", "LENGTH", "", "SMOOTH", "SHAPE"};
     int first = dk_row == 1 ? dk_col / 2 / 2 * 2 : 0;
     for (int c = first * 2; c < DF_N && c < first * 2 + 4; c++) { char v[24]; int x = c & 1 ? 518 : 32, y = PY + PH + 16 + (c / 2 - first) * 170, on = dk_row == 1 && dk_col == c, use = c != DF_SRC || mode != DM_GRID;
@@ -318,7 +321,7 @@ static void draw_duck2(void) {
             case DF_RATE: if (mode == DM_GRID) snprintf(v, sizeof v, "%s", dk_len_name[dx[DX_GRID] % DK_NLEN]); else if (mode == DM_AUDIO) snprintf(v, sizeof v, "%dDB", (int)((dx[DX_THRESH] - 100) * 0.6f)); else { snprintf(v, sizeof v, "-"); use = 0; } break;
             case DF_SMOOTH: if (dx[DX_SMOOTH]) snprintf(v, sizeof v, "%dMS", dx[DX_SMOOTH] / 2 > 0 ? dx[DX_SMOOTH] / 2 : 1); else snprintf(v, sizeof v, "OFF"); break;
             default: snprintf(v, sizeof v, "%s", dx[DX_SHAPE] == DK_USER ? "USER" : dk_shape_name[dx[DX_SHAPE] % DK_NSHAPE]); }
-        if (on) rframe(x, y, 473, 156, 8, 4, ec, C_CELL); else rrect(x, y, 473, 156, 8, C_CELL);
+        if (on) { rframe(x, y, 473, 156, 8, 4, ec, C_CELL); ui_focus(c == DF_RATE ? (mode == DM_GRID ? "EVERY" : "THRESHOLD") : fn2[c], v, c == DF_AMT ? amt : -1, ec); } else rrect(x, y, 473, 156, 8, C_CELL);
         ftext(x + 20, y + 12, FT_M, C_DIM, c == DF_RATE ? (mode == DM_GRID ? "EVERY" : "THRESHOLD") : fn2[c]);
         ftext(x + 453 - ftext_w(FT_XB, v), y + 10, FT_XB, use ? C_WHITE : C_DIM, v);
         if (c == DF_AMT || c == DF_LEN) { int f = c == DF_AMT ? amt : (dx[DX_LEN] % DK_NLEN) * 100 / (DK_NLEN - 1); rect(x + 20, y + 130, 433, 8, C_LINE, 1); rect(x + 20, y + 130, 433 * f / 100, 8, ec, 1); } }
@@ -364,7 +367,7 @@ static void draw_prj2(void) {
     int first = jcol ? cj / 4 * 4 : 0;   // four cards a page, as A24
     if (n > 4) { rect(1000, 82, 4, 4 * dy - 12, C_CELL, 1); rect(1000, 82 + (first / 4) * (4 * dy - 12) / ((n + 3) / 4), 4, (4 * dy - 12) / ((n + 3) / 4), C_DIM, 1); }
     for (int j = first; j < n && j < first + 4; j++) { int i = r[j], y = 82 + (j - first) * dy, on = jcol && i == jcur; char b[32]; prj_value(i, b);
-        if (on) rframe(300, y, 690, ch, 8, 4, ec, C_CELL); else rrect(300, y, 690, ch, 8, C_CELL);
+        if (on) { rframe(300, y, 690, ch, 8, 4, ec, C_CELL); ui_focus(prj_name[i], b, i == J_MASTER ? song.master : -1, ec); } else rrect(300, y, 690, ch, 8, C_CELL);
         ftext(320, y + 14, FT_M, C_DIM, prj_name[i]);
         int f = ftext_w(FT_XB, b) <= 640 - ftext_w(FT_M, prj_name[i]) ? FT_XB : FT_M;
         ftext(970 - ftext_w(f, b), y + 10, f, i == J_PROJ && prj_dirty() ? C_ORANGE : C_WHITE, b);
@@ -384,7 +387,7 @@ static void draw_unit2(void) {
     for (int k = 0; k < n; k++) { int c = k >= half, r = c ? k - half : k, x = c ? 518 : 32, y = 118 + r * dy, on = fcol == c && frow == r, lo, hi, def; char b[16];
         int v = *unit_param(u, k, &lo, &hi, &def); unit_pstr(u, k, v, b);
         const char *nm = u == NSLOT ? rv_name[k] : u == NSLOT + 1 ? dl_name[k] : ms_name[k];
-        if (on) rframe(x, y, 473, h, 8, 4, ec, C_CELL); else rrect(x, y, 473, h, 8, C_CELL);
+        if (on) { rframe(x, y, 473, h, 8, 4, ec, C_CELL); ui_focus(nm, b, hi - lo > 1 ? (v - lo) * 100 / (hi - lo) : -1, ec); } else rrect(x, y, 473, h, 8, C_CELL);
         ftext(x + 20, y + 12, FT_M, C_DIM, nm); ftext(x + 453 - ftext_w(FT_XB, b), y + 10, FT_XB, C_WHITE, b);
         if (hi - lo > 1) { rect(x + 20, y + h - 26, 433, 8, C_LINE, 1); rect(x + 20, y + h - 26, 433 * clampi(v - lo, 0, hi - lo) / (hi - lo), 8, ec, 1); } }
     draw_footer("EDIT+ARROWS VALUE  L1/R1 UNIT  Y BACK  EDIT ON/OFF  OPT+EDIT DEFAULT");

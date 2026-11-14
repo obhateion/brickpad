@@ -19,6 +19,7 @@ static int ftext(int x, int y, int f, Col c, const char *s) {   // y: the top of
         int ch = (unsigned char)*s, g = ch >= 32 && ch <= 127 ? ch - 32 : ch == 1 ? 96 : ch == 2 ? 97 : -1;
         if (ch == 3) g = 98;             // the middle dot
         if (ch == 4) g = 99;             // the arrow
+        if (ch == 5) g = 100;            // the arrow to the left
         if (g <= 0) continue;
         SDL_Rect src = {g * v->w, 0, v->w, v->h}, dst = {x, y, v->w, v->h}; SDL_RenderCopy(R, t, &src, &dst);
     }
@@ -203,18 +204,17 @@ static void ui_cheat(void) {              // SHIFT held alone: inside a pad the 
 }
 
 // The value popup: while EDIT+arrows turn a control of the instrument panel, its name, value and where it sits.
-static void ui_popup(void) {
-    if (!held[K_EDIT] || !used[K_EDIT] || tab != T_SEQ || srow < 3 || perform || ui_window() || ui_v2) return;   // the cards show their values
-    int p = cur_par(); if (p < 0 || p == P_SAMPLE) return;
-    char v[96]; par_str(sel, p, v, sizeof v);
-    enum { PW = 440, PH = 92, PX = (W - PW) / 2, PY = 92 };
-    rect(PX, PY, PW, PH, C_CELL, 1); frame(PX, PY, PW, PH, 2, C_ENG(song.t[sel].type));
-    text(PX + 16, PY + 12, 2, C_DIM, par_name[p]);
-    textf(PX + 16, PY + 36, 3, C_WHITE, "%.17s", v);
-    if (par_is_number(p)) {
-        int lo, hi, st, bg; par_limits(sel, p, &lo, &hi, &st, &bg);
-        if (hi > lo) { int f = (par_get(sel, p) - lo) * (PW - 32) / (hi - lo); rect(PX + 16, PY + 72, PW - 32, 6, C_LINE, 1); rect(PX + 16, PY + 72, clampi(f, 0, PW - 32), 6, C_ENG(song.t[sel].type), 1); }
-    }
+static char uf_name[32], uf_val[48]; static int uf_f; static Col uf_col;   // the card under the cursor this frame (ui_focus)
+static void ui_focus(const char *n, const char *v, int f, Col c) {   // f: 0..100 where the value sits, -1 a choice
+    snprintf(uf_name, sizeof uf_name, "%s", n); snprintf(uf_val, sizeof uf_val, "%s", v); uf_f = f; uf_col = c;
+}
+static void ui_popup(void) {              // EDIT held and turning: the value large, over the page (ТЗ: always on)
+    if (!held[K_EDIT] || !used[K_EDIT] || !uf_name[0] || perform) return;
+    enum { PW = 560, PX = (W - PW) / 2, PY = 84 }; int PH = uf_f >= 0 ? 132 : 84;
+    rframe(PX, PY, PW, PH, 12, 3, uf_col, C_CELL);
+    ftext(PX + 24, PY + 16, FT_M, C_DIM, uf_name);
+    ftext(PX + PW - 24 - ftext_w(FT_XB, uf_val), PY + 12, FT_XB, C_WHITE, uf_val);
+    if (uf_f >= 0) { rect(PX + 24, PY + PH - 34, PW - 48, 10, C_LINE, 1); rect(PX + 24, PY + PH - 34, (PW - 48) * clampi(uf_f, 0, 100) / 100, 10, uf_col, 1); }
 }
 
 // The pad hub (UI v2): PATTERN SOUND FX MOD MIX of the selected pad. EDIT opens one, Y goes back up (category -> hub ->
@@ -348,7 +348,8 @@ static void draw_steps2(void) {
     else snprintf(b, sizeof b, "%d steps \3 %s", p->len, div_name[p->div % 6]);
     ftext(26, 660, FT_M, C_DIM, b);
     if (!pat_used(p)) { const char *m = "empty: EDIT puts a note on the step"; ftext(512 - ftext_w(FT_M, m) / 2, 660, FT_M, C_ORANGE, m); }
-    if (cs < p->len && p->trig[cs]) { char nb[12]; step_value(p, cs, L_TRIG, nsl, nb); snprintf(b, sizeof b, "step %d \3 %s \3 vel %d", cs + 1, nb, p->vel[cs]); }
+    if (cs < p->len && p->trig[cs]) { char nb[12], ln[24]; step_value(p, cs, lane, nsl, nb); snprintf(ln, sizeof ln, "STEP %d %s", cs + 1, lane_full(lane)); ui_focus(ln, nb, -1, C_ENG(song.t[sel].type));
+        step_value(p, cs, L_TRIG, nsl, nb); snprintf(b, sizeof b, "step %d \3 %s \3 vel %d", cs + 1, nb, p->vel[cs]); }
     else snprintf(b, sizeof b, "step %d", cs + 1);
     ftext(W - 28 - ftext_w(FT_M, b), 660, FT_M, C_WHITE, b);
     draw_footer(lane == L_TRIG || lane == L_SLICE ? "EDIT NOTE  L1/R1 LANE  Y BACK  EDIT+ARROWS VALUE  OPT LISTEN  OPT+EDIT DELETE  XX DOUBLE CLIP  SHIFT+X RANDOM"

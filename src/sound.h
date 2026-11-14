@@ -157,7 +157,10 @@ static void snd_picture(const SndPage *pg, int x, int y, int w, int h, Col ec) {
         snd_wave(x + 12, y + 8, w - 24, h - 36, mix(ec, C_CELL, 150), mix(ec, C_CELL, 200), 0);
         if (s && s->n > 1) { int ww = w - 24 > 960 ? 960 : w - 24, px = x + 12 + ww * t->cp[CP_POS] / 100, sw = ww * t->cp[CP_SPRAY] / 200;   // where the grains come from
             int x0 = px - sw < x + 12 ? x + 12 : px - sw, x1 = px + sw > x + 12 + ww ? x + 12 + ww : px + sw;
-            for (int yy = y + 10; yy < y + h - 30; yy += 6) rect(x0, yy, x1 - x0 + 2, 2, mix(C_CELL, ec, 110), 1);
+            unsigned r = (unsigned)(SDL_GetTicks() / 140) * 2654435761u;   // A16: the grains as dots round the position, a new cloud every 140 ms
+            int n = 10 + t->cp[CP_DENSITY] * 30 / 100, rad = 3 + t->cp[CP_SIZE] / 14, hh = h - 52;
+            for (int i = 0; i < n; i++) { r = r * 1103515245u + 12345u; int gx = x0 + (int)((r >> 8) % (unsigned)(x1 - x0 + 1)); r = r * 1103515245u + 12345u; int gy = y + 16 + (int)((r >> 8) % (unsigned)hh);
+                disc2(gx, gy, rad, mix(ec, C_WHITE, (int)((r >> 4) % 90))); }
             rect(px, y + 8, 2, h - 36, C_WHITE, 1); }
         if (s) ftext(x + 20, y + h - 28, FT_S, C_DIM, s->name);
         break;
@@ -181,12 +184,14 @@ static const char *snd_label(int p) {
     return par_name[p];
 }
 static void snd_card(int x, int y, int w, int h, int p, int on, Col ec) {
-    char v[96]; if (p == P_SAMPLE) snprintf(v, sizeof v, "OPEN"); else par_str(sel, p, v, sizeof v);
+    char v[96]; if (p == P_SAMPLE) snprintf(v, sizeof v, "OPEN"); else if (p == P_DIR) snprintf(v, sizeof v, "%s", song.t[sel].rev ? "\005" : "\004");   // A08: the way it plays, an arrow
+    else par_str(sel, p, v, sizeof v);
     if (on) rframe(x, y, w, h, 8, 4, ec, C_CELL); else rrect(x, y, w, h, 8, C_CELL);
     const char *lb = snd_label(p); ftext(x + 20, y + 12, FT_M, C_DIM, lb);
     int room = w - 52 - ftext_w(FT_M, lb), f = ftext_w(FT_XB, v) <= room ? FT_XB : ftext_w(FT_LB, v) <= room ? FT_LB : FT_M;
     if (ftext_w(f, v) > room) v[room / fv2[f].w > 0 ? room / fv2[f].w : 0] = 0;
     ftext(x + w - 20 - ftext_w(f, v), y + 10 + (fv2[FT_XB].h - fv2[f].h) / 2, f, C_WHITE, v);
+    if (on) { int lo, hi, st, bg; par_limits(sel, p, &lo, &hi, &st, &bg); ui_focus(lb, v, par_is_number(p) && bg > 1 && hi > lo ? (par_get(sel, p) - lo) * 100 / (hi - lo) : -1, ec); }
     if (par_is_number(p)) { int lo, hi, st, bg; par_limits(sel, p, &lo, &hi, &st, &bg);   // a bar for what is turned, none for what is chosen
         if (bg > 1 && hi > lo) { int by = y + h - 26; rect(x + 20, by, w - 40, 8, C_LINE, 1); rect(x + 20, by, (w - 40) * clampi(par_get(sel, p) - lo, 0, hi - lo) / (hi - lo), 8, ec, 1); } }
 }

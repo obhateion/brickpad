@@ -138,9 +138,9 @@ static void font_init(void) {
         SDL_SetTextureBlendMode(font_sc[sc], SDL_BLENDMODE_BLEND);
         free(px);
     }
-    for (int f = 0; f < FT_N; f++) {     // UI v2 fonts: 100 glyphs in a row
-        const FontV2 *v = &fv2[f]; int w = 100 * v->w; Uint32 *px = calloc((size_t)w * v->h, 4);
-        for (int g = 0; g < 100; g++) for (int i = 0; i < v->w * v->h; i++) {
+    for (int f = 0; f < FT_N; f++) {     // UI v2 fonts: 101 glyphs in a row
+        const FontV2 *v = &fv2[f]; int w = 101 * v->w; Uint32 *px = calloc((size_t)w * v->h, 4);
+        for (int g = 0; g < 101; g++) for (int i = 0; i < v->w * v->h; i++) {
             int a = v->px[g * v->per + i / 2] >> ((i & 1) ? 0 : 4) & 15;
             px[(i / v->w) * w + g * v->w + i % v->w] = (Uint32)(a * 17) << 24 | 0xFFFFFF;
         }
@@ -5793,7 +5793,7 @@ static void draw(void) {
       last = scr; }
     SDL_SetRenderDrawColor(R, C_BG.r, C_BG.g, C_BG.b, 255);
     SDL_RenderClear(R);
-    ui_v2 = 1;                           // every screen is a rebuilt one
+    ui_v2 = 1; uf_name[0] = 0;           // every screen is a rebuilt one; the pages tell ui_popup their card
     if (ui_simple && !exporting && !naming && !asking) { draw_simple(); goto shown; }
     v2_normalize(); ui2_header();
     if (exporting) draw_export2();
