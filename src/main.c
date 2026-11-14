@@ -3162,7 +3162,12 @@ static void preset_key(int k, int down) {
     if (k == K_OPT) { if (!(engine_playing() && song.t[sel].on)) { engine_release_key(302); engine_trig_key(sel, 1.f, 0, -1, 302); pr_heard = 1; flash[sel] = SDL_GetTicks(); } return; }
     if (k == K_UP || k == K_DOWN || k == K_L1 || k == K_R1) {
         int d = k == K_DOWN ? 1 : k == K_UP ? -1 : 0;
-        if (k == K_L1 || k == K_R1) {    // L1/R1: the previous/next category
+        if (k == K_L1 || k == K_R1) {    // UI v2 (A12): L1/R1 between the two tabs, FACTORY and MINE
+            int mine = idx[clampi(pr_cur, 0, n - 1)] < 0 || idx[clampi(pr_cur, 0, n - 1)] >= 1000, j = 0;
+            if (mine) { while (j < n && (idx[j] < 0 || idx[j] >= 1000)) j++; if (j >= n) j = 0; }
+            pr_cur = j; pr_try(); return;
+        }
+        if (0) {
             int i0 = idx[clampi(pr_cur, 0, n - 1)], c0 = i0 >= 0 && i0 < 1000 ? presets[i0].cat : -1, j = pr_cur;
             if (k == K_R1) { while (j < n - 1 && (idx[j] < 0 || idx[j] >= 1000 || presets[idx[j]].cat == c0)) j++; }
             else { j--; while (j > 0 && idx[j] >= 0 && idx[j] < 1000 && presets[idx[j]].cat == presets[idx[clampi(j - 1, 0, n - 1)]].cat && idx[j - 1] >= 0 && idx[j - 1] < 1000) j--; if (j < 0) j = 0; }
@@ -3381,8 +3386,8 @@ static void key_event(int k, int down) {
         return;
     }
     int arrow = k <= K_RIGHT;
-    if (arrow && held[K_Y] && tab == T_SEQ && srow >= 1 && srow <= 2 && is_auto(lane) && !browsing) {   // BEND the segment under the cursor
-        used[K_Y] = 1; int back = aut_point_back();
+    if (arrow && (held[K_Y] || held[K_X]) && tab == T_SEQ && srow >= 1 && srow <= 2 && is_auto(lane) && !browsing) {   // BEND the segment under the cursor (A19: X+arrows)
+        used[K_Y] = used[K_X] = 1; int back = aut_point_back();
         if (back < 0) { toast("NO POINT: EDIT PUTS ONE"); return; }
         edit_begin(); int8_t *bc = aut_bend(); int d = k == K_RIGHT ? 10 : k == K_LEFT ? -10 : k == K_UP ? 50 : -50;
         act_bend(bc, back, d);
@@ -3441,6 +3446,8 @@ static void key_event(int k, int down) {
     if (tab == T_GRID && k == K_Y) { act_mute_toggle(sel); toast(song.t[sel].mute ? "MUTE ON" : "MUTE OFF"); return; }   // a live move: no undo step
     if (tab == T_GRID && k == K_X && held[K_SHIFT]) { naming_pad(); return; }
     if (tab == T_GRID && k == K_X) { icon_open(); return; }
+    if (tab == T_MIX && k == K_Y && mcol < NSLOT && held[K_SHIFT]) { used[K_SHIFT] = 1; act_solo_toggle(mcol); return; }   // A21: SHIFT+Y solo
+    if (v2_fx() && k == K_X) { act_insert_onoff(fx_unit, fx2_slot); return; }   // A17: the insert on or off (the tab dims)
     if (tab == T_MIX && k == K_Y && mcol < NSLOT) { act_mute_toggle(mcol); return; }   // live moves: no undo step
     if (tab == T_MIX && k == K_X && mcol < NSLOT) { act_solo_toggle(mcol); return; }
     if (v2_lfo() && (k == K_L1 || k == K_R1)) { lcol = (lcol + (k == K_R1 ? 1 : NLFO - 1)) % NLFO; return; }   // UI v2 (A18): the next LFO

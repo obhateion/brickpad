@@ -239,11 +239,11 @@ static void draw_sound2(void) {
         snd_picture(pg, 26, 127, 971, 243, ec);
         y0 = 390;
     }
-    int rows = (c + 1) / 2, tall = pg->gfx != GF_NONE && rows <= 2, h = tall ? 148 : 96, dy = tall ? 162 : 104;
-    int vis = pg->gfx != GF_NONE ? (tall ? 2 : 3) : 5, first = clampi((sp_cur < 0 ? 0 : sp_cur / 2) - vis / 2, 0, rows > vis ? rows - vis : 0);
+    int rows = (c + 1) / 2, pic = pg->gfx != GF_NONE, h = pic ? 148 : 270, dy = pic ? 162 : 286;   // four cards on screen, as the mockups
+    int vis = 2, first = (sp_cur < 0 ? 0 : sp_cur / 2) / 2 * 2;   // the next four come by pages, not by rows
     for (int i = first * 2; i < c && i < (first + vis) * 2; i++)
         snd_card(i & 1 ? 518 : 32, y0 + (i / 2 - first) * dy, 473, h, l[i], i == sp_cur, ec);
-    if (rows > vis) { int th = (vis * dy - 8) * vis / rows, ty = y0 + (vis * dy - 8 - th) * first / (rows - vis); rect(1004, y0, 4, vis * dy - 8, C_CELL, 1); rect(1004, ty, 4, th, C_DIM, 1); }   // more below
+    ui_cards_more(1004, y0, vis * dy - 8, first, rows);   // more below: the next page
     if (learning) draw_footer("EDIT TAKE THIS PARAMETER  L1/R1 PAGE  Y CANCEL");
     else if (sp_cur < 0) draw_footer(pg->gfx == GF_SLICES ? "EDIT SLICE EDITOR  L1/R1 PAGE  Y BACK  EDIT+ARROWS SLICES  OPT LISTEN"
                               : is_synth(sel) && song.t[sel].type != 3 ? "EDIT PRESETS  L1/R1 PAGE  Y BACK  OPT LISTEN"
@@ -313,15 +313,11 @@ static void draw_browse2(void) {
 static void draw_presets2(void) {
     int idx[NPRESET + NUSERP + 1], n = pr_list(idx, NPRESET + NUSERP + 1); Col ec = C_ENG(song.t[sel].type);
     pr_cur = clampi(pr_cur, 0, n - 1);
-    #define PR_CAT(j) (idx[j] < 0 || idx[j] >= 1000 ? -1 : presets[idx[j]].cat)   // -1: MINE (SAVE CURRENT and the user's)
-    int tabs[NPRESET_CAT + 1], nt = 0, cur = PR_CAT(pr_cur), ct = 0;
-    for (int j = 0; j < n; j++) { int c = PR_CAT(j), seen = 0; for (int t = 0; t < nt; t++) if (tabs[t] == c) seen = 1; if (!seen) tabs[nt++] = c; }
-    for (int t = 0; t < nt; t++) if (tabs[t] == cur) ct = t;
-    int vis = nt < 4 ? nt : 4, first = clampi(ct - 1, 0, nt - vis), tw = 971 / vis;   // the tabs: four at most, the current one among them
-    for (int v = 0; v < vis; v++) { int t = first + v, x = 26 + v * tw, on = t == ct; const char *nm = tabs[t] < 0 ? "MINE" : preset_cat[tabs[t] % NPRESET_CAT];
-        if (on) rrect(x, 76, tw - 10, 38, 8, ec);
-        ftext(x + (tw - 10) / 2 - ftext_w(FT_MB, nm) / 2, 83, FT_MB, on ? C_BG : C_DIM, nm); }
-    if (first > 0) ftext(6, 83, FT_MB, C_DIM, "<"); if (first + vis < nt) ftext(1006, 83, FT_MB, C_DIM, ">");
+    #define PR_CAT(j) (idx[j] < 0 || idx[j] >= 1000 ? 1 : 0)   // A12: two tabs, FACTORY and MINE (SAVE CURRENT and the user's)
+    int cur = PR_CAT(pr_cur);
+    for (int t = 0; t < 2; t++) { int x = 26 + t * 492, on = t == cur; const char *nm = t ? "MINE" : "FACTORY";
+        if (on) rrect(x, 76, 475, 38, 8, ec);
+        ftext(x + 237 - ftext_w(FT_MB, nm) / 2, 83, FT_MB, on ? C_BG : C_DIM, nm); }
     int a = 0; while (a < n && PR_CAT(a) != cur) a++;
     int e = a; while (e < n && PR_CAT(e) == cur) e++;
     enum { ROWS = 9, RH = 61 }; int top = clampi(pr_cur - a - ROWS / 2, 0, e - a > ROWS ? e - a - ROWS : 0);
@@ -334,7 +330,7 @@ static void draw_presets2(void) {
         ftext(974 - ftext_w(FT_M, tg), y + 13, FT_M, on ? ec : C_DIM, tg); }
     if (e - a > ROWS) { int th = ROWS * RH - 11, h = th * ROWS / (e - a); rect(1004, 130, 4, th, C_CELL, 1); rect(1004, 130 + (th - h) * top / (e - a - ROWS), 4, h, C_DIM, 1); }
     int i = idx[pr_cur];
-    draw_footer(i < 0 ? "EDIT SAVE THE SOUND YOU HAD  Y BACK" : i >= 1000 ? "EDIT LOAD  L1/R1 CATEGORY  Y BACK  OPT LISTEN  OPT+EDIT DELETE"
-                : "EDIT LOAD  L1/R1 CATEGORY  Y BACK  OPT LISTEN");
+    draw_footer(i < 0 ? "EDIT SAVE THE SOUND YOU HAD  L1/R1 FACTORY  Y BACK" : i >= 1000 ? "EDIT LOAD  L1/R1 FACTORY  Y BACK  OPT LISTEN  OPT+EDIT DELETE"
+                : "EDIT LOAD  L1/R1 MINE  Y BACK  OPT LISTEN");
     #undef PR_CAT
 }

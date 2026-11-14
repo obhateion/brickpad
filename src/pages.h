@@ -10,8 +10,7 @@ static int v2_fx(void) { return ui_cat == PC_FX && tab == T_FX && fx_unit < NSLO
 typedef struct { int8_t row, side; } FxCard;   // a card is a 1.2 row of the slot (1 ON, 2..7 the parameters), side = its right half
 static int fx2_cards(FxCard *c) {
     const FxSlot *f = &song.mix.pad[fx_unit].ins[fx2_slot]; int n = 0;
-    if (!f->type) return 0;
-    c[n++] = (FxCard){1, 0};
+    if (!f->type) return 0;              // ON/OFF: X (the tab dims), as A17 has no card for it
     for (int k = 0; k < 6; k++) if (fx_pname[f->type][k][0]) c[n++] = (FxCard){(int8_t)(2 + k), 0};
     for (int r = 2; r < 8; r++) if (fx_multi_row(fx2_slot, r)) c[n++] = (FxCard){(int8_t)r, 1};
     return n;
@@ -71,16 +70,15 @@ static void draw_fx2(void) {
         ftext(x + 240 - ftext_w(FT_MB, b) / 2, 92, FT_MB, on ? C_BG : f->type && f->on ? C_WHITE : C_DIM, b);
     }
     const FxSlot *f = &pm->ins[fx2_slot]; FxCard c[16]; int n = fx2_cards(c);
-    int rows = (n + 1) / 2, tall = rows <= 2, ph = tall ? 186 : 136, h = tall ? 162 : 96, dy = tall ? 174 : 104, y0 = 153 + ph + 16;
+    int rows = (n + 1) / 2, ph = 186, h = 162, dy = 174, y0 = 153 + ph + 16;   // four cards, the rest by pages
     if (fx2_cur < 0) rframe(26, 153, 971, ph, 8, 4, ec, C_CELL); else rrect(26, 153, 971, ph, 8, C_CELL);
     fx2_picture(46, 153, 931, ph, f, ec);
-    int vis = (700 - y0) / dy, first = clampi((fx2_cur < 0 ? 0 : fx2_cur / 2) - vis / 2, 0, rows > vis ? rows - vis : 0);
+    int vis = 2, first = (fx2_cur < 0 ? 0 : fx2_cur / 2) / 2 * 2;
     for (int i = first * 2; i < n && i < (first + vis) * 2; i++)
         fx2_card(i & 1 ? 518 : 32, y0 + (i / 2 - first) * dy, 473, h, f, c[i], i == fx2_cur, ec);
-    if (rows > vis) { int th = vis * dy - 8, tw = th * vis / rows; rect(1004, y0, 4, th, C_CELL, 1); rect(1004, y0 + (th - tw) * first / (rows - vis), 4, tw, C_DIM, 1); }
-    if (fx2_cur < 0) draw_footer("EDIT CHANGE  L1/R1 SLOT  Y BACK  EDIT+<> TYPE  OPT+EDIT REMOVE");
-    else if (c[fx2_cur].row == 1) draw_footer("EDIT ON/OFF  L1/R1 SLOT  Y BACK");
-    else draw_footer("EDIT+ARROWS VALUE  L1/R1 SLOT  Y BACK  OPT+EDIT DEFAULT");
+    ui_cards_more(1004, y0, vis * dy - 8, first, rows);
+    if (fx2_cur < 0) draw_footer("EDIT CHANGE  L1/R1 SLOT  Y BACK  EDIT+<> TYPE  X ON/OFF  OPT+EDIT REMOVE");
+    else draw_footer("EDIT+ARROWS VALUE  L1/R1 SLOT  Y BACK  X ON/OFF  OPT+EDIT DEFAULT");
 }
 
 // ---- MOD: its list (LFO, AUTOMATION, DUCK), as PATTERN's ----
@@ -116,10 +114,14 @@ static void draw_modmenu(void) {
 
 // ---- MOD > LFO (A18): LFO 1-4 as tabs (L1/R1), its shape, seven cards (the 1.2 rows: lrow) ----
 static int v2_lfo(void) { return ui_cat == PC_MOD && tab == T_FX && fx_unit < NSLOT && fx_page && !modmenu; }
+static const int8_t lfo2_ord[LR_N] = {LR_TARGET, LR_SHAPE, LR_RATE, LR_DEPTH, LR_SYNC, LR_TRIG, LR_PHASE};   // A18's four first
+static int lfo2_pos(void) { for (int i = 0; i < LR_N; i++) if (lfo2_ord[i] == lrow) return i; return 0; }
 static void lfo2_move(int k) {
-    if (k == K_LEFT) { if (lrow & 1) lrow--; } else if (k == K_RIGHT) { if (!(lrow & 1) && lrow + 1 < LR_N) lrow++; }
-    else if (k == K_DOWN) { if (lrow + 2 < LR_N) lrow += 2; else if ((lrow | 1) + 1 < LR_N) lrow = LR_N - 1; }
-    else if (lrow >= 2) lrow -= 2;
+    int p = lfo2_pos();
+    if (k == K_LEFT) { if (p & 1) p--; } else if (k == K_RIGHT) { if (!(p & 1) && p + 1 < LR_N) p++; }
+    else if (k == K_DOWN) { if (p + 2 < LR_N) p += 2; else if ((p | 1) + 1 < LR_N) p = LR_N - 1; }
+    else if (p >= 2) p -= 2;
+    lrow = lfo2_ord[p];
 }
 static float lfo2_shape(int sh, float t, unsigned *rng) {   // one period, -1..1
     switch (sh % LS_N) {
@@ -146,15 +148,17 @@ static void draw_lfo2(void) {
           if (i) line(px, py, x, y, 3, act ? ec : C_DIM);
           px = x; py = y; }
       if (act) { float v = engine_lfo(fx_unit, lcol); disc2(986, 227 - (int)(v * 80), 6, C_WHITE); } }   // where it is now
-    for (int r = 0; r < LR_N; r++) {
-        int x = r & 1 ? 518 : 32, y = 343 + (r / 2) * 88, on = r == lrow, lo = 0, hi = 0, v = 0;
+    int cp = lfo2_pos(), first = cp / 2 / 2 * 2;
+    for (int i = first * 2; i < LR_N && i < first * 2 + 4; i++) {
+        int r = lfo2_ord[i], x = i & 1 ? 518 : 32, y = 343 + (i / 2 - first) * 178, on = r == lrow, lo = 0, hi = 0, v = 0;
         lfo_str(fx_unit, lcol, r, b);
-        if (on) rframe(x, y, 473, 80, 8, 4, ec, C_CELL); else rrect(x, y, 473, 80, 8, C_CELL);
-        ftext(x + 20, y + 10, FT_M, C_DIM, lr_name[r]);
-        ftext(x + 453 - ftext_w(FT_LB, b), y + 8, FT_LB, C_WHITE, b);
+        if (on) rframe(x, y, 473, 166, 8, 4, ec, C_CELL); else rrect(x, y, 473, 166, 8, C_CELL);
+        ftext(x + 20, y + 12, FT_M, C_DIM, lr_name[r]);
+        ftext(x + 453 - ftext_w(FT_XB, b) > x + 140 ? x + 453 - ftext_w(FT_XB, b) : x + 140, y + 10, ftext_w(FT_XB, b) < 300 ? FT_XB : FT_M, C_WHITE, b);
         if (r == LR_DEPTH) { lo = -100; hi = 100; v = L->depth; } else if (r == LR_PHASE) { hi = 100; v = L->phase; } else if (r == LR_RATE && !L->sync) { hi = 100; v = L->rate; }
-        if (hi > lo) { rect(x + 20, y + 58, 433, 8, C_LINE, 1); rect(x + 20, y + 58, 433 * (v - lo) / (hi - lo), 8, ec, 1); }
+        if (hi > lo) { rect(x + 20, y + 140, 433, 8, C_LINE, 1); rect(x + 20, y + 140, 433 * (v - lo) / (hi - lo), 8, ec, 1); }
     }
+    ui_cards_more(1004, 343, 348, first, (LR_N + 1) / 2);
     draw_footer(lrow == LR_TARGET ? "EDIT PICK ON SOUND  EDIT+<> TARGET  L1/R1 LFO  Y BACK  OPT+EDIT UNLINK" : "EDIT+ARROWS VALUE  L1/R1 LFO  Y BACK  OPT+EDIT LFO OFF");
 }
 
@@ -206,7 +210,8 @@ static void mix2_move(int k) {
 static void draw_mix2(void) {
     Col ec = C_CAT(PC_MIX); const Track *t = &song.t[mcol]; const PadMix *pm = &song.mix.pad[mcol]; mrow = mix2_rows[mix2_cur & 7];
     static const char *const nm[8] = {"VOLUME", "PAN", "SEND A", "SEND B", "FREEZE", "DUCK", "MUTE", "SOLO"};
-    for (int i = 0; i < 8; i++) { char v[24]; int x = i & 1 ? 518 : 32, y = 80 + (i / 2) * 156, on = i == mix2_cur, val = -1, lo = 0, hi = 100;
+    int first = mix2_cur / 4 * 2;           // four cards a page: VOLUME PAN SENDS, then FREEZE DUCK MUTE SOLO
+    for (int i = first * 2; i < first * 2 + 4; i++) { char v[24]; int x = i & 1 ? 518 : 32, y = 86 + (i / 2 - first) * 312, on = i == mix2_cur, val = -1, lo = 0, hi = 100;
         switch (i) { case 0: val = t->vol; snprintf(v, sizeof v, "%d", t->vol); break;
             case 1: val = t->pan; lo = -50; hi = 50; if (t->pan) snprintf(v, sizeof v, "%c%d", t->pan < 0 ? 'L' : 'R', abs(t->pan)); else snprintf(v, sizeof v, "C"); break;
             case 2: val = pm->send_a; snprintf(v, sizeof v, "%d", pm->send_a); break;
@@ -215,9 +220,9 @@ static void draw_mix2(void) {
             case 5: if (pm->spare[DK_SRC]) snprintf(v, sizeof v, "PAD %d %d%%", pm->spare[DK_SRC], pm->spare[DK_AMT]); else snprintf(v, sizeof v, "OFF"); break;
             case 6: snprintf(v, sizeof v, "%s", t->mute ? "ON" : "OFF"); break;
             default: snprintf(v, sizeof v, "%s", pm->solo ? "ON" : "OFF"); }
-        if (on) rframe(x, y, 473, 144, 8, 4, ec, C_CELL); else rrect(x, y, 473, 144, 8, C_CELL);
+        if (on) rframe(x, y, 473, 296, 8, 4, ec, C_CELL); else rrect(x, y, 473, 296, 8, C_CELL);
         ftext(x + 20, y + 12, FT_M, C_DIM, nm[i]); ftext(x + 453 - ftext_w(FT_XB, v), y + 10, FT_XB, (i >= 4 && (i == 4 ? frozen(mcol) : i == 6 ? t->mute : i == 7 ? pm->solo : pm->spare[DK_SRC] != 0)) ? ec : C_WHITE, v);
-        if (val >= 0 || i == 1) { int by = y + 144 - 30; rect(x + 20, by, 433, 8, C_LINE, 1);
+        if (val >= 0 || i == 1) { int by = y + 296 - 30; rect(x + 20, by, 433, 8, C_LINE, 1);
             if (i == 1) { int cx = x + 20 + 433 / 2, w = 433 * t->pan / 100; if (w > 0) rect(cx, by, w, 8, ec, 1); else rect(cx + w, by, -w, 8, ec, 1); rect(cx, by - 4, 2, 16, C_WHITE, 1); }
             else rect(x + 20, by, 433 * clampi(val - lo, 0, hi - lo) / (hi - lo), 8, ec, 1); } }
     draw_footer(mix2_cur == 4 ? "EDIT FREEZE/LIVE  Y BACK" : mix2_cur == 5 ? "EDIT OPEN DUCK  EDIT+<> SOURCE  Y BACK  EDIT+^v DEPTH" : mix2_cur >= 6 ? "EDIT ON/OFF  Y BACK" : "EDIT+ARROWS VALUE  Y BACK  OPT+EDIT DEFAULT");
@@ -256,22 +261,19 @@ static int mixer2_tap(void) {             // EDIT: RETURNS opens the unit's ever
 }
 static void draw_mixer2(void) {
     mixer2_fix();
-    static const char *const pgn[3] = {"PADS", "RETURNS", "FREEZE"};
-    for (int i = 0; i < 3; i++) { int x = 26 + i * 324, on = i == mx_pg; if (on) rrect(x, 70, 314, 34, 8, C_ORANGE);
-        ftext(x + 157 - ftext_w(FT_MB, pgn[i]) / 2, 75, FT_MB, on ? C_BG : C_DIM, pgn[i]); }
     if (mx_pg == 0) {                     // A21: twelve faders in the pads' engine colours
-        for (int s = 0; s < NSLOT; s++) { int cx = 66 + s * 81, on = s == mcol, top = 124, bot = 640, h = (bot - top) * song.t[s].vol / 100;
+        for (int s = 0; s < NSLOT; s++) { int cx = 66 + s * 81, on = s == mcol, top = 86, bot = 640, h = (bot - top) * song.t[s].vol / 100;
             Col c = has_sound(s) ? (on ? C_ORANGE : C_ENG(song.t[s].type)) : C_LINE; char b[4];
-            if (on) rframe(cx - 38, top - 10, 76, 600, 8, 3, C_WHITE, C_BG);
+            if (on) rframe(cx - 38, top - 10, 76, 638, 8, 3, C_WHITE, C_BG);
             rect(cx - 8, top, 16, bot - top, C_CELL, 1); if (has_sound(s)) { rect(cx - 8, bot - h, 16, h, c, 1); rect(cx - 22, bot - h - 5, 44, 10, C_WHITE, 1); }
             snprintf(b, sizeof b, "%02d", s + 1); ftext(cx - ftext_w(FT_MB, b) / 2, 652, FT_MB, on ? C_WHITE : C_DIM, b);
             if (song.t[s].mute) ftext(cx - 6, 678, FT_MB, C_RED, "M"); else if (song.mix.pad[s].solo) ftext(cx - 6, 678, FT_MB, C_ORANGE, "S"); }
-        draw_footer("EDIT+^v LEVEL  Y MUTE  X SOLO  L1/R1 PAGE");
+        draw_footer("EDIT+^v LEVEL  Y MUTE  SHIFT+Y SOLO  L1/R1 RETURNS, FREEZE");
     } else if (mx_pg == 1) {              // A22: the returns and the master, a fader and two bars each
         static const char *const cn[3] = {"A \003 REVERB", "B \003 DELAY", "MASTER"}, *const pn[3][2] = {{"SIZE", "DECAY"}, {"TIME", "FEEDBACK"}, {"COMP", "LIMITER"}};
         for (int u = 0; u < 3; u++) { int x = 32 + u * 324, on = mcol == NSLOT + u, lo, hi, def; Col c = u == 2 ? th_cur[TC_SMP] : C_CAT(PC_MIX);
-            if (on) rframe(x, 112, 310, 590, 8, 4, C_CAT(PC_MIX), C_CELL); else rrect(x, 112, 310, 590, 8, C_CELL);
-            ftext(x + 20, 128, FT_MB, C_WHITE, cn[u]);
+            if (on) rframe(x, 76, 310, 626, 8, 4, C_CAT(PC_MIX), C_CELL); else rrect(x, 76, 310, 626, 8, C_CELL);
+            ftext(x + 20, 92, FT_MB, C_WHITE, cn[u]);
             int lv = u == 2 ? song.master : *unit_param(NSLOT + u, u ? DL_LEVEL : RV_LEVEL, &lo, &hi, &def), fh = 380 * lv / 100;
             rect(x + 142, 168, 26, 380, C_LINE, 1); rect(x + 142, 548 - fh, 26, fh, c, 1);
             if (on && mx_r == 0) rframe(x + 134, 160, 42, 396, 6, 3, C_WHITE, C_CELL), rect(x + 142, 168, 26, 380, C_LINE, 1), rect(x + 142, 548 - fh, 26, fh, c, 1);
@@ -280,19 +282,19 @@ static void draw_mixer2(void) {
                 else { v = *unit_param(NSLOT + u, k, &lo, &hi, &def); unit_pstr(NSLOT + u, k, v, b); v = hi > lo ? (v - lo) * 100 / (hi - lo) : 0; }
                 ftext(x + 20, y, FT_M, on && mx_r == r + 1 ? C_WHITE : C_DIM, pn[u][r]); ftext(x + 290 - ftext_w(FT_M, b), y, FT_M, on && mx_r == r + 1 ? C_WHITE : C_DIM, b);
                 rect(x + 20, y + 30, 270, 8, C_LINE, 1); rect(x + 20, y + 30, 270 * v / 100, 8, on && mx_r == r + 1 ? C_WHITE : C_CAT(PC_MIX), 1); } }
-        draw_footer("EDIT+^v VALUE  EDIT ALL PARAMETERS  L1/R1 PAGE");
+        draw_footer("EDIT+^v VALUE  Y BACK  EDIT ALL PARAMETERS  L1/R1 PAGE");
     } else {                              // A23: the pads with a sound, live or frozen; EXPORT last; the DSP load
         int n = 0, ss[NSLOT]; for (int s = 0; s < NSLOT; s++) if (has_sound(s)) ss[n++] = s;
         int top = clampi(mx_fz - 3, 0, n + 1 > 6 ? n + 1 - 6 : 0);
-        for (int r = 0; r < 6 && top + r <= n; r++) { int i = top + r, y = 114 + r * 90, on = i == mx_fz; char b[40];
+        for (int r = 0; r < 6 && top + r <= n; r++) { int i = top + r, y = 78 + r * 96, on = i == mx_fz; char b[40];
             rrect(26, y, 971, 80, 8, on ? C_SELBG : C_CELL);
             if (i == n) { ftext(48, y + 26, FT_LB, C_WHITE, "EXPORT"); ftext(974 - ftext_w(FT_M, "song \003 WAV"), y + 28, FT_M, C_DIM, "song \003 WAV"); continue; }
             int s = ss[i]; snprintf(b, sizeof b, "%02d %.16s", s + 1, slot_name(s) ? slot_name(s) : "EMPTY"); ftext(48, y + 26, FT_LB, C_WHITE, b);
-            if (frozen(s)) { const char *f = "\002 frozen"; ftext(974 - ftext_w(FT_M, f), y + 28, FT_M, C_ENG(1), f); } else ftext(974 - ftext_w(FT_M, "live"), y + 28, FT_M, C_DIM, "live"); }
+            if (frozen(s)) { const char *f = "\002 frozen"; ftext(974 - ftext_w(FT_M, f), y + 28, FT_M, C_ENG(3), f); } else ftext(974 - ftext_w(FT_M, "live"), y + 28, FT_M, C_DIM, "live"); }
         int ld = (int)(engine_load() * 100); char b[8]; snprintf(b, sizeof b, "%d%%", ld);
         ftext(26, 660, FT_M, C_DIM, "CPU"); rect(102, 668, 780, 8, C_LINE, 1); rect(102, 668, 780 * clampi(ld, 0, 100) / 100, 8, ld >= 85 ? C_RED : th_cur[TC_SMP], 1);
         ftext(997 - ftext_w(FT_MB, b), 658, FT_MB, C_WHITE, b);
-        draw_footer(mixer2_fz_pad() < 0 ? "EDIT EXPORT  L1/R1 PAGE" : "EDIT FREEZE  L1/R1 PAGE");
+        draw_footer(mixer2_fz_pad() < 0 ? "EDIT EXPORT  Y BACK  L1/R1 PAGE" : "EDIT FREEZE  Y BACK  L1/R1 PAGE");
     }
 }
 
@@ -308,18 +310,20 @@ static void draw_duck2(void) {
         rect(x, PY + PH - 14 - rh, bw - 6, 3, mix(C_WHITE, ec, 120), 1); }
     { float g = 1, v = engine_duck_view(sel, &g); if (v >= 0) rect(PX + 14 + (int)((PW - 28) * v), PY + 6, 2, PH - 12, C_WHITE, 1); }
     static const char *const fn2[DF_N] = {"TRIGGER", "SOURCE", "DEPTH", "LENGTH", "", "SMOOTH", "SHAPE"};
-    for (int c = 0; c < DF_N; c++) { char v[24]; int x = c & 1 ? 518 : 32, y = PY + PH + 16 + (c / 2) * 84, on = dk_row == 1 && dk_col == c, use = c != DF_SRC || mode != DM_GRID;
+    int first = dk_row == 1 ? dk_col / 2 / 2 * 2 : 0;
+    for (int c = first * 2; c < DF_N && c < first * 2 + 4; c++) { char v[24]; int x = c & 1 ? 518 : 32, y = PY + PH + 16 + (c / 2 - first) * 170, on = dk_row == 1 && dk_col == c, use = c != DF_SRC || mode != DM_GRID;
         switch (c) { case DF_MODE: snprintf(v, sizeof v, "%s", mode == DM_NOTE ? "NOTES" : dk_mode_name[mode]); break;
             case DF_SRC: if (src) snprintf(v, sizeof v, "%02d %.10s", src, slot_name(src - 1) ? slot_name(src - 1) : "EMPTY"); else snprintf(v, sizeof v, "-"); break;
             case DF_AMT: snprintf(v, sizeof v, "%d%%", amt); break; case DF_LEN: snprintf(v, sizeof v, "%s", dk_len_name[dx[DX_LEN] % DK_NLEN]); break;
             case DF_RATE: if (mode == DM_GRID) snprintf(v, sizeof v, "%s", dk_len_name[dx[DX_GRID] % DK_NLEN]); else if (mode == DM_AUDIO) snprintf(v, sizeof v, "%dDB", (int)((dx[DX_THRESH] - 100) * 0.6f)); else { snprintf(v, sizeof v, "-"); use = 0; } break;
             case DF_SMOOTH: if (dx[DX_SMOOTH]) snprintf(v, sizeof v, "%dMS", dx[DX_SMOOTH] / 2 > 0 ? dx[DX_SMOOTH] / 2 : 1); else snprintf(v, sizeof v, "OFF"); break;
             default: snprintf(v, sizeof v, "%s", dx[DX_SHAPE] == DK_USER ? "USER" : dk_shape_name[dx[DX_SHAPE] % DK_NSHAPE]); }
-        if (on) rframe(x, y, 473, 76, 8, 4, ec, C_CELL); else rrect(x, y, 473, 76, 8, C_CELL);
-        ftext(x + 20, y + 10, FT_M, C_DIM, c == DF_RATE ? (mode == DM_GRID ? "EVERY" : "THRESHOLD") : fn2[c]);
-        ftext(x + 453 - ftext_w(FT_LB, v), y + 8, FT_LB, use ? C_WHITE : C_DIM, v);
-        if (c == DF_AMT) { rect(x + 20, y + 56, 433, 8, C_LINE, 1); rect(x + 20, y + 56, 433 * amt / 100, 8, ec, 1); } }
-    draw_footer(dk_row == 0 ? "EDIT+^v LEVEL  EDIT+<> DRAW  Y BACK  OPT+EDIT POINT UP  L1/R1 PAD" : "EDIT NEXT  EDIT+ARROWS VALUE  Y BACK  OPT+EDIT DEFAULT  L1/R1 PAD");
+        if (on) rframe(x, y, 473, 156, 8, 4, ec, C_CELL); else rrect(x, y, 473, 156, 8, C_CELL);
+        ftext(x + 20, y + 12, FT_M, C_DIM, c == DF_RATE ? (mode == DM_GRID ? "EVERY" : "THRESHOLD") : fn2[c]);
+        ftext(x + 453 - ftext_w(FT_XB, v), y + 10, FT_XB, use ? C_WHITE : C_DIM, v);
+        if (c == DF_AMT || c == DF_LEN) { int f = c == DF_AMT ? amt : (dx[DX_LEN] % DK_NLEN) * 100 / (DK_NLEN - 1); rect(x + 20, y + 130, 433, 8, C_LINE, 1); rect(x + 20, y + 130, 433 * f / 100, 8, ec, 1); } }
+    ui_cards_more(1004, PY + PH + 16, 332, first, (DF_N + 1) / 2);
+    draw_footer(dk_row == 0 ? "EDIT+^v LEVEL  EDIT+<> DRAW  Y BACK  OPT+EDIT POINT UP  L1/R1 PAD" : "EDIT SHAPE  Y BACK  EDIT+ARROWS VALUE  OPT+EDIT DEFAULT  L1/R1 PAD");
     return;
 }
 
@@ -356,14 +360,17 @@ static void draw_prj2(void) {
     for (int k = 0; k < JS_N; k++) { int y = 76 + k * 70, on = k == jsec;
         rrect(26, y, 249, 60, 8, on ? (jcol ? mix(C_SELBG, C_CELL, 128) : C_SELBG) : C_CELL);
         ftext(48, y + 16, FT_MB, on ? C_WHITE : C_DIM, prj_sec_name[k]); }
-    int ch = n <= 4 ? 144 : (624 - (n - 1) * 12) / n, dy = ch + 12;
-    for (int j = 0; j < n; j++) { int i = r[j], y = 82 + j * dy, on = jcol && i == jcur; char b[32]; prj_value(i, b);
+    int ch = 144, dy = 156, cj = 0; for (int j = 0; j < n; j++) if (r[j] == jcur) cj = j;
+    int first = jcol ? cj / 4 * 4 : 0;   // four cards a page, as A24
+    if (n > 4) { rect(1000, 82, 4, 4 * dy - 12, C_CELL, 1); rect(1000, 82 + (first / 4) * (4 * dy - 12) / ((n + 3) / 4), 4, (4 * dy - 12) / ((n + 3) / 4), C_DIM, 1); }
+    for (int j = first; j < n && j < first + 4; j++) { int i = r[j], y = 82 + (j - first) * dy, on = jcol && i == jcur; char b[32]; prj_value(i, b);
         if (on) rframe(300, y, 690, ch, 8, 4, ec, C_CELL); else rrect(300, y, 690, ch, 8, C_CELL);
         ftext(320, y + 14, FT_M, C_DIM, prj_name[i]);
         int f = ftext_w(FT_XB, b) <= 640 - ftext_w(FT_M, prj_name[i]) ? FT_XB : FT_M;
         ftext(970 - ftext_w(f, b), y + 10, f, i == J_PROJ && prj_dirty() ? C_ORANGE : C_WHITE, b);
+        if (i == J_TEMPO || i == J_SWING) { int v = i == J_TEMPO ? (song.tempo - 40) * 100 / 260 : song.swing * 100 / 75; rect(320, y + ch - 26, 650, 8, C_LINE, 1); rect(320, y + ch - 26, 650 * clampi(v, 0, 100) / 100, 8, ec, 1); }
         if (i == J_MASTER && ch >= 70) { rect(320, y + ch - 26, 650, 8, C_LINE, 1); rect(320, y + ch - 26, 650 * song.master / 100, 8, ec, 1); } }
-    draw_footer(!jcol ? "EDIT ENTER  F1+F2 BACK  ^v SECTION" : "EDIT+<> VALUE  EDIT DO IT  < SECTIONS  F1+F2 BACK");
+    draw_footer(!jcol ? "EDIT ENTER  Y BACK  ^v SECTION" : "EDIT+<> VALUE  EDIT DO IT  Y BACK  < SECTIONS");
 }
 
 // ---- MIXER > RETURN A / RETURN B / MASTER: every parameter of the unit as cards (the 1.2 cursor: fcol the column, frow the row) ----

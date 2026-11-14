@@ -53,14 +53,6 @@ static void ui2_header(void) {           // NEON > PADS on the left, the transpo
     }
     char b[160]; ui_path(b, sizeof b);
     int x = 20, y = (hh - fv2[FT_M].h) / 2;
-    if (!in_pad() && !perform && !ui_window() && !scening_window()) {   // HOME: its four screens side by side (F1/F2), the open one bright
-        static const char *const hn[4] = {"PADS", "SCENES", "MIXER", "PROJECT"}; int at = tab == T_PRJ ? 3 : tab == T_MIX ? 2 : scening ? 1 : 0;
-        char *e = strstr(b, " > "); if (e) *e = 0;
-        x += ftext(x, y, FT_M, C_DIM, b); x += ftext(x, y, FT_M, C_DIM, " \177 ");
-        for (int i = 0; i < 4; i++) { if (i == at) { int w = ftext_w(FT_MB, hn[i]); rrect(x - 8, y - 5, w + 16, fv2[FT_MB].h + 8, 6, C_SELBG); x += ftext(x, y, FT_MB, C_WHITE, hn[i]) + 26; }
-            else x += ftext(x, y, FT_M, C_DIM, hn[i]) + 26; }
-        b[0] = 0;
-    }
     for (const char *p = b; *p; ) {
         const char *e = strstr(p, " > "); int n = e ? (int)(e - p) : (int)strlen(p); char w[64];
         snprintf(w, sizeof w, "%.*s", n, p);
@@ -80,6 +72,7 @@ static void ui2_header(void) {           // NEON > PADS on the left, the transpo
     if (scening) { snprintf(t, sizeof t, "%d/%d", live_scene + 1, scene_count()); ftext(W - 20 - ftext_w(FT_MB, t), y, FT_MB, th_cur[TC_SMP], t); return; }   // A11, A12: nothing on the right
     if (v2_sound()) { snd_page_count(t, sizeof t); ftext(W - 20 - ftext_w(FT_MB, t), y, FT_MB, C_ENG(song.t[sel].type), t); return; }   // A08: 1/5
     if (v2_steps() || rolling) { snprintf(t, sizeof t, "P%02d", song.t[sel].cur + 1); ftext(W - 20 - ftext_w(FT_MB, t), y, FT_MB, C_ORANGE, t); return; }   // A05: the pattern
+    if (in_pad() || tab != T_GRID || scening) return;   // the mockups: the tempo on HOME only (A01)
     snprintf(t, sizeof t, "%c %d", engine_playing() ? 1 : 2, (int)(song.tempo * tempo_mul + 0.5f));
     ftext(W - 20 - ftext_w(FT_MB, t), y, FT_MB, engine_playing() ? th_cur[TC_SMP] : C_DIM, t);
 }
@@ -122,7 +115,7 @@ static void ui_path(char *b, int n) {    // NEON > INSTRUMENT > 06 GRAND > DEEP
     else if (v2_sound()) UI_ADD("SOUND > %s", snd_page_name());
     else if (v2_steps()) UI_ADD("PATTERN > STEPS");
     else if (tab == T_PRJ && !theming) UI_ADD("%s", prj_sec_name[jsec]);
-    else if (v2_mixer()) UI_ADD("%s", mx_pg == 1 ? "RETURNS" : mx_pg == 2 ? "FREEZE" : "PADS");
+    else if (v2_mixer() && mx_pg) UI_ADD("%s", mx_pg == 1 ? "RETURNS" : "FREEZE");
     else if (v2_lfo()) UI_ADD("MOD > LFO");
     else if (v2_auto()) UI_ADD("MOD > AUTOMATION");
     else if (v2_fx()) { const FxSlot *f = &song.mix.pad[fx_unit].ins[fx2_slot]; UI_ADD("FX > %s", f->type ? fx_name[f->type] : "EMPTY"); }
@@ -162,6 +155,10 @@ static int ui_pairs(const char *h) {     // how many "KEY action" pairs a hint h
 
 // The cheat sheet: every combination of this screen (its whole hint) and the ones that work everywhere.
 static void disc2(int cx, int cy, int r, Col c);
+static void ui_cards_more(int x, int y, int h, int first, int rows) {   // four cards of more: a bar on the right, the page lit
+    if (rows <= 2) return; int pages = (rows + 1) / 2, pg = first / 2, ph = h / pages;
+    rect(x, y, 4, h, C_CELL, 1); rect(x, y + pg * ph, 4, ph, C_DIM, 1);
+}
 static void ui_shade(int a) {            // the screen under an overlay goes dark
     SDL_SetRenderDrawBlendMode(R, SDL_BLENDMODE_BLEND); SDL_SetRenderDrawColor(R, C_BG.r, C_BG.g, C_BG.b, (Uint8)a);
     SDL_Rect r = {0, 0, W, V2_FOOT}; SDL_RenderFillRect(R, &r); SDL_SetRenderDrawBlendMode(R, SDL_BLENDMODE_NONE);
