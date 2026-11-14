@@ -1191,7 +1191,7 @@ static void note_str(int m, char *b) { snprintf(b, 8, "%s%d", note_name[m % 12],
 static int lane_ok(int ln) { int l[L_N], n = lane_list(l); for (int i = 0; i < n; i++) if (l[i] == ln) return 1; return 0; }
 static const char *div_name[6] = {"1/32", "1/16", "1/8", "1/4", "1/2", "1/1"};
 enum { P_SAMPLE, P_PITCH, P_FINE, P_VOL, P_PAN, P_START, P_END, P_DIR, P_VOICE, P_ROOT, P_SLICES, P_WARP, P_BARS, P_BPM, P_GRAIN, P_FLUX, P_TYPE,
-       P_SRC, P_NORM, P_SX, P_SY = P_SX + SX_N, P_AC = P_SY + SP_N, P_CL = P_AC + AP_N, P_CX = P_CL + CP_N, P_AX = P_CX + CX_N, P_GX = P_AX + AX_N, P_PT = P_GX + GX_N, P_N = P_PT + 32 };   // P_PT + jack: PATCH (outputs 1.., inputs 16 + ..)   // P_GX + GX_*: GRAND DEEP (Song.gx)   // P_AX + AX_*: ACID DEEP (Song.ax)   // P_CX + CX_*: CLOUD DEEP (Song.cx)   // P_SRC: CLOUD's sample; P_CL + CP_*: CLOUD (Track.cp)   // P_SY + SP_*: GRAND (Track.sp); P_AC + AP_*: ACID (Track.ap)
+       P_SRC, P_NORM, P_SX, P_SY = P_SX + SX_N, P_AC = P_SY + SP_N, P_CL = P_AC + AP_N, P_CX = P_CL + CP_N, P_AX = P_CX + CX_N, P_GX = P_AX + AX_N, P_PT = P_GX + GX_N, P_SLWAY = P_PT + 32, P_N };   // P_PT + jack: PATCH (outputs 1.., inputs 16 + ..)   // P_GX + GX_*: GRAND DEEP (Song.gx)   // P_AX + AX_*: ACID DEEP (Song.ax)   // P_CX + CX_*: CLOUD DEEP (Song.cx)   // P_SRC: CLOUD's sample; P_CL + CP_*: CLOUD (Track.cp)   // P_SY + SP_*: GRAND (Track.sp); P_AC + AP_*: ACID (Track.ap)
 static const char *par_name[P_N] = {"SAMPLE", "PITCH", "FINE", "VOLUME", "PAN", "START", "END", "DIR", "VOICE", "ROOT", "SLICES", "WARP", "BARS", "BPM", "GRAIN", "FLUX", "TYPE", "SOURCE", "NORM", "FADE IN", "FADE OUT", "XFADE",
     "OSC 1", "OSC 2", "TUNE 2", "DETUNE", "MIX", "NOISE", "CUTOFF", "RESO", "ENV", "ATTACK", "DECAY", "SUSTAIN", "RELEASE", "GLIDE",
     "WAVE", "TUNING", "CUTOFF", "RESO", "ENV MOD", "DECAY", "ACCENT", "DIST", "DRIVE", "TONE", "MIX",
@@ -1200,7 +1200,7 @@ static const char *par_name[P_N] = {"SAMPLE", "PITCH", "FINE", "VOLUME", "PAN", 
     "SUB", "SUB OCT", "SUB WAVE", "PULSE W", "NOISE", "ATTACK", "RELEASE", "SLIDE", "RANGE", "TRACK", "RESO HP", "BASS", "ACC ATK", "ACC DEC", "CLIP",
     "RATE", "SYNC", "WAVE", "PITCH AMT", "CUTOFF AMT", "PWM AMT", "OSC 1 RANGE", "OSC 2 RANGE", "HARD SYNC", "HP CUTOFF", "KB TRACK", "VCA", "SPRING", "ARP", "MODE", "OCTAVES", "ARP RATE", "ARP GATE", "ATTENUATOR",
     "", "LFO OUT", "S&H OUT", "OSC 1 OUT", "OSC 2 OUT", "NOISE OUT", "MIX OUT", "FILTER OUT", "ENV OUT", "VCA OUT", "KB PITCH", "KB GATE", "VELOCITY", "ATTEN OUT", "", "",
-    "", "OSC 1 PITCH", "OSC 2 PITCH", "PWM", "LIN FM", "MIX OSC 1", "MIX OSC 2", "MIX NOISE", "FILTER IN", "CUTOFF", "RESO", "VCA IN", "VCA AMT", "ATTEN IN", "LFO RATE", ""};
+    "", "OSC 1 PITCH", "OSC 2 PITCH", "PWM", "LIN FM", "MIX OSC 1", "MIX OSC 2", "MIX NOISE", "FILTER IN", "CUTOFF", "RESO", "VCA IN", "VCA AMT", "ATTEN IN", "LFO RATE", "", [P_SLWAY] = "METHOD"};
 static const char *dist_name[4] = {"DIODE", "TRANSISTOR", "TUBE", "FUZZ"};
 static const char *type_name[4] = {"SAMPLER", "GRAND", "ACID", "CLOUD"}, *wave_name[4] = {"TRI", "SAW", "SQR", "PULSE"};
 static int is_synth(int s) { return song.t[s].type != 0; }   // either synth: no sample, a drawn panel
@@ -1231,6 +1231,7 @@ static int roll_add(Pattern *p, int start, int len, int note, int vel); static v
 static void pat_switch(int np); static void pat_open(void);
 static int seq_cols(int r) { return r < 0 ? 2 : r == 1 || r == 2 ? 16 : r == 0 ? (is_auto(lane) ? 5 : 4) : 2; }   // row -1: the name and the pattern; row 0: LENGTH STEP PAGE MODE
 
+static const char *const slway_name[3] = {"EQUAL", "TRANSIENTS", "BY HAND"};   // P_SLWAY: how SLICES cuts (A09)
 static int par_visible(int p) {          // hide what the current mode does not use
     const Track *t = &song.t[sel];
     int warp = track_bpm(sel) > 0 ? t->warp : 0;   // without a tempo the engine plays the sample plainly
@@ -1447,6 +1448,7 @@ static float norm_gain(int s) {          // what the pad's sample is multiplied 
 }
 static void par_str(int pad, int p, char *b, int n) {
     Track *t = &song.t[pad]; const Sample *s = engine_sample(pad);
+    if (p == P_SLWAY) { snprintf(b, n, "%s", t->slices ? slway_name[t->slices == 5 ? 1 : t->slices == 6 ? 2 : 0] : "--"); return; }   // past P_PT: before the jacks
     switch (p) {
     case P_SAMPLE: snprintf(b, n, "%.20s", is_synth(pad) ? type_name[t->type % 4] : s ? s->name : "--"); break;
     case P_PITCH: snprintf(b, n, t->pitch ? "%+d" : "0", t->pitch); break;
@@ -1468,9 +1470,7 @@ static void par_str(int pad, int p, char *b, int n) {
         else if (s && s->root >= 0) snprintf(b, n, "AUTO %s%s", note_name[s->root], s->mode == 2 ? "m" : "");   // the sample's own key; a minor one fits a major project as its relative
         else snprintf(b, n, "AUTO %s", r >= 0 ? note_name[r] : "--");
         break; }
-    case P_SLICES: { int k = track_nslices(pad);
-        if (!t->slices) snprintf(b, n, "OFF"); else if (t->slices == 5) snprintf(b, n, "AUTO %d", k);
-        else if (t->slices == 6) snprintf(b, n, "EDIT %d", k); else snprintf(b, n, "%d", k); break; }
+    case P_SLICES: if (!t->slices) snprintf(b, n, "OFF"); else snprintf(b, n, "%d", track_nslices(pad)); break;   // the count; the way: P_SLWAY
     case P_WARP: snprintf(b, n, "%s", warp_name[t->warp % 6]); break;
     case P_GRAIN: if (t->warp < 3 || t->warp > 4) snprintf(b, n, "--"); else if (t->grain) snprintf(b, n, "%dMS", t->grain);
         else snprintf(b, n, "AUTO %dMS", t->warp == 3 ? 30 : 90); break;
@@ -1599,6 +1599,10 @@ static void par_adjust(int pad, int p, int d, int big) {
     if (p == P_SRC) { if (!big) { edit_begin(); neighbour_file(pad, d); } return; }   // CLOUD's sample: the next file
     if (p == P_NORM) { edit_begin(); int8_t *v = &song.mix.pad[pad].spare[PM_NORM]; *v = (int8_t)((*v + (d > 0 ? 1 : 2)) % 3); return; }
     edit_begin();
+    if (p == P_SLWAY) { int lo, hi, st, bg; par_limits(pad, p, &lo, &hi, &st, &bg); int v = par_get(pad, p) + d; par_put(pad, p, v > hi ? lo : v < lo ? hi : v);   // a short list: round
+        if (d > 0 && !song.cut[pad].n && par_get(pad, p) == 1) toast("BY HAND: EDIT ON THE PICTURE MAKES THE POINTS"); return; }
+    if (p == P_SLICES && (t->slices == 5 || t->slices == 6)) {   // a count on TRANSIENTS / BY HAND: back to EQUAL slices
+        int k = track_nslices(pad), e = k <= 4 ? 1 : k <= 8 ? 2 : k <= 16 ? 3 : 4; t->slices = (int8_t)clampi(e + (d > 0) - (d < 0), 1, 4); relayout(pad); toast("EQUAL SLICES"); return; }
     if (p >= P_PT) return;                // jacks are plugged, not turned
     switch (p) {                          // what is not a plain number in a range
     case P_DIR: t->rev = !t->rev; return;
@@ -1624,14 +1628,14 @@ static void par_default(int pad, int p) {
     case P_PITCH: t->pitch = 0; break; case P_FINE: t->fine = 0; break; case P_VOL: t->vol = 75; break;
     case P_PAN: t->pan = 0; break; case P_START: t->start = 0; break; case P_END: t->end = 1000; break;
     case P_DIR: t->rev = 0; break; case P_VOICE: t->voice = 0; break;
-    case P_ROOT: t->root = -1; break; case P_SLICES: t->slices = 0; break; case P_WARP: t->warp = 0; break;
+    case P_ROOT: t->root = -1; break; case P_SLICES: case P_SLWAY: t->slices = 0; relayout(pad); break; case P_WARP: t->warp = 0; break;
     case P_BARS: t->bars = 0; relayout(pad); break;
     case P_BPM: t->bpm = 0; relayout(pad); break;
     case P_GRAIN: t->grain = 0; break; case P_FLUX: t->flux = 0; break;
     case P_SAMPLE: if (is_synth(pad)) t->type = 0; else set_slot_file(pad, ""); break;   // a synth goes back to the sampler
     case P_TYPE: t->type = 0; break;
     }
-    if (p >= P_PT) { int j = p - P_PT, isin = j >= 16, id = isin ? j - 16 : j;   // OPT+EDIT on a jack: its cables out
+    if (p >= P_PT && p < P_SLWAY) { int j = p - P_PT, isin = j >= 16, id = isin ? j - 16 : j;   // OPT+EDIT on a jack: its cables out
         for (int c = 0; c < NCABLE; c++) { uint8_t *g = song.gp[pad][c]; if (isin ? g[1] == id : g[0] == id) g[0] = g[1] = 0; } pt_pick = 0; }
     else if (p >= P_GX) song.gx[pad][p - P_GX] = gx_def[p - P_GX];
     else if (p >= P_AX) song.ax[pad][p - P_AX] = ax_def[p - P_AX];
@@ -1966,9 +1970,9 @@ static const char *const prj_help[J_N] = {"THE PROJECT'S SPEED. EDIT TAPS IT, L1
     "THE TWELVE PADS UNDER THE PATH WHILE A PAD IS OPEN: ENGINE, CLIP, WHICH ONE", "ADVANCED: EVERYTHING. SIMPLE: PLAY, NOTES, SOUND, LARGE (MENU+ARROW). HOLD F1+F2 TO LEAVE IT",
     "IN THE SIMPLE VIEW NOTHING CAN BE DELETED OR OVERWRITTEN"};
 static const char *prj_name[J_N] = {"TEMPO", "SWING", "KEY", "SCALE", "CLIP LAUNCH", "METRONOME", "BEATS/BAR", "COUNT-IN", "REC QUANT", "MASTER VOL", "THEME", "CHECK LIBRARY", "NEW PROJECT", "SCALE SNAP", "PROJECT", "SAVE", "SAVE AS", "EXPORT WAV", "FOOTER HINTS", "PAD STRIP", "VIEW", "KID LOCK"};
-static int ui_strip = 1, ui_simple, ui_lock;   // PROJECT > SYSTEM: the pad strip (0 hidden, 1 thin), the simple view, its kid lock (ui.cfg beside the binary)
+static int ui_strip = 1, ui_simple, ui_lock;   // PROJECT > SYSTEM: the pad strip (0 hidden, 1 thin, 2 big), the simple view, its kid lock (ui.cfg beside the binary)
 static void ui_cfg_save(void) { char b[32]; int n = snprintf(b, sizeof b, "%d %d %d\n", ui_strip, ui_simple, ui_lock); write_whole("ui.cfg", b, n); }
-static void ui_cfg_load(void) { FILE *f = fopen("ui.cfg", "r"); if (f) { int a = 1, b = 0, c = 0; if (fscanf(f, "%d %d %d", &a, &b, &c) >= 1) { ui_strip = a != 0; ui_simple = b != 0; ui_lock = c != 0; } fclose(f); } }
+static void ui_cfg_load(void) { FILE *f = fopen("ui.cfg", "r"); if (f) { int a = 1, b = 0, c = 0; if (fscanf(f, "%d %d %d", &a, &b, &c) >= 1) { ui_strip = clampi(a, 0, 2); ui_simple = b != 0; ui_lock = c != 0; } fclose(f); } }
 static int hint_on = 1;                    // HOVER HINTS (hints.cfg beside the binary: "0" = off)
 static void hint_set(int on) { hint_on = on; write_whole("hints.cfg", on ? "1\n" : "0\n", 2); }
 static void hint_load(void) { FILE *f = fopen("hints.cfg", "r"); if (f) { int v = 1; if (fscanf(f, "%d", &v) == 1) hint_on = v != 0; fclose(f); } }
@@ -2141,7 +2145,7 @@ static void prj_edit_arrow(int k) {
     int d = (k == K_RIGHT || k == K_UP) ? 1 : -1, big = k == K_UP || k == K_DOWN;
     if (!jcol) return;                   // on the sections: the arrows only move
     if (jcur == J_LIB || jcur == J_NEW || (jcur >= J_PROJ && jcur < J_HINT)) return;   // actions, not values (SCALE SNAP is a value)
-    if (jcur == J_STRIP) { ui_strip = !ui_strip; ui_cfg_save(); return; }
+    if (jcur == J_STRIP) { ui_strip = (ui_strip + 1) % 3; ui_cfg_save(); return; }
     if (jcur == J_VIEW) { ui_simple = !ui_simple; ui_cfg_save(); return; }
     if (jcur == J_LOCK) { ui_lock = !ui_lock; ui_cfg_save(); return; }
     if (jcur == J_HINT) { hint_set(!hint_on); return; }
@@ -2154,7 +2158,7 @@ static void prj_edit_arrow(int k) {
     case J_METRO: act_metro_toggle(); break;
     case J_SNAP: act_snap_toggle(); break;
     case J_HINT: hint_set(!hint_on); break;
-    case J_STRIP: ui_strip = !ui_strip; ui_cfg_save(); break;
+    case J_STRIP: ui_strip = (ui_strip + (d > 0 ? 1 : 2)) % 3; ui_cfg_save(); break;
     case J_VIEW: ui_simple = !ui_simple; ui_cfg_save(); break;
     case J_LOCK: ui_lock = !ui_lock; ui_cfg_save(); break;
     case J_KEY: act_key_step(d * (big ? 7 : 1)); break;
@@ -4829,7 +4833,7 @@ static void prj_value(int i, char *b) {
     case J_METRO: snprintf(b, 32, song.metro ? "ON" : "OFF"); break;
     case J_SNAP: snprintf(b, 32, song.snap ? "ON" : "OFF"); break;
     case J_HINT: snprintf(b, 32, hint_on ? "ON" : "OFF"); break;
-    case J_STRIP: snprintf(b, 32, ui_strip ? "THIN" : "HIDDEN"); break;
+    case J_STRIP: snprintf(b, 32, "%s", ui_strip == 2 ? "BIG" : ui_strip ? "THIN" : "HIDDEN"); break;
     case J_VIEW: snprintf(b, 32, ui_simple ? "SIMPLE" : "ADVANCED"); break;
     case J_LOCK: snprintf(b, 32, ui_lock ? "ON" : "OFF"); break;
     case J_PROJ: snprintf(b, 32, "%.20s%s", prj_cur[0] ? prj_cur : "UNTITLED", prj_dirty() ? " *" : ""); break;
@@ -5815,7 +5819,12 @@ static void draw(void) {
     SDL_RenderClear(R);
     ui_v2 = 1; uf_name[0] = 0;           // every screen is a rebuilt one; the pages tell ui_popup their card
     if (ui_simple && !exporting && !naming && !asking) { draw_simple(); goto shown; }
-    v2_normalize(); ui2_header();
+    v2_normalize();
+    // PAD STRIP BIG: the page is drawn into a texture, then set a little smaller under the big strip; the footer stays 1:1
+    static SDL_Texture *body; int big = ui_strip == STRIP_BIG && strip_on();
+    if (big && !body) { body = SDL_CreateTexture(R, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_TARGET, W, H); if (!body) logmsg("strip: no render target, BIG drawn as THIN"); }
+    if (big && body && !SDL_SetRenderTarget(R, body)) { SDL_SetRenderDrawColor(R, C_BG.r, C_BG.g, C_BG.b, 255); SDL_RenderClear(R); } else big = 0;
+    if (big) { ui_strip = STRIP_THIN; ui2_header(); ui_strip = STRIP_BIG; } else ui2_header();   // the page's own header: cut off below
     if (exporting) draw_export2();
     else if (naming) draw_naming2();
     else if (browsing) { if (bmode) draw_prjbrowse2(); else draw_browse2(); }
@@ -5844,6 +5853,11 @@ static void draw(void) {
     case T_GRID: draw_grid(); break; case T_PAT: draw_pat(); break; case T_PRJ: draw_prj2(); break;
     default: draw_hub(); break;       // not reached: v2_normalize gives every state a screen
     }
+    if (big) { SDL_SetRenderTarget(R, NULL);
+        enum { SY = 69, DY = 122 }; int sh = V2_FOOT - SY, dh = V2_FOOT - DY, dw = W * dh / sh;
+        SDL_Rect s1 = {0, SY, W, sh}, d1 = {(W - dw) / 2, DY, dw, dh}, s2 = {0, V2_FOOT, W, H - V2_FOOT};
+        SDL_RenderCopy(R, body, &s1, &d1); SDL_RenderCopy(R, body, &s2, &s2);
+        ui2_header(); }
     ui_popup(); ui_cheat();
     if (asking) draw_ask2();
 shown:;

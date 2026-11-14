@@ -40,10 +40,26 @@ static void rframe(int x, int y, int w, int h, int r, int t, Col c, Col inside) 
 static int v2_fx(void); static int fx2_slot; static int scene_count(void); static int v2_mixer(void); static int mx_pg; static int v2_lfo(void); static int v2_auto(void); static void modmenu_open(void); static void ui_path(char *b, int n); static const char *snd_page_name(void); static void snd_page_count(char *b, int n);   // sound.h
 static int in_pad(void); static int ui_window(void);
 static int scening_window(void) { return picking || exporting || naming || theming || iconing || browsing || tab == T_FX || tab == T_SEQ || tab == T_PAT; }   // a window over a HOME screen
+static int strip_on(void) { return ui_strip != STRIP_HIDDEN && in_pad() && !picking; }   // inside a pad: the pads under the path (L2)
+static void ui2_strip_big(void) {        // BIG (2026-11-14, mockup strip3): twelve tiles, number, name, engine, how far the clip has played
+    for (int i = 0; i < NSLOT; i++) {
+        int px = 12 + i * 84, pw = 78, y = 54, has = has_sound(i), on = song.t[i].on && engine_playing(); char b[8];
+        Col c = has ? C_ENG(song.t[i].type) : C_LINE; if (song.t[i].mute) c = mix(c, C_BG, 170);
+        if (i == sel) rframe(px - 4, y - 4, pw + 8, 68, 7, 2, C_WHITE, C_BG);
+        snprintf(b, sizeof b, "%02d", i + 1);
+        if (!has) { rframe(px, y, pw, 60, 5, 1, C_LINE, C_BG); ftext(px + 8, y + 4, FT_S, C_LINE, b); continue; }
+        rrect(px, y, pw, 60, 5, C_CELL); rect(px, y, 5, 60, c, 1);
+        ftext(px + 12, y + 2, FT_S, C_DIM, b);
+        snprintf(b, sizeof b, "%.6s", slot_name(i) ? slot_name(i) : ""); ftext(px + 12, y + 20, FT_S, song.t[i].mute ? C_DIM : C_WHITE, b);
+        rect(px + 12, y + 47, pw - 20, 5, C_LINE, 1);
+        if (on) { int len = cur_pat(i)->len, st = engine_step(i); if (len > 0 && st >= 0) rect(px + 12, y + 47, (pw - 20) * (st % len + 1) / len, 5, c, 1); }
+    }
+}
 static void ui2_header(void) {           // NEON > PADS on the left, the transport and the tempo on the right
-    int strip = ui_strip != STRIP_HIDDEN && in_pad() && !picking, hh = strip ? 48 : V2_HEAD;   // inside a pad: the pads under the path (L2)
+    int strip = strip_on(), hh = strip ? 48 : V2_HEAD;
     rect(0, 0, W, hh, C_CELL, 1);
-    if (strip) for (int i = 0; i < NSLOT; i++) {   // 12 pads: the engine's colour, how far its clip has played, the open one framed
+    if (strip && ui_strip == STRIP_BIG) ui2_strip_big();
+    else if (strip) for (int i = 0; i < NSLOT; i++) {   // 12 pads: the engine's colour, how far its clip has played, the open one framed
         int px = 22 + i * 82, pw = 72, on = song.t[i].on && engine_playing(), has = has_sound(i);
         Col c = has ? C_ENG(song.t[i].type) : C_LINE; if (song.t[i].mute) c = mix(c, C_BG, 170);
         if (i == sel) rframe(px - 5, 50, pw + 10, 19, 5, 2, C_WHITE, C_CELL);

@@ -9,8 +9,8 @@ static void gb_ring(int cx, int cy, int r, int t, Col c);
 enum { GF_NONE, GF_WAVE, GF_SLICES, GF_OSC, GF_FILTER, GF_ENV, GF_CLOUD, GF_PATCH };
 typedef struct { const char *name; int8_t n, gfx; int16_t p[20]; } SndPage;
 static const SndPage snd_smp[] = {
-    {"SAMPLE", 4, GF_WAVE, {P_PITCH, P_ROOT, P_VOICE, P_DIR}},
-    {"SLICES", 3, GF_SLICES, {P_SLICES, P_START, P_END}},
+    {"SAMPLE", 6, GF_WAVE, {P_PITCH, P_ROOT, P_VOICE, P_DIR, P_START, P_END}},
+    {"SLICES", 2, GF_SLICES, {P_SLICES, P_SLWAY}},   // A09: how many, and how
     {"WARP", 6, GF_WAVE, {P_WARP, P_BARS, P_BPM, P_NORM, P_GRAIN, P_FLUX}},
     {"ENV", 3, GF_WAVE, {P_SX + SX_FIN, P_SX + SX_FOUT, P_SX + SX_XFADE}},
     {"MORE...", 4, GF_NONE, {P_FINE, P_VOL, P_PAN, P_TYPE}},
@@ -206,7 +206,7 @@ static int snd_tags(int p, char tg[][4]) {   // the automation lanes (A1..) and 
 }
 static const char *snd_label(int p) {
     switch (p) { case P_VOICE: return "MODE"; case P_DIR: return "DIRECTION"; case P_TYPE: return "ENGINE"; case P_VOL: return "VOLUME";
-                 case P_SAMPLE: return "PRESETS"; case P_BPM: return "LOOP BPM"; }
+                 case P_SAMPLE: return "PRESETS"; case P_BPM: return "LOOP BPM"; case P_SLWAY: return "METHOD"; }
     if (p == P_GX + GX_LRATE) return "LFO RATE"; if (p == P_GX + GX_LSYNC) return "LFO SYNC"; if (p == P_GX + GX_LWAVE) return "LFO WAVE";
     return par_name[p];
 }
@@ -222,7 +222,7 @@ static void snd_card(int x, int y, int w, int h, int p, int on, Col ec) {
     ftext(x + w - 20 - ftext_w(f, v), y + 10 + (fv2[FT_XB].h - fv2[f].h) / 2, f, C_WHITE, v);
     if (on) { int lo, hi, st, bg; par_limits(sel, p, &lo, &hi, &st, &bg); ui_focus(lb, v, par_is_number(p) && bg > 1 && hi > lo ? (par_get(sel, p) - lo) * 100 / (hi - lo) : -1, ec); }
     if (par_is_number(p)) { int lo, hi, st, bg; par_limits(sel, p, &lo, &hi, &st, &bg);   // a bar for what is turned, none for what is chosen
-        if (bg > 1 && hi > lo) { int by = y + h - 26; rect(x + 20, by, w - 40, 8, C_LINE, 1); rect(x + 20, by, (w - 40) * clampi(par_get(sel, p) - lo, 0, hi - lo) / (hi - lo), 8, ec, 1); } }
+        if ((bg > 1 || p == P_SLICES) && hi > lo) { int by = y + h - 26; rect(x + 20, by, w - 40, 8, C_LINE, 1); rect(x + 20, by, (w - 40) * clampi(par_get(sel, p) - lo, 0, hi - lo) / (hi - lo), 8, ec, 1); } }
 }
 static int pt_y(int j) { return j < 16 ? 150 + (j - 1) * 40 : 146 + (j - 17) * 37; }   // a jack's row
 static const char *pt_name(int j, char *b) {   // the label: the outputs without "OUT", as on A14
@@ -273,7 +273,7 @@ static void draw_sound2(void) {
         snd_picture(pg, 26, 127, 971, 243, ec); snd_live(pg, 26, 127, 971, 243);
         y0 = 390;
     }
-    int rows = (c + 1) / 2, pic = pg->gfx != GF_NONE, h = pic ? 148 : 270, dy = pic ? 162 : 286;   // four cards on screen, as the mockups
+    int rows = (c + 1) / 2, pic = pg->gfx != GF_NONE, h = pic ? (c <= 2 ? 300 : 148) : 270, dy = pic ? 162 : 286;   // four cards on screen, as the mockups (two: tall, A09)
     int vis = 2, first = (sp_cur < 0 ? 0 : sp_cur / 2) / 2 * 2;   // the next four come by pages, not by rows
     for (int i = first * 2; i < c && i < (first + vis) * 2; i++)
         snd_card(i & 1 ? 518 : 32, y0 + (i / 2 - first) * dy, 473, h, l[i], i == sp_cur, ec);
