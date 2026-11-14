@@ -60,8 +60,15 @@ static int simple_key(int k, int down) {  // 1 = the key is used up here; 0 = NO
     else if (k == K_OPT) act_listen(sel);
     return 1;
 }
+static void sv_ring(int cx, int cy, int r, float a0, float a1, int t, Col c) {   // an arc t px thick: one polyline per radius
+    SDL_Point pt[97]; int n = (int)((a1 - a0) / ((float)M_PI * 2) * 96) + 1; if (n < 2) n = 2; if (n > 97) n = 97;   // (thousands of discs cost the Brick 2026-11-14)
+    SDL_SetRenderDrawColor(R, c.r, c.g, c.b, 255);
+    for (int rr = r - t / 2; rr <= r + (t - 1) / 2; rr++) {
+        for (int i = 0; i < n; i++) { float a = a0 + (a1 - a0) * i / (n - 1); pt[i] = (SDL_Point){cx + (int)lroundf(cosf(a) * rr), cy + (int)lroundf(sinf(a) * rr)}; }
+        SDL_RenderDrawLines(R, pt, n); }
+}
 static void sv_arc(int cx, int cy, int r, float f0, float f1, Col c) {   // a knob's arc from 7 to 5 o'clock, the part f0..f1 of it
-    for (float f = f0; f <= f1; f += 0.012f) { float a = (float)M_PI * (0.75f + 1.5f * f); disc2(cx + (int)(cosf(a) * r), cy + (int)(sinf(a) * r), 4, c); }
+    if (f1 > f0) sv_ring(cx, cy, r, (float)M_PI * (0.75f + 1.5f * f0), (float)M_PI * (0.75f + 1.5f * f1), 8, c);
 }
 static void draw_simple(void) {
     simple_sync(); Uint32 now = SDL_GetTicks(); char b[64]; Col mc = sv_col(sv_mode);
@@ -108,7 +115,7 @@ static void draw_simple(void) {
             par_limits(sel, kn[i].p, &lo, &hi, &st, &bg); float f = hi > lo ? (float)(par_get(sel, kn[i].p) - lo) / (hi - lo) : 0; if (f < 0) f = 0; if (f > 1) f = 1;
             if (on) rframe(cx - 108, cy - 112, 216, 300, 12, 3, C_WHITE, C_BG);
             sv_arc(cx, cy, 74, 0, 1, C_LINE); sv_arc(cx, cy, 74, 0, f, c);
-            float a = (float)M_PI * (0.75f + 1.5f * f); line(cx, cy, cx + (int)(cosf(a) * 52), cy + (int)(sinf(a) * 52), 5, c);
+            float a = (float)M_PI * (0.75f + 1.5f * f); line(cx, cy, cx + (int)(cosf(a) * 52), cy + (int)(sinf(a) * 52), 3, c);
             snprintf(b, sizeof b, "%s %s", ar[i], kn[i].nm); ftext(cx - ftext_w(FT_M, b) / 2, cy + 104, FT_M, on ? C_WHITE : C_DIM, b);
             par_str(sel, kn[i].p, b, 20); ftext(cx - ftext_w(FT_MB, b) / 2, cy + 136, FT_MB, C_WHITE, b); }
         rrect(26, 488, 971, 190, 10, C_CELL);
@@ -119,7 +126,7 @@ static void draw_simple(void) {
     if (sv_exit && held[K_F1] && held[K_F2]) {       // P4: the way out is a hold, with a ring that fills
         int el = (int)ms_since(now, sv_exit);
         if (el >= 3000) { ui_simple = 0; sv_exit = 0; ui_cfg_save(); used[K_F1] = used[K_F2] = 1; set_tab(T_GRID); ui_cat = -1; return; }
-        if (el > 250) { ui_shade(215); sv_arc(512, 300, 84, 0, 1, C_LINE); for (float f = 0; f <= el / 3000.f; f += 0.004f) { float a = (float)M_PI * (-0.5f + 2 * f); disc2(512 + (int)(cosf(a) * 84), 300 + (int)(sinf(a) * 84), 7, C_PLAY); }
+        if (el > 250) { ui_shade(215); sv_arc(512, 300, 84, 0, 1, C_LINE); sv_ring(512, 300, 84, -(float)M_PI / 2, (float)M_PI * (-0.5f + 2 * el / 3000.f), 14, C_PLAY);
             snprintf(b, sizeof b, "%d", 3 - el / 1000); ftext(512 - ftext_w(FT_XB, b) / 2, 280, FT_XB, C_WHITE, b);
             snprintf(b, sizeof b, "hold F1+F2 for %d more second%s", 3 - el / 1000, 3 - el / 1000 == 1 ? "" : "s"); ftext(512 - ftext_w(FT_MB, b) / 2, 420, FT_MB, C_WHITE, b);
             const char *t = "to leave the simple view"; ftext(512 - ftext_w(FT_MB, t) / 2, 452, FT_MB, C_WHITE, t);

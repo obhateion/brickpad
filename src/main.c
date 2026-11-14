@@ -87,7 +87,7 @@ static const char *tab_name[T_N] = {"PADS", "INSTRUMENT", "PATTERNS", "FX", "MIX
 static SDL_Renderer *R;
 static FILE *logf;
 static int koct, key_on[NSLOT];
-static int rec, prj_back = T_GRID;
+static int rec;
 static Uint32 combo_t; static double combo_pos;   // MENU+PLAY pressed then, waiting for a second PLAY
 #define COMBO_MS 300
 #define X_TWICE_MS 350               // two X taps this close double the clip
@@ -2463,9 +2463,9 @@ static int fx_unit;                      // what the FX tab shows: a pad 0..11, 
 static void tab_step(int d) {            // F1 left, F2 right, round: GRID SEQ+INST FX MIXER (user, 2026-11-09); PROJECT goes back
     static const int order[4] = {T_GRID, T_SEQ, T_FX, T_MIX};
     {                                    // UI v2: HOME is PADS, SCENES, MIXER, PROJECT (also F1+F2); the pad's pages are inside the pad
-        int at = tab == T_PRJ ? 3 : tab == T_MIX ? 2 : tab == T_GRID && scening ? 1 : 0, to = (at + (d > 0 ? 1 : 3)) % 4;
-        if (to == 3) prj_back = T_GRID;
-        set_tab(to == 3 ? T_PRJ : to == 2 ? T_MIX : T_GRID); scening = to == 1; if (to == 2 && sel < NSLOT) mcol = sel;
+        // PROJECT left the circle (user, 2026-11-14): only F1+F2 opens it, from anywhere, and comes back to that very screen
+        int at = tab == T_MIX ? 2 : tab == T_GRID && scening ? 1 : 0, to = (at + (d > 0 ? 1 : 2)) % 3;
+        set_tab(to == 2 ? T_MIX : T_GRID); scening = to == 1; if (to == 2 && sel < NSLOT) mcol = sel;
         return;
     }
     int i = 0, cur = tab == T_PAT ? T_SEQ : tab; while (i < 4 && order[i] != cur) i++;
@@ -2473,8 +2473,22 @@ static void tab_step(int d) {            // F1 left, F2 right, round: GRID SEQ+I
     if (nt == T_FX) fx_unit = sel;
     set_tab(nt);
 }
-static void tab_project(void) {          // F1+F2: in and out of PROJECT
-    if (tab == T_PRJ) set_tab(prj_back); else { prj_back = tab; set_tab(T_PRJ); }
+static void roll_open(void); static void duck_open(int s); static int mx_pg;
+static struct { int tab, ui_cat, hub_cur, hubbing, patmenu, modmenu, scening, recpage, perform, srow, scol, lane, fx_unit, fx_page, mcol, mx_pg, rolling, ducking; } prj_from;
+static void prj_leave(void) {            // back where F1+F2 was pressed: the same pad, category, page and cursor
+    set_tab(prj_from.tab); ui_cat = prj_from.ui_cat; hub_cur = prj_from.hub_cur; hubbing = prj_from.hubbing; patmenu = prj_from.patmenu;
+    modmenu = prj_from.modmenu; scening = prj_from.scening; recpage = prj_from.recpage; perform = prj_from.perform; srow = prj_from.srow;
+    scol = prj_from.scol; lane = prj_from.lane; fx_unit = prj_from.fx_unit; fx_page = prj_from.fx_page; mcol = prj_from.mcol; mx_pg = prj_from.mx_pg;
+    if (prj_from.rolling && cur_pat(sel)->mode) roll_open();
+    if (prj_from.ducking) duck_open(sel);
+}
+static void tab_project(void) {          // F1+F2: in and out of PROJECT (its only way in since 2026-11-14)
+    if (tab == T_PRJ) { prj_leave(); return; }
+    prj_from.tab = tab == T_PRJ ? T_GRID : tab; prj_from.ui_cat = ui_cat; prj_from.hub_cur = hub_cur; prj_from.hubbing = hubbing; prj_from.patmenu = patmenu;
+    prj_from.modmenu = modmenu; prj_from.scening = scening; prj_from.recpage = recpage; prj_from.perform = perform; prj_from.srow = srow;
+    prj_from.scol = scol; prj_from.lane = lane; prj_from.fx_unit = fx_unit; prj_from.fx_page = fx_page; prj_from.mcol = mcol; prj_from.mx_pg = mx_pg;
+    prj_from.rolling = rolling; prj_from.ducking = ducking;
+    set_tab(T_PRJ);
 }
 static void rec_store(int s, int slice, int note, double pos) {
     Track *t = &song.t[s]; Pattern *p = cur_pat(s);
@@ -3444,7 +3458,7 @@ static void key_event(int k, int down) {
         cl_deep = song.t[sel].type == 1 ? (cl_deep + 1) % 3 : !cl_deep; gb_cur = cl_deep ? 1 : 0; return; }
     if (tab == T_PAT && k == K_Y) { pat_close(0); return; }   // the pattern window: Y goes back
     if (tab == T_GRID && k == K_Y && held[K_SHIFT]) { freeze_key(); return; }
-    if (tab == T_PRJ && k == K_Y) { if (jcol) jcol = 0; else { ui_cat = -1; set_tab(T_GRID); } return; }   // UI v2: Y is back, always
+    if (tab == T_PRJ && k == K_Y) { if (jcol) jcol = 0; else prj_leave(); return; }   // Y at the top: back where PROJECT was opened   // UI v2: Y is back, always
     if (v2_mixer() && mx_pg && k == K_Y) { mx_pg = 0; mcol = sel; mrow = MX_VOL; return; }                 // RETURNS, FREEZE: back to the faders
     if (tab == T_GRID && k == K_Y && gsel_mute()) return;
     if (tab == T_GRID && k == K_Y) { act_mute_toggle(sel); toast(song.t[sel].mute ? "MUTE ON" : "MUTE OFF"); return; }   // a live move: no undo step

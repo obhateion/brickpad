@@ -172,34 +172,40 @@ static int ui_pair(int x, int y, const char *p, int n) {   // a key chip and wha
 }
 static void ui_jump_box(int x, int y, int c) {   // a category of the jump cross: the open one filled
     int on = ui_cat == c || (hubbing && hub_cur == c); Col cc = C_CAT(c);
-    if (on) rrect(x, y, 270, 86, 10, cc); else rframe(x, y, 270, 86, 10, 3, cc, C_CELL);
-    ftext(x + 135 - ftext_w(FT_LB, cat_name[c]) / 2, y + 28, FT_LB, on ? C_BG : cc, cat_name[c]);
+    if (on) rrect(x, y, 118, 50, 8, cc); else rframe(x, y, 118, 50, 8, 3, cc, C_CELL);
+    ftext(x + 59 - ftext_w(FT_MB, cat_name[c]) / 2, y + 14, FT_MB, on ? C_BG : cc, cat_name[c]);
 }
-static void ui_cheat(void) {              // SHIFT held alone: inside a pad the jump cross (L3), and every combination of this screen
+// SHIFT held alone: every key of this screen (its whole hint), then the ones that work everywhere; inside a pad also the jump
+// cross (L3), small, top right. Nothing is cut: the list flows into columns, under the cross when it gets there (2026-11-14:
+// "every hidden action in the cheat sheet, on any screen").
+static void ui_cheat(void) {
     if (!held[K_SHIFT] || used[K_SHIFT] || !shift_t || ms_since(SDL_GetTicks(), shift_t) < 250) return;
-    int pad = in_pad() && !perform && !picking && !slicing && !rolling && !randing && !presetting && !browsing && !ducking && !theming && !iconing && !naming && !exporting, y0 = pad ? 520 : 96;
-    ui_shade(215); rrect(14, y0 - 14, 996, V2_FOOT - y0 + 8, 10, C_CELL);
+    int pad = in_pad() && !perform && !picking && !slicing && !rolling && !randing && !presetting && !browsing && !ducking && !theming && !iconing && !naming && !exporting;
+    enum { Y0 = 96, CX = 640 };          // CX: where the cross starts; columns there begin under it
+    ui_shade(215); rrect(14, Y0 - 34, 996, V2_FOOT - Y0 + 28, 10, C_CELL);
+    ftext(26, Y0 - 30, FT_MB, C_ORANGE, "KEYS OF THIS SCREEN");
     if (pad) {
-        const char *t = "hold SHIFT and press an arrow"; ftext(512 - ftext_w(FT_MB, t) / 2, 92, FT_MB, C_WHITE, t);
-        ui_jump_box(377, 136, PC_PATTERN); ui_jump_box(90, 262, PC_MIX); ui_jump_box(664, 262, PC_SOUND); ui_jump_box(377, 388, PC_FX);
-        disc2(512, 305, 58, C_SELBG); char b[24]; snprintf(b, sizeof b, "%02d", sel + 1); ftext(512 - ftext_w(FT_LB, b) / 2, 278, FT_LB, C_WHITE, b);
-        snprintf(b, sizeof b, "%.8s", slot_name(sel) ? slot_name(sel) : "EMPTY"); ftext(512 - ftext_w(FT_S, b) / 2, 312, FT_S, C_DIM, b);
-        ftext(377 + 135 - ftext_w(FT_S, "MOD: from the pad's list") / 2, 484, FT_S, C_DIM, "MOD: from the pad's list");
-    } else ftext(26, 66, FT_MB, C_ORANGE, "KEYS OF THIS SCREEN");
-    static const char *const every[] = {"PLAY play / stop", "F1/F2 next pad, or screen of HOME", "F1+F2 PROJECT", "Y back", "MENU PADS / KEYS", "MENU+PLAY record, twice capture",
-        "SHIFT+L2 undo", "SHIFT+OPT copy", "SHIFT+EDIT paste", "OPT+EDIT delete", "MENU-3-S quit", 0};
-    int x = 26, y = y0, rows = (V2_FOOT - 8 - y0) / 30, r = 0, colw = 0;
+        ftext(CX + 6, Y0 - 30, FT_MB, C_WHITE, "SHIFT + arrow: jump");
+        ui_jump_box(CX + 125, Y0 + 4, PC_PATTERN); ui_jump_box(CX + 2, Y0 + 62, PC_MIX); ui_jump_box(CX + 248, Y0 + 62, PC_SOUND); ui_jump_box(CX + 125, Y0 + 120, PC_FX);
+        disc2(CX + 184, Y0 + 87, 24, C_SELBG); char b[8]; snprintf(b, sizeof b, "%02d", sel + 1); ftext(CX + 184 - ftext_w(FT_MB, b) / 2, Y0 + 75, FT_MB, C_WHITE, b);
+        ftext(CX + 6, Y0 + 180, FT_S, C_DIM, "MOD: from the pad's list");
+    }
+    static const char *const every[] = {"PLAY play / stop", "Y back", "F1/F2 next pad, or screen of HOME", "F1+F2 PROJECT, again: back here",
+        "EDIT+ARROWS value (held: shown big)", "OPT listen", "OPT+EDIT delete / default", "SHIFT+L2 undo", "SHIFT+OPT copy", "SHIFT+EDIT paste",
+        "MENU pads / keys", "MENU+PLAY record, twice capture", "MENU-3S quit (hold)", "SHIFT this sheet (hold)", "SHIFT+PLAY never: the system's", 0};
+    int x = 26, top = Y0 + 4, y = top, r = 0, colw = 0;
     for (int pass = 0; pass < 2; pass++) {
         const char *h = pass ? NULL : ui_hint;
+        if (pass) { ftext(x, y, FT_S, C_DIM, "EVERYWHERE"); y += 30; }
         for (int i = 0; pass ? every[i] != NULL : *h != 0; i++) {
             const char *p = pass ? every[i] : h, *e = pass ? NULL : strstr(h, "  "); int n = e ? (int)(e - h) : (int)strlen(p);
-            if (r >= rows) { r = 0; x += colw + 28; colw = 0; }
-            if (x < 900) { int w = ui_pair(x, y + r * 30, p, n); if (w > colw) colw = w; r++; }
+            if (y + 26 > V2_FOOT - 6) { x += colw + 24; colw = 0; top = pad && x + 330 > CX ? Y0 + 214 : Y0 + 4; y = top; }
+            if (x < 1000 - 120) { int w = ui_pair(x, y, p, n); if (w > colw) colw = w; y += 30; r++; }
             if (pass) continue;
             if (!e) break;
             h = e; while (*h == ' ') h++;
         }
-        if (!pass && r) { r = 0; x += colw + 28; colw = 0; }   // the keys that work everywhere start a column
+        if (!pass) y += 12;              // a gap, then the keys that work everywhere
     }
 }
 

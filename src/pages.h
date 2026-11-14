@@ -297,7 +297,7 @@ static void draw_mixer2(void) {
             rect(cx - 8, top, 16, bot - top, C_CELL, 1); if (has_sound(s)) { rect(cx - 8, bot - h, 16, h, c, 1); rect(cx - 22, bot - h - 5, 44, 10, C_WHITE, 1); }
             snprintf(b, sizeof b, "%02d", s + 1); ftext(cx - ftext_w(FT_MB, b) / 2, 652, FT_MB, on ? C_WHITE : C_DIM, b);
             if (song.t[s].mute) ftext(cx - 6, 678, FT_MB, C_RED, "M"); else if (song.mix.pad[s].solo) ftext(cx - 6, 678, FT_MB, C_ORANGE, "S"); }
-        draw_footer("EDIT+^v LEVEL  Y MUTE  SHIFT+Y SOLO  L1/R1 RETURNS, FREEZE");
+        draw_footer("EDIT+^v LEVEL  Y MUTE  SHIFT+Y SOLO  L1/R1 RETURNS, FREEZE  X SOLO");
     } else if (mx_pg == 1) {              // A22: the returns and the master, a fader and two bars each
         static const char *const cn[3] = {"A \003 REVERB", "B \003 DELAY", "MASTER"}, *const pn[3][2] = {{"SIZE", "DECAY"}, {"TIME", "FEEDBACK"}, {"COMP", "LIMITER"}};
         for (int u = 0; u < 3; u++) { int x = 32 + u * 324, on = mcol == NSLOT + u, lo, hi, def; Col c = u == 2 ? th_cur[TC_SMP] : C_CAT(PC_MIX);
