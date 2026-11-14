@@ -172,7 +172,8 @@ static void draw_lfo2(void) {
           int x = 46 + i, y = 227 - (int)(v * 80);
           if (i) line(px, py, x, y, 3, act ? ec : C_DIM);
           px = x; py = y; }
-      if (act) { float v = engine_lfo(fx_unit, lcol); disc2(986, 227 - (int)(v * 80), 6, C_WHITE); } }   // where it is now
+      if (act) { float v = engine_lfo(fx_unit, lcol); disc2(986, 227 - (int)(v * 80), 6, C_WHITE); }   // where it is now
+      else if (!L->target) ui_empty(206, 160, 611, 134, "NO TARGET YET", "TARGET: EDIT, then EDIT on a SOUND card"); }   // empty state (TZ)
     int cp = lfo2_pos(), first = cp / 2 / 2 * 2;
     for (int i = first * 2; i < LR_N && i < first * 2 + 4; i++) {
         int r = lfo2_ord[i], x = i & 1 ? 518 : 32, y = 343 + (i / 2 - first) * 178, on = r == lrow, lo = 0, hi = 0, v = 0;
@@ -288,6 +289,7 @@ static int mixer2_tap(void) {             // EDIT: RETURNS opens the unit's ever
 static void draw_mixer2(void) {
     mixer2_fix();
     mx_meters();
+    if (mx_pg == 0 && !any_sound()) { ui_empty(26, 200, 971, 300, "NOTHING TO MIX YET", "PADS: EDIT on an empty pad picks an engine"); draw_footer("Y BACK  L1/R1 RETURNS, FREEZE"); return; }
     if (mx_pg == 0) {                     // A21: twelve faders in the pads' engine colours, each with its icon and its level meter
         for (int s = 0; s < NSLOT; s++) { int cx = 66 + s * 81, on = s == mcol, top = 128, bot = 640, h = (bot - top) * song.t[s].vol / 100;
             Col c = has_sound(s) ? (on ? C_ORANGE : C_ENG(song.t[s].type)) : C_LINE; char b[4];
@@ -372,6 +374,7 @@ static void scene_key(int k, int down) {
     if (k == K_UP || k == K_DOWN) sc_cur = clampi(sc_cur + (k == K_DOWN ? 1 : -1), 0, scene_count() - 1);
 }
 static void draw_scenes(void) {
+    if (!any_sound()) { ui_empty(26, 200, 971, 300, "NO PADS WITH A SOUND", "PADS: EDIT on an empty pad picks an engine"); draw_footer("Y BACK  F1/F2 HOME"); return; }
     int n = scene_count(); sc_cur = clampi(sc_cur, 0, n - 1);
     int top = clampi(sc_cur - 2, 0, n > 6 ? n - 6 : 0);
     for (int r = 0; r < 6 && top + r < n; r++) { int q = top + r, y = 80 + r * 104, on = q == sc_cur; char b[16];
@@ -398,6 +401,7 @@ static void draw_prj2(void) {
     for (int j = first; j < n && j < first + 4; j++) { int i = r[j], y = 82 + (j - first) * dy, on = jcol && i == jcur; char b[32]; prj_value(i, b);
         if (on) { rframe(300, y, 690, ch, 8, 4, ec, C_CELL); ui_focus(prj_name[i], b, i == J_MASTER ? song.master : -1, ec); } else rrect(300, y, 690, ch, 8, C_CELL);
         ftext(320, y + 14, FT_M, C_DIM, prj_name[i]);
+        if (prj_help[i]) ftext_wrap(320, y + 56, 650, 2, FT_S, on ? mix(C_WHITE, C_CELL, 70) : C_DIM, prj_help[i]);   // what the setting does (1.2's help line)
         int f = ftext_w(FT_XB, b) <= 640 - ftext_w(FT_M, prj_name[i]) ? FT_XB : FT_M;
         ftext(970 - ftext_w(f, b), y + 10, f, i == J_PROJ && prj_dirty() ? C_ORANGE : C_WHITE, b);
         if (i == J_TEMPO || i == J_SWING) { int v = i == J_TEMPO ? (song.tempo - 40) * 100 / 260 : song.swing * 100 / 75; rect(320, y + ch - 26, 650, 8, C_LINE, 1); rect(320, y + ch - 26, 650 * clampi(v, 0, 100) / 100, 8, ec, 1); }

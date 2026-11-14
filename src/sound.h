@@ -6,6 +6,7 @@
 #pragma once
 
 static void gb_ring(int cx, int cy, int r, int t, Col c);
+static const char *par_hint(int p);      // hints.h: what a parameter does, one sentence
 enum { GF_NONE, GF_WAVE, GF_SLICES, GF_OSC, GF_FILTER, GF_ENV, GF_CLOUD, GF_PATCH };
 typedef struct { const char *name; int8_t n, gfx; int16_t p[20]; } SndPage;
 static const SndPage snd_smp[] = {
@@ -220,6 +221,7 @@ static void snd_card(int x, int y, int w, int h, int p, int on, Col ec) {
     int room = w - 52 - ftext_w(FT_M, lb) - nt * 44, f = ftext_w(FT_XB, v) <= room ? FT_XB : ftext_w(FT_LB, v) <= room ? FT_LB : FT_M;
     if (ftext_w(f, v) > room) v[room / fv2[f].w > 0 ? room / fv2[f].w : 0] = 0;
     ftext(x + w - 20 - ftext_w(f, v), y + 10 + (fv2[FT_XB].h - fv2[f].h) / 2, f, C_WHITE, v);
+    if (on && h >= 140) { const char *hn = par_hint(p); if (hn && hn[0]) ftext_wrap(x + 20, y + 58, w - 40, 2, FT_S, mix(C_WHITE, C_CELL, 70), hn); }   // the card under the cursor says what it does
     if (on) { int lo, hi, st, bg; par_limits(sel, p, &lo, &hi, &st, &bg); ui_focus(lb, v, par_is_number(p) && bg > 1 && hi > lo ? (par_get(sel, p) - lo) * 100 / (hi - lo) : -1, ec); }
     if (par_is_number(p)) { int lo, hi, st, bg; par_limits(sel, p, &lo, &hi, &st, &bg);   // a bar for what is turned, none for what is chosen
         if ((bg > 1 || p == P_SLICES) && hi > lo) { int by = y + h - 26; rect(x + 20, by, w - 40, 8, C_LINE, 1); rect(x + 20, by, (w - 40) * clampi(par_get(sel, p) - lo, 0, hi - lo) / (hi - lo), 8, ec, 1); } }

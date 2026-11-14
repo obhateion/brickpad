@@ -26,6 +26,12 @@ static int ftext(int x, int y, int f, Col c, const char *s) {   // y: the top of
     return x - x0;
 }
 static int ftext_w(int f, const char *s) { return (int)strlen(s) * fv2[f].w; }
+static void ftext_wrap(int x, int y, int w, int lines, int f, Col c, const char *s) {   // words over up to `lines` lines of width w
+    int per = w / fv2[f].w; char b[160];
+    for (int l = 0; l < lines && *s; l++) { int n = (int)strlen(s);
+        if (n > per) { n = per; while (n > 0 && s[n] != ' ') n--; if (!n) n = per; }
+        snprintf(b, sizeof b, "%.*s", n, s); ftext(x, y + l * (fv2[f].h + 4), f, c, b); s += n; while (*s == ' ') s++; }
+}
 static void rrect(int x, int y, int w, int h, int r, Col c) {   // a filled rounded box
     SDL_SetRenderDrawColor(R, c.r, c.g, c.b, 255);
     for (int i = 0; i < h; i++) {
@@ -238,6 +244,12 @@ static void ui_popup(void) {              // EDIT held and turning: the value la
     ftext(PX + PW - 24 - ftext_w(FT_XB, uf_val), PY + 12, FT_XB, C_WHITE, uf_val);
     if (uf_f >= 0) { rect(PX + 24, PY + PH - 34, PW - 48, 10, C_LINE, 1); rect(PX + 24, PY + PH - 34, (PW - 48) * clampi(uf_f, 0, 100) / 100, 10, uf_col, 1); }
 }
+static void ui_empty(int x, int y, int w, int h, const char *what, const char *how) {   // an empty state: what is missing, the key that fixes it
+    rrect(x, y, w, h, 10, C_CELL);
+    ftext(x + w / 2 - ftext_w(FT_LB, what) / 2, y + h / 2 - 36, FT_LB, C_WHITE, what);
+    ftext(x + w / 2 - ftext_w(FT_M, how) / 2, y + h / 2 + 8, FT_M, C_DIM, how);
+}
+static int any_sound(void) { for (int s = 0; s < NSLOT; s++) if (has_sound(s)) return 1; return 0; }
 static void ui_quit_hold(void) {          // MENU held: how long until the app quits (3 s, main loop), so a long press is never a surprise
     if (!menu_down) return; Uint32 d = SDL_GetTicks() - menu_down; if (d < 400) return;
     enum { PW = 560, PX = (W - PW) / 2, PY = 300, PH = 132 }; int f = clampi((int)(d - 400) * 100 / 2600, 0, 100);
