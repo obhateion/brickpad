@@ -177,7 +177,7 @@ static void ui_jump_box(int x, int y, int c) {   // a category of the jump cross
 }
 static void ui_cheat(void) {              // SHIFT held alone: inside a pad the jump cross (L3), and every combination of this screen
     if (!held[K_SHIFT] || used[K_SHIFT] || !shift_t || ms_since(SDL_GetTicks(), shift_t) < 250) return;
-    int pad = in_pad() && !perform && !picking, y0 = pad ? 520 : 96;
+    int pad = in_pad() && !perform && !picking && !slicing && !rolling && !randing && !presetting && !browsing && !ducking && !theming && !iconing && !naming && !exporting, y0 = pad ? 520 : 96;
     ui_shade(215); rrect(14, y0 - 14, 996, V2_FOOT - y0 + 8, 10, C_CELL);
     if (pad) {
         const char *t = "hold SHIFT and press an arrow"; ftext(512 - ftext_w(FT_MB, t) / 2, 92, FT_MB, C_WHITE, t);
@@ -186,7 +186,7 @@ static void ui_cheat(void) {              // SHIFT held alone: inside a pad the 
         snprintf(b, sizeof b, "%.8s", slot_name(sel) ? slot_name(sel) : "EMPTY"); ftext(512 - ftext_w(FT_S, b) / 2, 312, FT_S, C_DIM, b);
         ftext(377 + 135 - ftext_w(FT_S, "MOD: from the pad's list") / 2, 484, FT_S, C_DIM, "MOD: from the pad's list");
     } else ftext(26, 66, FT_MB, C_ORANGE, "KEYS OF THIS SCREEN");
-    static const char *const every[] = {"PLAY play / stop", "F1/F2 next pad, or screen of HOME", "F1+F2 PROJECT", "Y back", "MENU PADS / KEYS", "MENU+PLAY record",
+    static const char *const every[] = {"PLAY play / stop", "F1/F2 next pad, or screen of HOME", "F1+F2 PROJECT", "Y back", "MENU PADS / KEYS", "MENU+PLAY record, twice capture",
         "SHIFT+L2 undo", "SHIFT+OPT copy", "SHIFT+EDIT paste", "OPT+EDIT delete", "MENU-3-S quit", 0};
     int x = 26, y = y0, rows = (V2_FOOT - 8 - y0) / 30, r = 0, colw = 0;
     for (int pass = 0; pass < 2; pass++) {
@@ -360,8 +360,8 @@ static void draw_steps2(void) {
         step_value(p, cs, L_TRIG, nsl, nb); snprintf(b, sizeof b, "step %d \3 %s \3 vel %d", cs + 1, nb, p->vel[cs]); }
     else snprintf(b, sizeof b, "step %d", cs + 1);
     ftext(W - 28 - ftext_w(FT_M, b), 660, FT_M, C_WHITE, b);
-    draw_footer(lane == L_TRIG || lane == L_SLICE ? "EDIT NOTE  L1/R1 LANE  Y BACK  EDIT+ARROWS VALUE  OPT LISTEN  OPT+EDIT DELETE  XX DOUBLE CLIP  SHIFT+X RANDOM"
-                                                  : "EDIT+ARROWS VALUE  L1/R1 LANE  Y BACK  OPT LISTEN  OPT+EDIT DEFAULT  XX DOUBLE CLIP  SHIFT+X RANDOM");
+    draw_footer(lane == L_TRIG || lane == L_SLICE ? "EDIT NOTE  L1/R1 LANE  Y BACK  EDIT+ARROWS VALUE  OPT LISTEN  OPT+<> WALK AND LISTEN  X+<> PAD  OPT+EDIT DELETE  XX DOUBLE CLIP  SHIFT+X RANDOM"
+                                                  : "EDIT+ARROWS VALUE  L1/R1 LANE  Y BACK  OPT LISTEN  X+<> PAD  OPT+EDIT DEFAULT  XX DOUBLE CLIP  SHIFT+X RANDOM");
 }
 
 // PATTERN > RECORD (UI v2, mockup A04): the take's state as one big circle. The logic is the one of MENU+PLAY: EDIT arms

@@ -2643,6 +2643,7 @@ static void roll_leave(void) {           // out of the editor: no note it starte
     if (rl_heard) { engine_release_key(RL_TAG); rl_heard = 0; }
     roll_chord_off(); rolling = 0;
 }
+static void rnd_open(void);
 static void roll_key(int k, int down) {
     Pattern *p = cur_pat(sel); int T = roll_ticks(p);
     if (!down) {
@@ -2656,6 +2657,7 @@ static void roll_key(int k, int down) {
         return;
     }
     if (k == K_Y) { roll_leave(); if (ui_cat == PC_PATTERN) patmenu_open(); return; }   // UI v2: back to PATTERN's list
+    if (held[K_SHIFT] && k == K_X) { used[K_SHIFT] = used[K_X] = 1; rnd_open(); return; }   // RANDOM, over the roll (Y comes back here)
     if (k == K_PLAY) { play_key(); return; }
     if (held[K_SHIFT] && k == K_L2) {
         undo(); p = cur_pat(sel);
@@ -3361,8 +3363,8 @@ static void key_event(int k, int down) {
         return;
     }
     if (slicing) { slice_key(k, down); return; }
+    if (randing) { rnd_key(k, down); return; }   // before ROLL: RANDOM opens over a roll pattern too
     if (rolling) { roll_key(k, down); return; }
-    if (randing) { rnd_key(k, down); return; }
     if (picking) { pick_key(k, down); return; }
     if (presetting) { preset_key(k, down); return; }
     if (theming) { theme_key(k, down); return; }
@@ -3714,10 +3716,10 @@ static void draw_grid(void) {
         frame(GX + c0 * DX - 6, GY + r0 * DY - 6, (c1 - c0) * DX + CW + 12, (r1 - r0) * DY + CH + 12, 2, C_ORANGE);
     }
     char missing[96]; snprintf(missing, sizeof missing, "MISSING %.32s  %s", file_base(slot_want[sel]), engine_sample(sel) ? "EDIT OPEN" : "EDIT LOAD");
-    draw_footer(perform ? "PAD CLIP/HIT  SHIFT+PAD OTHER  PLAY PAD CLIP"
+    draw_footer(perform ? "PAD CLIP/HIT  SHIFT+PAD OTHER  PLAY PAD CLIP  SHIFT+F1/F2 SCENE"
                         : gsel_on() ? "PLAY ALL SELECTED  Y MUTE  SHIFT+Y FREEZE  ARROW ENDS IT"
                         : slot_want[sel][0] ? missing
-                        : has_sound(sel) ? "EDIT OPEN  PLAY START  SHIFT MORE  Y MUTE  SHIFT+Y FREEZE  SHIFT+DPAD SEL"
+                        : has_sound(sel) ? "EDIT OPEN  PLAY START  SHIFT MORE  Y MUTE  SHIFT+Y FREEZE  SHIFT+DPAD SEL  X ICON  SHIFT+X NAME"
                                              : "EDIT CHOOSE ENGINE  X ICON  MENU PADS");
 }
 static void slice_label(char *b, const Pattern *p, int i, int ns) {   // "16+": the step also plays what follows slice 16
@@ -4524,8 +4526,8 @@ static void draw_roll(void) {
     if (i >= 0) { const Note *n = &p->roll[i]; snprintf(b, sizeof b, "%s \3 len %d/128 \3 vel %d \3 chance %d%s", nm, n->len, n->vel, n->prob, n->flags & NF_ACC ? " \3 acc" : ""); }
     else snprintf(b, sizeof b, "%s", nm);
     ftext(W - 28 - ftext_w(FT_S, b), 694, FT_S, C_WHITE, b);
-    draw_footer(i >= 0 ? "EDIT DELETE  EDIT+ARROWS LENGTH/PITCH  Y BACK  X+ARROWS VEL/CHANCE  L1/R1 GRID  OPT+<> NEXT"
-                       : "EDIT NOTE  L1/R1 GRID  Y BACK  OPT+<> NEXT  X+EDIT CHORD  SHIFT+ARROWS PAGE");
+    draw_footer(i >= 0 ? "EDIT DELETE  EDIT+ARROWS LENGTH/PITCH  Y BACK  X+ARROWS VEL/CHANCE  L1/R1 GRID  OPT+<> NEXT  SHIFT+X RANDOM"
+                       : "EDIT NOTE  L1/R1 GRID  Y BACK  OPT+<> NEXT  X+EDIT CHORD  SHIFT+ARROWS PAGE  SHIFT+X RANDOM");
 }
 static void draw_seq(void) {
     Pattern *p = cur_pat(sel); int st = song.t[sel].on ? engine_step(sel) : -1;
@@ -5804,8 +5806,8 @@ static void draw(void) {
     else if (naming) draw_naming2();
     else if (browsing) { if (bmode) draw_prjbrowse2(); else draw_browse2(); }
     else if (slicing) draw_slice();
-    else if (rolling) draw_roll();
     else if (randing) draw_rnd2();
+    else if (rolling) draw_roll();
     else if (picking) draw_pick();
     else if (presetting) draw_presets2();
     else if (theming) draw_theme2();

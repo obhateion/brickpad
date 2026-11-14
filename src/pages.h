@@ -402,7 +402,8 @@ static void draw_prj2(void) {
         ftext(970 - ftext_w(f, b), y + 10, f, i == J_PROJ && prj_dirty() ? C_ORANGE : C_WHITE, b);
         if (i == J_TEMPO || i == J_SWING) { int v = i == J_TEMPO ? (song.tempo - 40) * 100 / 260 : song.swing * 100 / 75; rect(320, y + ch - 26, 650, 8, C_LINE, 1); rect(320, y + ch - 26, 650 * clampi(v, 0, 100) / 100, 8, ec, 1); }
         if (i == J_MASTER && ch >= 70) { rect(320, y + ch - 26, 650, 8, C_LINE, 1); rect(320, y + ch - 26, 650 * song.master / 100, 8, ec, 1); } }
-    draw_footer(!jcol ? "EDIT ENTER  Y BACK  ^v SECTION" : "EDIT+<> VALUE  EDIT DO IT  Y BACK  < SECTIONS");
+    draw_footer(!jcol ? "EDIT ENTER  Y BACK  ^v SECTION" : jcur == J_TEMPO ? "EDIT TAP IN TIME  EDIT+<> VALUE  Y BACK  L1/R1 HELD NUDGE  < SECTIONS"
+                                                    : "EDIT+<> VALUE  EDIT DO IT  Y BACK  < SECTIONS");
 }
 
 // ---- MIXER > RETURN A / RETURN B / MASTER: every parameter of the unit as cards (the 1.2 cursor: fcol the column, frow the row) ----
