@@ -17,6 +17,7 @@ static void sv_knobs(int s, SvKnob *k) {
 }
 static void simple_sync(void) {          // the state under the simple screens: HOME for PLAY and SOUND, the pad's steps for NOTES
     hubbing = patmenu = modmenu = scening = recpage = 0; perform = 0; if (rolling) roll_leave();
+    if (sv_mode && !has_sound(sel)) for (int i = 1; i < NSLOT; i++) if (has_sound((sel + i) % NSLOT)) { sel = (sel + i) % NSLOT; break; }   // NOTES, SOUND: a pad with a sound
     if (sv_mode == 1) { tab = T_SEQ; ui_cat = PC_PATTERN; lane = lane_first(); if (srow < 1 || srow > 2) { srow = 1; scol = 0; } }
     else { tab = T_GRID; ui_cat = -1; }
 }
@@ -30,7 +31,8 @@ static int simple_key(int k, int down) {  // 1 = the key is used up here; 0 = NO
     simple_sync();
     if (k == K_F1 || k == K_F2) { int o = k == K_F1 ? K_F2 : K_F1;
         if (down && held[o]) { used[K_F1] = used[K_F2] = 1; sv_exit = SDL_GetTicks() | 1; }
-        else if (!down) { sv_exit = 0; if (!used[k]) sv_pad(k == K_F2 ? 1 : -1); }
+        else if (!down) { if (sv_exit && ms_since(SDL_GetTicks(), sv_exit) >= 3000) { ui_simple = 0; ui_cfg_save(); set_tab(T_GRID); ui_cat = -1; }   // held long enough: out
+                          sv_exit = 0; if (!used[k]) sv_pad(k == K_F2 ? 1 : -1); }
         return 1; }
     if (k == K_MENU) { menu_down = down && !held[K_SHIFT] ? SDL_GetTicks() : 0; if (!down && !used[K_MENU]) { sv_mode = (sv_mode + 1) % 3; simple_sync(); } return 1; }
     if (held[K_MENU] && k <= K_RIGHT) { if (down) { used[K_MENU] = 1; if (k != K_LEFT) sv_mode = k == K_UP ? 0 : k == K_RIGHT ? 1 : 2; simple_sync(); } return 1; }

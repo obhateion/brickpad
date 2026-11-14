@@ -195,7 +195,7 @@ static void draw_auto2(void) {
     ftext(26, 664, FT_M, C_DIM, b);
     if (st >= 0) { if (al->v[st] != AUTO_EMPTY) snprintf(b, sizeof b, "step %d \004 %d%%", st + 1, al->v[st]); else snprintf(b, sizeof b, "step %d", st + 1);
         ftext(997 - ftext_w(FT_M, b), 664, FT_M, C_WHITE, b); }
-    draw_footer(srow == 0 ? "EDIT+<> TARGET  EDIT PICK ON SOUND  Y BACK" : "EDIT POINT  Y+ARROWS BEND  Y BACK  EDIT+^v VALUE  L1/R1 LANE  OPT+EDIT CLEAR");
+    draw_footer(srow == 0 ? "EDIT+<> TARGET  EDIT PICK ON SOUND  Y BACK" : "EDIT POINT  X+^v BEND  Y BACK  EDIT+^v VALUE  L1/R1 LANE  OPT+EDIT CLEAR");
 }
 
 // ---- MIX of a pad: its strip of the mixer as cards (the 1.2 rows: mrow, the column mcol = the pad) ----
