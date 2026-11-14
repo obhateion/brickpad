@@ -5810,6 +5810,17 @@ static void draw_export(void) {
     } else draw_footer("^v ROW  <> CHANGE  EDIT ON EXPORT: GO  Y BACK");
 }
 #include "windows.h"
+static void lcd_mask(void) {             // a dark gap after every 3 px, both ways, as on the DMG screen: one texture, made once
+    static SDL_Texture *m; static int failed;
+    if (!m && !failed) {
+        Uint32 *px = malloc((size_t)W * H * 4); if (!px) { failed = 1; return; }
+        for (int y = 0; y < H; y++) for (int x = 0; x < W; x++) px[y * W + x] = (x % 4 == 3 || y % 4 == 3) ? 0x38000000u : 0;   // ARGB: black at 22 %
+        m = SDL_CreateTexture(R, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STATIC, W, H);
+        if (m) { SDL_UpdateTexture(m, NULL, px, W * 4); SDL_SetTextureBlendMode(m, SDL_BLENDMODE_BLEND); } else failed = 1;
+        free(px);
+    }
+    if (m) SDL_RenderCopy(R, m, NULL, NULL);
+}
 static void draw(void) {
     Uint64 t_draw0 = SDL_GetPerformanceCounter();
     { static int last; int scr = theming ? 2 : !iconing && !browsing && !slicing && !perform && tab == T_PRJ ? 1 : 0;   // every opening gets another figure
@@ -5862,6 +5873,7 @@ static void draw(void) {
     if (asking) draw_ask2();
 shown:;
     ui_quit_hold();
+    if (th_sel == 4) lcd_mask();           // GAMEBOY: the LCD's pixel grid over everything (user, 2026-11-14)
     Uint64 tp = SDL_GetPerformanceCounter(); draw_build_ms += (tp - t_draw0) * 1000.0 / SDL_GetPerformanceFrequency();
     SDL_RenderPresent(R);
     draw_present_ms += (SDL_GetPerformanceCounter() - tp) * 1000.0 / SDL_GetPerformanceFrequency();
