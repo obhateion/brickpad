@@ -1898,7 +1898,7 @@ static void pat_play(void) {             // PLAY in the window: the pattern unde
 }
 
 // ---------- PROJECT ----------
-enum { J_TEMPO, J_SWING, J_KEY, J_SCALE, J_LAUNCH, J_METRO, J_BEATS, J_COUNT, J_QUANT, J_MASTER, J_THEME, J_LIB, J_NEW, J_SNAP, J_PROJ, J_SAVE, J_SAVEAS, J_EXPORT, J_HINT, J_STRIP, J_VIEW, J_LOCK, J_NAV, J_DRAWER, J_MXFX, J_ABOUT, J_N };
+enum { J_TEMPO, J_SWING, J_KEY, J_SCALE, J_LAUNCH, J_METRO, J_BEATS, J_COUNT, J_QUANT, J_MASTER, J_THEME, J_LIB, J_NEW, J_SNAP, J_PROJ, J_SAVE, J_SAVEAS, J_EXPORT, J_HINT, J_STRIP, J_VIEW, J_LOCK, J_NAV, J_DRAWER, J_MXFX, J_MXLINK, J_ABOUT, J_N };
 // The sections of PROJECT (2026-11-09): the left column chooses one, the middle shows its settings
 // 2026-11-14 (user): INTERFACE holds how BrickPad looks and moves, ABOUT every key of it by topic (the sheet SHIFT used to show)
 enum { JS_SONG, JS_PLAY, JS_REC, JS_FILE, JS_UI, JS_MIX, JS_SYS, JS_ABOUT, JS_N };
@@ -1906,7 +1906,7 @@ enum { AB_N = 11 }; static int ab_pg;   // ABOUT: its topics, the one shown
 static const char *const prj_sec_name[JS_N] = {"SONG", "PLAY", "RECORD", "FILE", "INTERFACE", "MIXER", "SYSTEM", "ABOUT"};
 static const int8_t prj_sec[JS_N][6] = {{J_TEMPO, J_SWING, J_KEY, J_SCALE, J_SNAP, J_BEATS}, {J_LAUNCH, J_METRO, J_MASTER, -1},
                                         {J_COUNT, J_QUANT, -1}, {J_PROJ, J_SAVE, J_SAVEAS, J_EXPORT, J_NEW, -1},
-                                        {J_VIEW, J_STRIP, J_NAV, J_HINT, J_LOCK, -1}, {J_DRAWER, J_MXFX, -1}, {J_THEME, J_LIB, -1}, {J_ABOUT, -1}};
+                                        {J_VIEW, J_STRIP, J_NAV, J_HINT, J_LOCK, -1}, {J_DRAWER, J_MXFX, J_MXLINK, -1}, {J_THEME, J_LIB, -1}, {J_ABOUT, -1}};
 static const char *const prj_help[J_N] = {"THE PROJECT'S SPEED. EDIT TAPS IT, L1/R1 HELD NUDGE WHILE PLAYING", "LATE EVEN 1/16 STEPS: A SHUFFLE",
     "THE TONIC EVERY PAD PLAYS IN (A PAD CAN HAVE ITS OWN)", "WHICH NOTES THE DEGREES, KEYS AND RANDOM USE",
     "A CLIP STARTS OR STOPS ON THIS GRID, AS IN ABLETON", "A CLICK ON EVERY BEAT WHILE PLAYING", "BEATS IN A BAR: LAUNCH AND RECORDING COUNT THEM",
@@ -1916,14 +1916,16 @@ static const char *const prj_help[J_N] = {"THE PROJECT'S SPEED. EDIT TAPS IT, L1
     "SIMPLE VIEW ONLY, FOR A CHILD: NOTES CANNOT BE ERASED AND THE DICE IS OFF. THE ADVANCED VIEW IGNORES IT",
     "INSIDE A PAD: A LIST OF ITS CATEGORIES, OR A TREE WITH EVERY PAGE (<> LEVEL, ^v CHOOSE, EDIT OPEN)",
     "THE MIXER'S DRAWER WITH THE RETURNS, THE MASTER AND THE PAD'S EFFECTS: THE SIDE IT SLIDES OUT OF",
-    "EFFECTS AND SENDS IN SMALL ON EVERY STRIP. OFF: A CLEANER MIXER. THE DRAWER ALWAYS SHOWS THEM IN FULL", NULL};
-static const char *prj_name[J_N] = {"TEMPO", "SWING", "KEY", "SCALE", "CLIP LAUNCH", "METRONOME", "BEATS/BAR", "COUNT-IN", "REC QUANT", "MASTER VOL", "THEME", "CHECK LIBRARY", "NEW PROJECT", "SCALE SNAP", "PROJECT", "SAVE", "SAVE AS", "EXPORT WAV", "FOOTER HINTS", "PAD STRIP", "VIEW", "KID LOCK", "PAD MENU", "MIXER DRAWER", "STRIP EFFECTS", "ABOUT"};
+    "EFFECTS AND SENDS IN SMALL ON EVERY STRIP. OFF: A CLEANER MIXER. THE DRAWER ALWAYS SHOWS THEM IN FULL",
+    "THE SAME SOUND ON THE SAME PAD IN ANOTHER SCENE: ONE MIX FOR EVERY SCENE, OR ITS OWN IN EACH. ANOTHER SOUND ALWAYS KEEPS ITS OWN", NULL};
+static const char *prj_name[J_N] = {"TEMPO", "SWING", "KEY", "SCALE", "CLIP LAUNCH", "METRONOME", "BEATS/BAR", "COUNT-IN", "REC QUANT", "MASTER VOL", "THEME", "CHECK LIBRARY", "NEW PROJECT", "SCALE SNAP", "PROJECT", "SAVE", "SAVE AS", "EXPORT WAV", "FOOTER HINTS", "PAD STRIP", "VIEW", "KID LOCK", "PAD MENU", "MIXER DRAWER", "STRIP EFFECTS", "SCENE MIX", "ABOUT"};
 static int ui_strip = 1, ui_simple, ui_lock;   // PROJECT > INTERFACE: the pad strip (0 hidden, 1 thin, 2 big), the simple view, its kid lock (ui.cfg beside the binary)
 static int ui_tree, ui_drawer_left;          // the pad menu as a tree (A23) instead of the list; the mixer's drawer on the left
+static int ui_mxlink = 1;                    // PROJECT > MIXER > SCENE MIX (2026-11-15, user): one mix for the same sound in every scene
 static int ui_mxfx = 1;                      // PROJECT > MIXER > STRIP EFFECTS (2026-11-14, user): the strips show their effects and sends too
-static void ui_cfg_save(void) { char b[48]; int n = snprintf(b, sizeof b, "%d %d %d %d %d %d\n", ui_strip, ui_simple, ui_lock, ui_tree, ui_drawer_left, ui_mxfx); write_whole("ui.cfg", b, n); }
-static void ui_cfg_load(void) { FILE *f = fopen("ui.cfg", "r"); if (f) { int a = 1, b = 0, c = 0, d = 0, e = 0, g = 1;
-    if (fscanf(f, "%d %d %d %d %d %d", &a, &b, &c, &d, &e, &g) >= 1) { ui_strip = clampi(a, 0, 2); ui_simple = b != 0; ui_lock = c != 0; ui_tree = d != 0; ui_drawer_left = e != 0; ui_mxfx = g != 0; } fclose(f); } }
+static void ui_cfg_save(void) { char b[48]; int n = snprintf(b, sizeof b, "%d %d %d %d %d %d %d\n", ui_strip, ui_simple, ui_lock, ui_tree, ui_drawer_left, ui_mxfx, ui_mxlink); write_whole("ui.cfg", b, n); }
+static void ui_cfg_load(void) { FILE *f = fopen("ui.cfg", "r"); if (f) { int a = 1, b = 0, c = 0, d = 0, e = 0, g = 1, l = 1;
+    if (fscanf(f, "%d %d %d %d %d %d %d", &a, &b, &c, &d, &e, &g, &l) >= 1) { ui_strip = clampi(a, 0, 2); ui_simple = b != 0; ui_lock = c != 0; ui_tree = d != 0; ui_drawer_left = e != 0; ui_mxfx = g != 0; ui_mxlink = l != 0; } fclose(f); } }
 static int hint_on = 1;                    // HOVER HINTS (hints.cfg beside the binary: "0" = off)
 static void hint_set(int on) { hint_on = on; write_whole("hints.cfg", on ? "1\n" : "0\n", 2); }
 static void hint_load(void) { FILE *f = fopen("hints.cfg", "r"); if (f) { int v = 1; if (fscanf(f, "%d", &v) == 1) hint_on = v != 0; fclose(f); } }
@@ -1952,6 +1954,31 @@ static void scn_preload(int i) {          // reads files: a moment
     for (int s = 0; s < NSLOT; s++) scn_smp[i][s] = scn_sample(scn[i]->t[s].path);
     scn_ready[i] = 1;
 }
+// SCENE MIX SHARED: a pad that has the same sound in another scene (the same file; a synth: its name, else its sound) takes
+// the open scene's mix: fader, pan, inserts, sends, duck, normalize. Another sound on the pad keeps that scene's own.
+static int scn_same(const Song *a, const Song *b, int s) {
+    const Track *x = &a->t[s], *y = &b->t[s];
+    if (x->type != y->type) return 0;
+    if (x->type == 0 || x->type == 3) return x->path[0] && !strcmp(x->path, y->path);
+    if (a->pname[s][0] || b->pname[s][0]) return !strcmp(a->pname[s], b->pname[s]);
+    return x->type == 1 ? !memcmp(x->sp, y->sp, sizeof x->sp) : !memcmp(x->ap, y->ap, sizeof x->ap);
+}
+static int scn_mix_copy(Song *d, const Song *g, int s) {   // 1 = something changed
+    Track *t = &d->t[s]; PadMix *p = &d->mix.pad[s], *q = (PadMix *)&g->mix.pad[s];
+    int ch = t->vol != g->t[s].vol || t->pan != g->t[s].pan || memcmp(p->ins, q->ins, sizeof p->ins) || p->send_a != q->send_a || p->send_b != q->send_b
+        || p->spare[DK_SRC] != q->spare[DK_SRC] || p->spare[DK_AMT] != q->spare[DK_AMT] || p->spare[PM_NORM] != q->spare[PM_NORM]
+        || memcmp(d->mbx[s], g->mbx[s], sizeof d->mbx[s]) || memcmp(d->dkx[s], g->dkx[s], sizeof d->dkx[s]) || memcmp(d->dkc[s], g->dkc[s], sizeof d->dkc[s]);
+    if (!ch) return 0;
+    t->vol = g->t[s].vol; t->pan = g->t[s].pan; memcpy(p->ins, q->ins, sizeof p->ins); p->send_a = q->send_a; p->send_b = q->send_b;
+    p->spare[DK_SRC] = q->spare[DK_SRC]; p->spare[DK_AMT] = q->spare[DK_AMT]; p->spare[PM_NORM] = q->spare[PM_NORM];
+    memcpy(d->mbx[s], g->mbx[s], sizeof d->mbx[s]); memcpy(d->dkx[s], g->dkx[s], sizeof d->dkx[s]); memcpy(d->dkc[s], g->dkc[s], sizeof d->dkc[s]);
+    return 1;
+}
+static void scn_mix_sync(void) {          // the open scene's mix goes to the same sounds elsewhere
+    if (!ui_mxlink) return;
+    for (int i = 0; i < scn_n; i++) if (i != scn_cur && scn[i]) for (int s = 0; s < NSLOT; s++)
+        if (scn_same(&song, scn[i], s) && scn_mix_copy(scn[i], &song, s)) scn_dirty[i] = 1;
+}
 static void scene_poll(void) {            // every frame: the engine has taken the next scene in
     Sample *old[NSLOT];
     if (scn_next < 0 || !engine_scene_done(old)) return;
@@ -1976,7 +2003,7 @@ static void scenes_clear(void) {          // another project: one scene, the pla
 static void scene_go(int n) {             // launch: on the quantum while playing, at once when stopped
     scn_unwait();
     if (n < 0 || n >= scn_n || n == scn_cur || scn_next >= 0 || !scn[n] || !scn[scn_cur]) return;
-    scn_preload(n);
+    scn_mix_sync(); scn_preload(n);
     static Song in; in = *scn[n]; int any = 0;
     for (int s = 0; s < NSLOT; s++) { Track *t = &in.t[s]; t->queued = -1; t->cur = (int8_t)clampi(t->cur, 0, NPAT - 1);
         t->on = (t->type || scn_smp[n][s]) && pat_used(&t->pat[t->cur]); any |= t->on; }
@@ -2007,6 +2034,7 @@ static void scene_del(int i) {
     memset(scn_dirty, 1, sizeof scn_dirty); scn_hdr = 1; toast("SCENE DELETED");
 }
 static void scene_save(void) {            // only what changed: every scene has its own place in the file
+    scn_mix_sync();
     int any = scn_hdr; for (int i = 0; i < scn_n; i++) any |= scn_dirty[i] && i != scn_cur;
     if (!any) return;
     FILE *f = fopen(SCN_FILE, "r+b"); if (!f) f = fopen(SCN_FILE, "w+b"); if (!f) return;
@@ -2208,6 +2236,7 @@ static void prj_edit_arrow(int k) {
     if (jcur == J_NAV) { ui_tree = !ui_tree; ui_cfg_save(); return; }
     if (jcur == J_DRAWER) { ui_drawer_left = !ui_drawer_left; ui_cfg_save(); return; }
     if (jcur == J_MXFX) { ui_mxfx = !ui_mxfx; ui_cfg_save(); return; }
+    if (jcur == J_MXLINK) { ui_mxlink = !ui_mxlink; ui_cfg_save(); return; }
     if (jcur == J_STRIP) { ui_strip = (ui_strip + 1) % 3; ui_cfg_save(); return; }
     if (jcur == J_VIEW) { ui_simple = !ui_simple; ui_cfg_save(); return; }
     if (jcur == J_LOCK) { ui_lock = !ui_lock; ui_cfg_save(); return; }
@@ -2267,7 +2296,7 @@ static void prj_tap(void) {
         if (ntaps == 5) { memmove(taps, taps + 1, 4 * sizeof *taps); ntaps = 4; }
         taps[ntaps++] = now;
         if (ntaps >= 2) { edit_begin(); song.tempo = clampi((int)(60000.0 * (ntaps - 1) / (now - taps[0]) + 0.5), 40, 300); }
-    } else if (jcur == J_LAUNCH || jcur == J_METRO || jcur == J_COUNT || jcur == J_QUANT || jcur == J_SNAP || jcur == J_HINT || jcur == J_STRIP || jcur == J_VIEW || jcur == J_LOCK || jcur == J_NAV || jcur == J_DRAWER || jcur == J_MXFX) prj_edit_arrow(K_RIGHT);
+    } else if (jcur == J_LAUNCH || jcur == J_METRO || jcur == J_COUNT || jcur == J_QUANT || jcur == J_SNAP || jcur == J_HINT || jcur == J_STRIP || jcur == J_VIEW || jcur == J_LOCK || jcur == J_NAV || jcur == J_DRAWER || jcur == J_MXFX || jcur == J_MXLINK) prj_edit_arrow(K_RIGHT);
 }
 
 // ---------- SLICE EDITOR ----------
@@ -3797,6 +3826,7 @@ static void prj_value(int i, char *b) {
     case J_NAV: snprintf(b, 32, ui_tree ? "TREE" : "LIST"); break;
     case J_DRAWER: snprintf(b, 32, ui_drawer_left ? "LEFT" : "RIGHT"); break;
     case J_MXFX: snprintf(b, 32, ui_mxfx ? "ON" : "OFF"); break;
+    case J_MXLINK: snprintf(b, 32, ui_mxlink ? "SHARED" : "OWN"); break;
     case J_ABOUT: b[0] = 0; break;
     case J_PROJ: snprintf(b, 32, "%.20s%s", prj_cur[0] ? prj_cur : "UNTITLED", prj_dirty() ? " *" : ""); break;
     case J_SAVE: snprintf(b, 32, prj_dirty() ? "UNSAVED CHANGES" : prj_cur[0] ? "SAVED" : "NOT SAVED YET"); break;
@@ -3927,7 +3957,7 @@ static void prj_path(const char *name, char *p, int n) { snprintf(p, n, PRJ_DIR 
 static void prj_save(const char *name) {
     mkdir(PRJ_DIR, 0777);
     char p[96]; prj_path(name, p, sizeof p);
-    scene_poll();
+    scene_poll(); scn_mix_sync();
     size_t one = sizeof(Song), sz = one + (scn_n > 1 ? sizeof(ScnHead) + (size_t)scn_n * one : 0); char *buf = malloc(sz);   // the playing scene, then all of them
     if (!buf) { toast("COULD NOT SAVE"); return; }
     memcpy(buf, &song, one);

@@ -571,7 +571,7 @@ static const char *const ab_rows[AB_N][19] = {
      "OPT+EDIT clear", "#DUCK", "EDIT+^v level, EDIT+<> draw the curve", "L1/R1 the pad"},
     {"<> the pad", "EDIT+^v its level (EDIT+<> fine)", "Y mute", "X solo", "SHIFT+Y solo", "L1/R1 the drawer, FREEZE", "#THE DRAWER: RETURNS, MASTER, THE PAD'S EFFECTS",
      "EDIT on a pad: open, close (or R1, or past the last pad)", "<> reverb, delay, master", "^v level and two parameters", "EDIT+^v the value", "EDIT all the parameters of the unit",
-     "Y close it", "#FREEZE", "EDIT freeze the pad, or export", "#PROJECT > MIXER > STRIP EFFECTS: HIDE THEM ON THE STRIPS"},
+     "Y close it", "#FREEZE", "EDIT freeze the pad, or export", "#PROJECT > MIXER: STRIP EFFECTS, SCENE MIX SHARED / OWN"},
     {"#PADS (MENU)", "BUTTONS the clip or the hit of a pad", "SHIFT+BUTTON the other of the two", "PLAY the pad's clip", "SHIFT+F1/F2 the scene",
      "#KEYS (MENU AGAIN)", "BUTTONS notes", "SHIFT+^v octave", "SHIFT+<> scale", "SHIFT+L1/R1 key", "MENU back", "#RECORD (PATTERN > RECORD)",
      "EDIT arm, stop", "MENU+PLAY arm from anywhere", "OPT a hit", "Y cancel the count",
