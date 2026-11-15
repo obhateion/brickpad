@@ -13,7 +13,7 @@ static const char *const fx_pname[FX_N][6] = {
     {"RATE", "DEPTH", "DELAY", "FEEDBACK", "WIDTH", "MIX"},
     {"RATE", "DEPTH", "MANUAL", "FEEDBACK", "WIDTH", "MIX"},
     {"RATE", "DEPTH", "CENTER", "FEEDBACK", "STAGES", "MIX"},
-    {"MODE", "CUTOFF", "RESO", "DRIVE", "LFO RATE", "LFO DEPTH"},
+    {"MODE", "CUTOFF", "Q", "DRIVE", "LFO RATE", "LFO DEPTH"},   // Q: the state-variable filter's damping is 1/Q (2026-11-15, user asked for Q)
     {"BITS", "DOWNSAMPLE", "JITTER", "TONE", "MIX", ""},
     {"DRIVE", "WOW", "FLUTTER", "TONE", "AGE", "MIX"},
     {"RATE", "DEPTH", "SHAPE", "PHASE", "", ""},

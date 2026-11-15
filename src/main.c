@@ -3843,7 +3843,8 @@ static void meter_bar(int x, int y, int w, int h, float v) {   // segments from 
 static void fx_pstr(int type, int k, int v, char *b) {   // a parameter as the user reads it
     switch (type) {
     case FX_DIST: if (k == 0) { snprintf(b, 16, "%s", dist_mode[v & 3]); return; } break;
-    case FX_FILTER: if (k == 0) { snprintf(b, 16, "%s", filt_mode[v & 3]); return; } if (k == 4) { snprintf(b, 16, "%s", v ? div_label[(v - 1) % NDIV] : "OFF"); return; } break;
+    case FX_FILTER: if (k == 0) { snprintf(b, 16, "%s", filt_mode[v & 3]); return; } if (k == 4) { snprintf(b, 16, "%s", v ? div_label[(v - 1) % NDIV] : "OFF"); return; }
+        if (k == 2) { snprintf(b, 16, "%.1f", 1 / (2 - 2 * (v / 100.f) * 0.98f)); return; } break;   // Q as fxdsp.h makes it: 0.5 .. 25
     case FX_PHASER: if (k == 4) { snprintf(b, 16, "%d", 4 + 2 * v); return; } break;
     case FX_AUTOPAN: if (k == 0) { snprintf(b, 16, "%s", div_label[v % NDIV]); return; } if (k == 2) { snprintf(b, 16, "%s", pan_shape[v % 3]); return; } break;
     case FX_RING: if (k == 0) { snprintf(b, 16, "%.0fHZ", 20 * exp2f(v / 100.f * 8)); return; } if (k == 1) { snprintf(b, 16, "%+dC", v); return; } break;

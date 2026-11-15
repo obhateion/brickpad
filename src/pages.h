@@ -39,7 +39,11 @@ static void fx2_picture(int x, int y, int w, int h, const FxSlot *f, Col c) {   
         case FX_DIST: case FX_TAPE: case FX_COMP: case FX_MULTI: {   // a transfer curve: soft to hard as the drive goes up
             float in = t * 2 - 1, d = 1 + (ty == FX_DIST ? p1 : ty == FX_TAPE ? p0 : 0.6f) * 8; v = tanhf(in * d) / tanhf(d); break; }
         case FX_CRUSH: { int steps = 2 + f->p[0] / 8; v = floorf(sinf(t * 6.2832f * 2) * steps) / steps; break; }
-        case FX_FILTER: { float fc = 0.15f + p1 * 0.7f, d = (t - fc) / 0.08f; v = (t < fc ? 0.4f : 0.4f - (t - fc) * 3) + f->p[2] / 100.f * expf(-d * d) * 0.6f; if (v < -0.9f) v = -0.9f; break; }
+        case FX_FILTER: {                   // its MODE (2026-11-15, user: the curve stayed low-pass): LP, HP, BP, NOTCH
+            // the state-variable response at w = 2^((t - fc) * 10) octaves around the cutoff, Q from RESO as fxdsp.h; 0 dB at 0.35, 12 dB per unit
+            float fc = 0.15f + p1 * 0.7f, k = 2 - 2 * (f->p[2] / 100.f) * 0.98f, w = exp2f((t - fc) * 10), w2 = w * w;
+            float den = (1 - w2) * (1 - w2) + k * k * w2, m = f->p[0] & 3, num = m == 1 ? w2 * w2 : m == 2 ? k * k * w2 : m == 3 ? (1 - w2) * (1 - w2) : 1;
+            float db = 10 * log10f(num / den + 1e-9f); v = 0.35f + db / 48; if (v > 0.95f) v = 0.95f; if (v < -0.9f) v = -0.9f; break; }
         case FX_RING: v = sinf(t * 6.2832f * 3) * sinf(t * 6.2832f * (3 + p0 * 12)); break;
         case FX_AUTOPAN: v = f->p[2] == 2 ? (fmodf(t * 4, 1) < 0.5f ? 0.8f : -0.8f) : f->p[2] == 1 ? 1.6f * fabsf(fmodf(t * 4, 1) - 0.5f) * 2 - 0.8f : 0.8f * sinf(t * 6.2832f * 2); break;
         default: v = (0.3f + 0.6f * p1) * sinf(t * 6.2832f * (1 + p0 * 3));   // CHORUS FLANGER PHASER: the sweep
@@ -576,7 +580,7 @@ static const char *const ab_rows[AB_N][19] = {
      "#A NAME", "EDIT type the letter", "PLAY ok", "OPT delete", "L1/R1 the place", "#PRESETS", "EDIT load", "L1/R1 factory / yours", "OPT listen", "OPT+EDIT delete",
      "#FILES", "X the menu: new folder, rename, cut, delete"},
     {"F1/F2 the screen: PLAY, NOTES, SOUND", "L1/R1 the pad (on PLAY: the scene)", "F1+F2-3S leave the simple view (hold)", "MENU-3S quit BrickPad (hold)",
-     "#PLAY", "EDIT play the pad", "EDIT+^v volume", "Y quiet", "#NOTES", "EDIT a note", "EDIT+^v higher / lower", "#SOUND", "ARROWS choose the knob", "EDIT+<> turn it",
+     "#PLAY", "EDIT play the pad", "EDIT+^v volume", "Y quiet", "#NOTES", "EDIT a note", "EDIT+^v higher / lower", "#SOUND", "<> choose the knob", "^v turn it",
      "SHIFT+X dice: a random sound", "#KID LOCK (PROJECT > INTERFACE): NOTHING IS ERASED"},
 };
 static void draw_about(void) {

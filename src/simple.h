@@ -4,7 +4,7 @@
 // scene), F1+F2 held 3 s leaves the view.
 // KID LOCK: nothing is deleted or overwritten here (notes stay, the dice is off). main.c includes this once, after pages.h.
 #pragma once
-static int sv_mode, sv_knob; static Uint32 sv_exit;   // the screen; SOUND: the knob the arrows chose; when F1+F2 went down together
+static int sv_mode, sv_knob; static Uint32 sv_exit;   // the screen; SOUND: the knob chosen with <>; when F1+F2 went down together
 static const char *const sv_name[3] = {"PLAY", "NOTES", "SOUND"};
 static Col sv_col(int m) { return m == 0 ? C_PLAY : m == 1 ? th_cur[TC_SMP] : C_ENG(1); }
 typedef struct { const char *nm; int p; } SvKnob;      // in the order UP RIGHT LEFT DOWN
@@ -57,7 +57,8 @@ static int simple_key(int k, int down) {  // 1 = the key is used up here; 0 = NO
     SvKnob kn[4]; sv_knobs(sel, kn);
     if (k == K_X && held[K_SHIFT]) { used[K_SHIFT] = 1; if (ui_lock) toast("KID LOCK: THE SOUND STAYS"); else sv_dice(); }
     else if (k <= K_RIGHT && held[K_EDIT]) { used[K_EDIT] = 1; par_adjust(sel, kn[sv_knob].p, k == K_RIGHT || k == K_UP ? 1 : -1, 1); }
-    else if (k <= K_RIGHT) sv_knob = k == K_UP ? 0 : k == K_RIGHT ? 1 : k == K_LEFT ? 2 : 3;
+    else if (k == K_UP || k == K_DOWN) par_adjust(sel, kn[sv_knob].p, k == K_UP ? 1 : -1, 1);   // 2026-11-15 (user): <> walk the knobs, ^v turn the one chosen
+    else if (k == K_LEFT || k == K_RIGHT) sv_knob = (sv_knob + (k == K_RIGHT ? 1 : 3)) % 4;
     else if (k == K_OPT) act_listen(sel);
     return 1;
 }
@@ -109,20 +110,20 @@ static void draw_simple(void) {
             ftext(W - 28 - ftext_w(FT_M, b), 668, FT_M, C_WHITE, b);
             draw_footer("EDIT NOTE  F1/F2 SCREEN  L1/R1 PAD  EDIT+^v HIGHER/LOWER");
         }
-    } else {                             // P3: four knobs on the arrows, the dice
-        SvKnob kn[4]; sv_knobs(sel, kn); static const char *const ar[4] = {"^", ">", "<", "v"}; static const int ord[4] = {0, 1, 2, 3};
-        const char *t = "four knobs on the arrows"; ftext(512 - ftext_w(FT_M, t) / 2, 84, FT_M, C_DIM, t);
+    } else {                             // P3: four knobs in a row (<> choose, ^v turn), the dice
+        SvKnob kn[4]; sv_knobs(sel, kn); static const int ord[4] = {0, 1, 2, 3};
+        const char *t = "<> choose a knob, ^v turn it"; ftext(512 - ftext_w(FT_M, t) / 2, 84, FT_M, C_DIM, t);
         for (int j = 0; j < 4; j++) { int i = ord[j], cx = 152 + j * 240, cy = 270, lo, hi, st, bg, on = i == sv_knob; Col c = j == 0 ? th_cur[TC_SMP] : j == 1 ? C_ENG(1) : j == 2 ? C_PLAY : C_ENG(2);
             par_limits(sel, kn[i].p, &lo, &hi, &st, &bg); float f = hi > lo ? (float)(par_get(sel, kn[i].p) - lo) / (hi - lo) : 0; if (f < 0) f = 0; if (f > 1) f = 1;
             if (on) rframe(cx - 108, cy - 112, 216, 300, 12, 3, C_WHITE, C_BG);
             sv_arc(cx, cy, 74, 0, 1, C_LINE); sv_arc(cx, cy, 74, 0, f, c);
             float a = (float)M_PI * (0.75f + 1.5f * f); line(cx, cy, cx + (int)(cosf(a) * 52), cy + (int)(sinf(a) * 52), 3, c);
-            snprintf(b, sizeof b, "%s %s", ar[i], kn[i].nm); ftext(cx - ftext_w(FT_M, b) / 2, cy + 104, FT_M, on ? C_WHITE : C_DIM, b);
+            snprintf(b, sizeof b, "%s", kn[i].nm); ftext(cx - ftext_w(FT_M, b) / 2, cy + 104, FT_M, on ? C_WHITE : C_DIM, b);
             par_str(sel, kn[i].p, b, 20); ftext(cx - ftext_w(FT_MB, b) / 2, cy + 136, FT_MB, C_WHITE, b); }
         rrect(26, 488, 971, 190, 10, C_CELL);
         ftext(512 - ftext_w(FT_LB, "DICE") / 2, 536, FT_LB, ui_lock ? C_DIM : C_ENG(1), "DICE");
         t = ui_lock ? "the kid lock keeps this sound" : "SHIFT+X: a random sound"; ftext(512 - ftext_w(FT_M, t) / 2, 592, FT_M, C_DIM, t);
-        draw_footer("EDIT+<> TURN  F1/F2 SCREEN  L1/R1 PAD  ARROW KNOB  SHIFT+X DICE");
+        draw_footer("<> KNOB  ^v TURN  F1/F2 SCREEN  L1/R1 PAD  SHIFT+X DICE");
     }
     if (sv_exit && held[K_F1] && held[K_F2]) {       // P4: the way out is a hold, with a ring that fills
         int el = (int)ms_since(now, sv_exit);
