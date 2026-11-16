@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.0 beta (2026-11-16)
+
+A new interface and scenes. The numbering starts again with this beta.
+
+- Interface: HOME (PADS, SCENES, MIXER) and inside a pad its categories PATTERN, SOUND, FX, MOD, MIX, LOOK, each with
+  pages of four cards; breadcrumbs on top, the keys of the screen in the footer, Y back everywhere, F1+F2 PROJECT.
+  SHIFT+arrow inside a pad jumps to a category; PAD MENU can be a tree; PROJECT > ABOUT lists every key.
+- Scenes: a scene is its own set of twelve pads (sounds, effects, mix, patterns, follow actions). It changes on the
+  bar without a stop; new empty, copy, delete; up to 16. SCENE MIX shares the mix of the same sound between scenes.
+  Export renders every scene in turn.
+- Mixer: inserts, sends, fader dB and level dB on every strip; a drawer with reverb, delay, master and the pad's
+  effects, on the right or the left; strips slide under it.
+- Live pictures on SOUND and FX pages; the FX filter follows its mode and shows Q.
+- Simple view with PLAY, NOTES and SOUND, a kid lock, five themes, pad icons with colours, a pad strip (hidden, thin,
+  big).
+- Demo HOUSE: six scenes on all four engines.
+- Licence: all rights reserved, personal use (LICENSE).
+
 ## 1.2 alpha (2026-11-13)
 
 - Sampler: the note lane is called PITCH. With a sliced sample the lanes start with SLICE (SLICE, PITCH, VELOCITY,

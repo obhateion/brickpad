@@ -1,3 +1,4 @@
+// BrickPad - Copyright (c) 2026 Timothy Gurto (obhateion). All rights reserved. See LICENSE.
 // BrickPad effects: names, ranges and defaults (shared by the UI and the engine), then the DSP (engine only,
 // FX_DSP defined). Per pad 2 insert slots (FxSlot in bp.h), send A = REVERB, send B = DELAY, master comp + limiter.
 // Every parameter is a byte, 0..100 unless its range says otherwise. Runs in the audio callback: no allocation.
@@ -13,7 +14,7 @@ static const char *const fx_pname[FX_N][6] = {
     {"RATE", "DEPTH", "DELAY", "FEEDBACK", "WIDTH", "MIX"},
     {"RATE", "DEPTH", "MANUAL", "FEEDBACK", "WIDTH", "MIX"},
     {"RATE", "DEPTH", "CENTER", "FEEDBACK", "STAGES", "MIX"},
-    {"MODE", "CUTOFF", "RESO", "DRIVE", "LFO RATE", "LFO DEPTH"},
+    {"MODE", "CUTOFF", "Q", "DRIVE", "LFO RATE", "LFO DEPTH"},   // Q: the state-variable filter's damping is 1/Q (2026-11-15, user asked for Q)
     {"BITS", "DOWNSAMPLE", "JITTER", "TONE", "MIX", ""},
     {"DRIVE", "WOW", "FLUTTER", "TONE", "AGE", "MIX"},
     {"RATE", "DEPTH", "SHAPE", "PHASE", "", ""},

@@ -1,3 +1,4 @@
+// BrickPad - Copyright (c) 2026 Timothy Gurto (obhateion). All rights reserved. See LICENSE.
 // Real-time audio engine: SDL audio callback, sample-accurate sequencer, scales, slices, warp.
 // Lock-free command queue in, retired samples out.
 #include "bp.h"
@@ -674,9 +675,25 @@ static int follow(int s, Track *t, uint32_t i) {   // at a loop's end: 1 if the 
     if (np == t->cur) return 0;
     t->cur = (int8_t)np; fol_cur[s] = np; anchor[s] = i; return 1;
 }
+// Scenes: the next Song waits here until a launch quantum (tick) or, stopped, the next callback.
+void scene_carry(Song *d, const Song *s) {
+    d->tempo = s->tempo; d->swing = s->swing; d->launch = s->launch; d->metro = s->metro; d->master = s->master; d->key = s->key; d->scale = s->scale;
+    d->count_in = s->count_in; d->rec_quant = s->rec_quant; d->beats = s->beats; d->rec_len = s->rec_len; d->len_min = s->len_min; d->len_max = s->len_max; d->snap = s->snap;
+    memcpy(d->mix.rv, s->mix.rv, sizeof d->mix.rv); memcpy(d->mix.dl, s->mix.dl, sizeof d->mix.dl); memcpy(d->mix.ms, s->mix.ms, sizeof d->mix.ms);
+}
+static Song *sw_in, *sw_out; static Sample *sw_smp[NSLOT]; static volatile int sw_req, sw_done, sw_force;
+static void scene_swap(uint32_t i) {
+    *sw_out = song; scene_carry(sw_in, &song); song = *sw_in;
+    for (int s = 0; s < NSLOT; s++) { Sample *o = smp[s]; smp[s] = sw_smp[s]; ui_samples[s] = sw_smp[s]; sw_smp[s] = o;
+        anchor[s] = i; anchor_set[s] = 0; play_step[s] = -1; skip_step[s] = 0; want[s] = -1; arp_n[s] = 0; fol_cur[s] = -1; fol_n[s] = 0;
+        frz_act[s] = 0; frz_g[s] = 0; frz_pos[s] = -1; frz_at[s] = -1; }
+    for (int v = 0; v < NVOICE; v++) if (voices[v].on) { voices[v].fout = 0; if (voices[v].delay > 0) voices[v].on = 0; else if (voices[v].cut_in < 0) voices[v].cut_in = 0; }   // the old scene's tails: a short fade
+    sw_req = 0; sw_force = 0; sw_done = 1;
+}
 static void tick(uint32_t i, double off, double f32) {
     uint32_t bar = (song.beats > 0 ? song.beats : 4) * 8; (void)bar;
     uint32_t q = (uint32_t)engine_quant32(); int edge = !q || i % q == 0;   // a launch quantum starts here
+    if (sw_req && (edge || sw_force)) scene_swap(i);
     if (song.metro && i % 8 == 0) click = (typeof(click)){(int)off, 0, i % bar ? 1500.f : 2500.f, 0.35f};
     for (int s = 0; s < NSLOT; s++) {
         Track *t = &song.t[s];
@@ -777,6 +794,7 @@ static void callback(void *u, Uint8 *stream, int len) {
             for (int i = 0; i < NVOICE; i++) if (voices[i].on) { voices[i].fout = 0; if (voices[i].delay > 0) voices[i].on = 0; else if (voices[i].cut_in < 0) voices[i].cut_in = 0; } break;   // a stop is at once, whatever FADE OUT says
         }
     }
+    if (sw_req && !playing) scene_swap(0);
     float *o = (float *)stream; int n = len / 8;
     memset(o, 0, len);
     if (n > MAXN) n = MAXN;
@@ -1096,6 +1114,11 @@ void engine_launch(int slot, int on) { if (slot >= 0 && slot < NSLOT) want[slot]
 int engine_fol_n(int slot) { return slot >= 0 && slot < NSLOT ? fol_n[slot] : 0; }
 void engine_pause(int on) { if (dev) SDL_PauseAudioDevice(dev, on); }
 float engine_duck_view(int slot, float *gain) { if (gain) *gain = dk_g[slot]; return dk_view[slot]; }   // where along its curve the pad's dip is (0..1, -1 at rest)
+void engine_scene_swap(Song *in, Song *out, Sample **s) { for (int i = 0; i < NSLOT; i++) sw_smp[i] = s[i]; sw_in = in; sw_out = out; sw_done = 0; sw_force = 0; sw_req = 1; }
+void engine_scene_force(void) { sw_force = 1; }   // the export: on the very next step, whatever the quantum
+int engine_scene_pending(void) { return sw_req; }
+int engine_scene_cancel(void) { if (!sw_req) return 0; sw_req = 0; return 1; }
+int engine_scene_done(Sample **old) { if (!sw_done) return 0; for (int i = 0; i < NSLOT; i++) old[i] = sw_smp[i]; sw_done = 0; return 1; }
 void engine_lock(int on) { if (dev) { if (on) SDL_LockAudioDevice(dev); else SDL_UnlockAudioDevice(dev); } }
 float *engine_freeze_buf(int slot, int pat, float *d, int n) { float *o = frz[slot][pat].d; frz[slot][pat].n = d ? n : 0; frz[slot][pat].d = d; return o; }
 const float *engine_freeze_get(int slot, int pat, int *n) { *n = frz[slot][pat].n; return frz[slot][pat].d; }

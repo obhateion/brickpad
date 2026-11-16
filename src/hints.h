@@ -1,3 +1,4 @@
+// BrickPad - Copyright (c) 2026 Timothy Gurto (obhateion). All rights reserved. See LICENSE.
 // Long-hover hints (2026-11-10): the cursor on a panel control for 10 s -> a short line scrolls in the readout.
 // One line per control, in plain words. PROJECT > SYSTEM > HOVER HINTS turns them on and off (hints.cfg).
 #pragma once
@@ -5,7 +6,7 @@ static const char *const hint_sm[P_TYPE] = {
     "", "TUNES THE SAMPLE IN SEMITONES", "FINE TUNING IN CENTS", "HOW LOUD THE PAD PLAYS", "LEFT OR RIGHT IN THE STEREO",
     "WHERE PLAYBACK STARTS IN THE FILE", "WHERE PLAYBACK ENDS", "FORWARD OR BACKWARD (REVERSE)",
     "GATE: STOPS WHEN THE STEP ENDS. POLY: NOTES RING OVER EACH OTHER", "THE NOTE THE SAMPLE IS IN: AUTO FINDS IT, DRUMS DO NOT TRANSPOSE",
-    "CUTS THE SAMPLE INTO EQUAL PARTS, EACH STEP CAN PLAY ONE", "STRETCHES THE SAMPLE TO THE TEMPO: BEATS FOR DRUMS, TONES FOR MELODY",
+    "HOW MANY SLICES: EACH STEP CAN PLAY ONE. EDIT ON THE PICTURE OPENS THE SLICE EDITOR", "STRETCHES THE SAMPLE TO THE TEMPO: BEATS FOR DRUMS, TONES FOR MELODY",
     "HOW MANY BARS THE LOOP LASTS", "THE LOOP'S OWN TEMPO: EDIT TAPS IT IN TIME, OPT+EDIT GIVES AUTO BACK", "GRAIN LENGTH FOR TONES AND TEXTURE", "RANDOM JITTER OF THE GRAINS",
 };
 static const char *const hint_sy[SP_N] = {
@@ -58,5 +59,6 @@ static const char *par_hint(int p) {
     if (p >= P_GX && p < P_GX + GX_N) return hint_gx[p - P_GX];
     if (p >= P_PT && p < P_PT + 16) return "AN OUTPUT: EDIT TAKES A CABLE FROM HERE, EDIT ON AN INPUT PLUGS IT";
     if (p >= P_PT + 16 && p < P_PT + 32) return "AN INPUT: A CABLE HERE REPLACES WHAT FEEDS IT NORMALLY. OPT+EDIT PULLS IT";
+    if (p == P_SLWAY) return "EQUAL: SAME-SIZE PARTS. TRANSIENTS: A CUT AT EVERY HIT. BY HAND: YOUR OWN POINTS";
     return NULL;
 }

@@ -1,3 +1,4 @@
+// BrickPad - Copyright (c) 2026 Timothy Gurto (obhateion). All rights reserved. See LICENSE.
 // CLOUD: a granular texture voice for backgrounds, kept simple on purpose (six knobs, no envelope to set).
 // Included by engine.c and main.c (names, ranges, defaults); the guard keeps one copy.
 // The pad's sample is read in short Hann-windowed grains: POSITION where, SPRAY how scattered (place and stereo),

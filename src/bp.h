@@ -1,3 +1,4 @@
+// BrickPad - Copyright (c) 2026 Timothy Gurto (obhateion). All rights reserved. See LICENSE.
 // BrickPad — shared declarations.
 #pragma once
 #include <stdint.h>
@@ -25,6 +26,7 @@ typedef struct Sample {
     float bpm;         // loops: from name or length
     int bars;
     int nons, ons[33]; // transient starts (frames), ons[0] = 0
+    int ref;           // other holders besides the first (2026-11-15: scenes share one loaded file); sample_free counts them down
     float npk, nld;    // NORMALIZE gains: PEAK (the loudest point to -1 dB), LOUD (the loud parts to one level, never past PEAK); 0 = not measured
 } Sample;
 
@@ -53,15 +55,18 @@ typedef struct {
     int16_t bpm;                    // 0 AUTO (detected), else manual loop tempo
     int8_t grain, flux;             // TONES/TEXTURE grain size (ms, 0 = per mode) and randomness 0..100
     int8_t scale, key;              // this pad's own key: 0 follows the project, else scale index + 1, pitch class + 1
-    uint8_t icon, icon_hi;          // 0 AUTO (by sound type), else icon id + 1 (src/icons.h); use track_icon/track_set_icon
+    uint8_t icon, icon_hi;          // 0 AUTO (by sound type), else icon id + 1 (src/icons.h); icon_hi bits 2..7: its colour (0 AUTO,
+                                    // else a theme colour, ui: icon_col); use track_icon/track_set_icon/track_icol/track_set_icol
     int8_t type;                    // 0 SAMPLER, 1 GRAND (parameters in sp), 2 ACID (ap), 3 CLOUD (cp, plays the sample)
     int8_t sp[16];                  // GRAND parameters, see SP_* in src/synth.h
     int8_t ap[12];                  // ACID parameters, see AP_* in src/acid.h (kept apart: switching loses nothing)
     int8_t cp[7];                   // CLOUD parameters, see CP_* in src/cloud.h (the last free bytes of the old reserved[])
     char path[256];
 } Track;
-static inline int track_icon(const Track *t) { return t->icon | t->icon_hi << 8; }
-static inline void track_set_icon(Track *t, int v) { t->icon = (uint8_t)v; t->icon_hi = (uint8_t)(v >> 8); }
+static inline int track_icon(const Track *t) { return t->icon | (t->icon_hi & 3) << 8; }
+static inline void track_set_icon(Track *t, int v) { t->icon = (uint8_t)v; t->icon_hi = (uint8_t)((t->icon_hi & ~3) | (v >> 8 & 3)); }
+static inline int track_icol(const Track *t) { return t->icon_hi >> 2; }
+static inline void track_set_icol(Track *t, int c) { t->icon_hi = (uint8_t)((t->icon_hi & 3) | (c & 63) << 2); }
 
 // Hand-edited slices: pos[k] = first frame of slice k (slice 0 starts at START).
 // pos[0] = follow mask: bit k means slice k has no step of its own and plays right after slice k-1.
@@ -189,6 +194,15 @@ void engine_pause(int on);               // the audio device stops calling back 
 float engine_duck_view(int slot, float *gain);
 extern const float dk_beats[DK_NLEN];    // DUCK lengths and grid steps in beats: 1/16 1/8 1/4 1/2 1 BAR 2 BARS
 void engine_lock(int on);                // the callback is kept out while pointers change
+// Scenes (2026-11-15): a scene is a whole Song. `in` takes the place of `song` on the next launch quantum (at once when
+// stopped), `out` receives the one that played, smp[NSLOT] are the new scene's samples; engine_scene_done hands back
+// the old ones once. scene_carry copies what belongs to the project, not to a scene: tempo, key, master, the returns.
+void scene_carry(Song *d, const Song *s);
+void engine_scene_swap(Song *in, Song *out, Sample **smp);
+int engine_scene_pending(void);
+void engine_scene_force(void);
+int engine_scene_cancel(void);           // under engine_lock: 1 = it had not happened yet and will not
+int engine_scene_done(Sample **old);
 float *engine_freeze_buf(int slot, int pat, float *d, int n);   // gives the pattern its recording (NULL none); returns the old one to free
 const float *engine_freeze_get(int slot, int pat, int *n);   // the pattern's recording (NULL none)
 void engine_freeze_on(int slot, int on); // the pad plays its recordings / plays live
