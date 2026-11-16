@@ -156,5 +156,6 @@ headers and the device's `libSDL2-2.0.so.0` to link against (SDL2, zlib licence)
 
 ## Status and licence
 
-Alpha. No licence has been chosen yet: all rights reserved for now. You are welcome to read the code and to open
-issues.
+Copyright (c) 2026 Timothy Gurto (obhateion). All rights reserved: see [LICENSE](LICENSE). You may read the code,
+install the official releases and build it for your own devices, and send changes as pull requests; copies, ports,
+modified versions, commercial use and the name BrickPad need written permission. Music you make with it is yours.

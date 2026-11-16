@@ -1,0 +1,46 @@
+BrickPad
+Copyright (c) 2026 Timothy Gurto (obhateion). All rights reserved.
+
+This licence covers the BrickPad source code, binaries, interface design, graphics, icons, fonts made for it, themes,
+presets, demo projects and documentation in this repository and its releases ("the Software"). It does not cover the
+third-party files listed under "Third-party parts" below, which keep their own licences.
+
+1. What you may do
+
+   a. Read and study the source code.
+   b. Download the official releases from https://github.com/obhateion/brickpad and install them on devices you own.
+   c. Build the Software from this source for your own personal use on devices you own.
+   d. Fork this repository on GitHub, as GitHub's Terms of Service allow, in order to propose changes back to it
+      (pull requests). Contributions you send are licensed to the author under the same terms as the Software, and the
+      author may use them in any way.
+   e. Make and share music with the Software. Songs, recordings and project files you create are yours; this licence
+      claims nothing in them.
+
+2. What you may not do without written permission from the author
+
+   a. Publish, distribute, share or host copies of the Software, modified or not, in whole or in part, outside the
+      official repository and releases (this includes binaries, ports, packages and app-store or firmware bundles).
+   b. Sell the Software, include it in a paid product or service, or use it commercially in any other way than making
+      music with it.
+   c. Use the source code, the interface design, the graphics, icons or themes, or substantial parts of them, in
+      another program or product.
+   d. Remove or change the copyright notices.
+   e. Use the name "BrickPad" or its logo for another product, or in a way that suggests the author endorses it.
+
+3. No warranty
+
+   The Software is provided "as is", without warranty of any kind, express or implied, including but not limited to
+   the warranties of merchantability, fitness for a particular purpose and non-infringement. In no event shall the
+   author be liable for any claim, damages or other liability, whether in an action of contract, tort or otherwise,
+   arising from, out of or in connection with the Software or its use, including loss of data or damage to devices.
+
+4. Permission
+
+   For anything not allowed above, ask the author through https://github.com/obhateion/brickpad/issues.
+
+Third-party parts (their own licences apply)
+
+   - SDL2 headers and the device's libSDL2 (zlib licence)
+   - stb_vorbis.c (public domain)
+   - font8x8_basic.h (public domain)
+   - sample packs referenced by the demo projects are not part of the Software and are not included
