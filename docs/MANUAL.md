@@ -106,6 +106,8 @@ Hold **SHIFT** for a moment and a cross appears: SHIFT+up PATTERN, SHIFT+right S
 With PROJECT > INTERFACE > PAD MENU = TREE the pad is shown as a tree with every page: left / right the level (HOME,
 pad, category, pages), up / down choose, EDIT open.
 
+![Tree](screenshots/tree.png)
+
 ### PATTERN
 
 - **STEPS** (16 a page): EDIT puts a note on the step or takes it off, EDIT+arrows change the step. L1 / R1 choose the
@@ -155,6 +157,8 @@ bitcrusher, tape, autopan, ring modulator, multiband. The insert load is limited
 - **DUCK**: a volume curve of 16 points started by the notes of another pad, by its sound passing a threshold, or by
   the tempo. EDIT+up/down the level, EDIT+left/right draws.
 
+![DUCK](screenshots/duck.png)
+
 Cards that an LFO or automation moves carry the marks L1-L4 or A1-A4.
 
 ### MIX, LOOK
@@ -164,6 +168,8 @@ it, a colour that suits any theme.
 
 ## 5. Engines
 
+![SAMPLER](screenshots/sampler.png)
+
 - **SAMPLER**: WAV and OGG. Pitch, fine, root (from the name or the sound), gate or poly, direction, SLICES (OFF, 4, 8,
   16, 32) with a METHOD (EQUAL, TRANSIENTS, BY HAND), WARP to the tempo (BEATS, REPITCH, TONES, TEXTURE, COMPLEX), loop
   bars and BPM, NORMALIZE by peak or loudness, fades.
@@ -171,8 +177,10 @@ it, a colour that suits any theme.
   spring reverb, arpeggiator; a patch bay (PATCH page: EDIT takes a cable, EDIT on an input plugs it).
 - **ACID**: a 303-style line with saw or square, a filter with its envelope, ACCENT and SLIDE per step, four
   distortions, a sub oscillator and more.
-- **CLOUD**: a sample played as a cloud of grains: position, spray, size, density, shimmer, motion; window, reverse,
+- **CLOUD** (below): a sample played as a cloud of grains: position, spray, size, density, shimmer, motion; window, reverse,
   pitch, intervals, sync, freeze and tone on the deep pages.
+
+![CLOUD](screenshots/cloud.png)
 
 Every synth engine has factory presets in categories and room for your own (EDIT load, L1 / R1 factory / yours,
 OPTION listen).
@@ -212,6 +220,10 @@ PLAY: the scene), hold F1+F2 for 3 s to leave.
 - **PLAY**: the pads as tiles; EDIT plays, EDIT+up/down volume, Y quiet.
 - **NOTES**: the pad's steps; EDIT a note, EDIT+up/down higher or lower.
 - **SOUND**: four knobs; left / right choose a knob, up / down turn it, SHIFT+X dice a random sound.
+
+![Simple view: PLAY](screenshots/simple-play.png)
+
+![Simple view: SOUND](screenshots/simple-sound.png)
 
 The **kid lock** keeps the notes from being erased and turns the dice off; the advanced view ignores it.
 

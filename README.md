@@ -53,7 +53,8 @@ the same place.
 | ![SCENES](docs/screenshots/scenes.png) | **SCENES**: a row per scene, a dot per pad. EDIT launches a scene on the next bar while playing; all twelve pads change at once. `+ NEW SCENE` makes an empty one, X copies a scene, OPT+EDIT twice deletes it. Tempo, key, the master and the returns belong to the project. |
 | ![MIXER](docs/screenshots/mixer.png) | **MIXER**: one strip per pad with its two inserts, sends A and B, the fader in dB and the level now in dB. EDIT+up/down the level, Y mute, X solo. The tab at the edge is the drawer with the master's meter. |
 | ![Mixer drawer](docs/screenshots/mixer-drawer.png) | **The drawer** (EDIT on a strip, or R1): reverb, delay and the master as faders with their parameters, and the selected pad's inserts, sends and duck in full. It lies over the strips; they slide so the pad stays in view. With SCENE MIX on, the same sound in another scene shares its mix. |
-| ![A pad](docs/screenshots/pad.png) | **A pad**: its categories with a summary of each. With PROJECT > INTERFACE > PAD MENU = TREE the pad is shown as a tree with every page. |
+| ![A pad](docs/screenshots/pad.png) | **A pad**: its categories PATTERN, SOUND, FX, MOD, MIX and LOOK with a summary of each. EDIT opens one, F1/F2 go to the next pad on the same page. |
+| ![Tree](docs/screenshots/tree.png) | **PAD MENU = TREE** (PROJECT > INTERFACE): the pad as a tree with every page, from HOME to the pages. Left / right the level, up / down choose, EDIT open. |
 | ![Jump](docs/screenshots/jump.png) | **SHIFT held** inside a pad shows a cross: SHIFT+arrow jumps straight to PATTERN, SOUND, FX or MIX. |
 | ![STEPS](docs/screenshots/steps.png) | **PATTERN > STEPS**: 16 steps a page. L1/R1 the lane: NOTE, VELOCITY, CHANCE, REPEAT, and SLICE, ACCENT, SLIDE where the engine has them. EDIT puts a step, EDIT+arrows change it, SHIFT+X a random pattern. |
 | ![ROLL](docs/screenshots/roll.png) | **PATTERN > ROLL**: a piano roll. EDIT adds or removes a note, EDIT+arrows its length and pitch, X+arrows velocity and chance, X+EDIT a chord, L1/R1 the grid from 1/128 to 1/4. |
@@ -65,7 +66,8 @@ the same place.
 |---|---|
 | ![GRAND](docs/screenshots/grand.png) | **GRAND**: two oscillators, noise, ladder filter, envelope, glide, MONO or POLY; LFO, sync, high-pass, key tracking, arpeggiator; a patch bay with cables. Live pictures of the waves, the filter and the envelope. |
 | ![ACID](docs/screenshots/acid.png) | **ACID**: a 303-style line with saw or square, a filter with its envelope, ACCENT and SLIDE per step, four distortions and a sub oscillator. |
-| | **SAMPLER** plays WAV and OGG: pitch, root (from the name or the sound), slices (equal, transients or by hand), warp to the tempo (BEATS, REPITCH, TONES, TEXTURE, COMPLEX), loop bars and BPM, normalize. **CLOUD** plays a sample as a cloud of grains: position, spray, size, density, shimmer, motion, and a deep page more. |
+| ![SAMPLER](docs/screenshots/sampler.png) | **SAMPLER** plays WAV and OGG: pitch, root (from the name or the sound), gate or poly, direction; SLICES (4, 8, 16, 32) by EQUAL, TRANSIENTS or BY HAND; WARP to the tempo (BEATS, REPITCH, TONES, TEXTURE, COMPLEX); loop bars and BPM; NORMALIZE; fades. The picture shows where the sample is read now. |
+| ![CLOUD](docs/screenshots/cloud.png) | **CLOUD** plays a sample as a cloud of grains: position, spray, size, density, shimmer, motion; window, reverse, pitch, intervals, sync, freeze and tone on the next pages. The picture shows the grains that sound now. |
 
 Every synth engine has factory presets in categories and room for your own.
 
@@ -75,13 +77,24 @@ Every synth engine has factory presets in categories and room for your own.
 
 | | |
 |---|---|
-| ![FX](docs/screenshots/fx.png) | **FX**: two inserts per pad, X switches one on or off, L1/R1 the other slot. Compressor (can be keyed from another pad), distortion, chorus, flanger, phaser, filter (low, high, band, notch, with Q), bitcrusher, tape, autopan, ring modulator, multiband. The picture shows what the effect does now. |
-| ![LFO](docs/screenshots/lfo.png) | **MOD**: four LFOs per pad with shape, rate or tempo division, depth and a start on the notes of any pad; four automation lanes per pattern, straight or bent; DUCK, a volume curve started by notes, by sound or by the tempo. Any knob can be the target: EDIT on TARGET, then point at it. |
+| ![FX](docs/screenshots/fx.png) | **FX**: two inserts per pad, X switches one on or off, L1/R1 the other slot. Compressor (can be keyed from another pad), distortion, chorus, flanger, phaser, filter (LOW, HIGH, BAND, NOTCH, with Q), bitcrusher, tape, autopan, ring modulator, multiband. The picture shows what the effect does now: here the filter's response. |
+| ![LFO](docs/screenshots/lfo.png) | **MOD > LFO**: four LFOs per pad with shape, rate or tempo division (up to 4 bars), depth and a start on the notes of any pad. Any card can be the target: EDIT on TARGET, then point at it. Four automation lanes per pattern, straight or bent, sit beside them. |
+| ![DUCK](docs/screenshots/duck.png) | **MOD > DUCK**: a volume curve of 16 points started by the notes of another pad, by its sound passing a threshold, or by the tempo; depth and length. EDIT+up/down the level, EDIT+left/right draws. |
 
 - **Sends**: A is a reverb, B a delay in tempo. **Master**: compressor and limiter.
 - **Freeze**: SHIFT+Y on a pad renders it with its effects into audio; volume, pan, sends, mute and duck stay live.
 - **Recording**: MENU+PLAY records what you play, with a count-in if set; what was played without recording can be
   captured afterwards. **Export** writes a WAV of every scene in turn, or one per pad.
+
+## Simple view
+
+PROJECT > INTERFACE > VIEW = SIMPLE: three large screens for playing, also for a child (with the kid lock nothing gets
+erased). F1/F2 change the screen, L1/R1 the pad, hold F1+F2 for 3 seconds to leave.
+
+| PLAY | NOTES | SOUND |
+|---|---|---|
+| ![PLAY](docs/screenshots/simple-play.png) | ![NOTES](docs/screenshots/simple-notes.png) | ![SOUND](docs/screenshots/simple-sound.png) |
+| EDIT plays a pad, EDIT+up/down its volume | EDIT a note, EDIT+up/down higher or lower | left/right a knob, up/down turn it, SHIFT+X dice |
 
 ## Install
 
