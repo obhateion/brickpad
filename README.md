@@ -13,7 +13,9 @@
 **Knulli**. Everything is played and edited with the d-pad and the buttons, in the spirit of the Dirtywave M8: no touch
 screen, no mouse, the hands stay on the device.
 
-![HOME: twelve pads of the HOUSE demo](docs/screenshots/pads.png)
+![A tour: HOME, scenes, the mixer and its drawer, a pad, the piano roll, SOUND, the jump, FX, LFO, steps, PROJECT](docs/images/tour.gif)
+
+*A tour of the interface on the HOUSE demo; the line under the screen says which keys were pressed.*
 
 > **Beta.** BrickPad is used every day on the device, but the project file format may still change.
 
@@ -39,10 +41,6 @@ screen, no mouse, the hands stay on the device.
 | **Views** | the advanced view, a simple large view (PLAY, NOTES, SOUND) with a kid lock, five themes |
 
 ## Screens
-
-![A tour: HOME, scenes, the mixer and its drawer, a pad, the piano roll, SOUND, the jump, FX, LFO, steps, PROJECT](docs/images/tour.gif)
-
-*A tour of the interface on the HOUSE demo; the line under the screen says which keys were pressed.*
 
 ![Screens](docs/images/screens.svg)
 
