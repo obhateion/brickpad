@@ -40,6 +40,10 @@ screen, no mouse, the hands stay on the device.
 
 ## Screens
 
+![A tour: HOME, scenes, the mixer and its drawer, a pad, the piano roll, SOUND, the jump, FX, LFO, steps, PROJECT](docs/images/tour.gif)
+
+*A tour of the interface on the HOUSE demo; the line under the screen says which keys were pressed.*
+
 ![Screens](docs/images/screens.svg)
 
 **HOME** has three screens, **F1 / F2** step through them: PADS, SCENES and MIXER. **EDIT** on a pad opens it: its
