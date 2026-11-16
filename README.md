@@ -2,145 +2,134 @@
 
 <p align="center">
   <a href="https://github.com/obhateion/brickpad/releases/latest"><b>Download</b></a> ·
-  <a href="docs/MANUAL.md"><b>Manual</b></a> ·
-  <a href="docs/BrickPad-Manual.pdf"><b>Manual (PDF, 1.1)</b></a> ·
-  <a href="CHANGELOG.md"><b>Changelog</b></a>
+  <a href="README.ru.md"><b>По-русски</b></a> ·
+  <a href="CHANGELOG.md"><b>Changelog</b></a> ·
+  <a href="LICENSE"><b>Licence</b></a>
 </p>
 
 **BrickPad** is a real-time sampler, synthesizer and clip sequencer for the **TrimUI Brick** handheld running
 **Knulli**. Everything is played and edited with the d-pad and the buttons, in the spirit of the Dirtywave M8: no touch
 screen, no mouse, the hands stay on the device.
 
-![GRID: 12 pads with their clips](docs/screenshots/grid.png)
+![HOME: twelve pads of the HOUSE demo](docs/screenshots/pads.png)
 
-> **Alpha.** BrickPad works and is used every day on one device, but it still changes, the project file format too:
-> a project saved now may not open in a later version.
+> **Beta.** BrickPad is used every day on the device, but the project file format may still change.
 
 ## Contents
 
 [Features](#features) · [Screens](#screens) · [Engines](#engines) · [Effects and modulation](#effects-and-modulation) ·
-[Install](#install) · [Buttons](#buttons) · [Build](#build-from-source) · [Status](#status-and-licence)
+[Install](#install) · [Buttons](#buttons) · [Build](#build-from-source) · [Licence](#licence)
 
 ## Features
 
 | | |
 |---|---|
 | **12 pads** | each pad holds one instrument and 16 patterns; a playing pattern is a clip |
+| **16 scenes** | a scene is a whole set of twelve pads with their sounds, effects, mix and patterns; it changes on the bar, without a stop |
 | **4 engines** | SAMPLER, GRAND (two-oscillator synth with a patch bay), ACID (303-style line), CLOUD (granular) |
-| **Sequencer** | steps with note, velocity, chance, ratchets, slices, accent, slide and four automation lanes, or a piano roll with note lengths |
-| **Clips** | launch on the bar, follow actions between patterns, scenes, launch a group of pads together |
-| **Mixer** | two inserts per pad from 11 effects, reverb and delay sends, master compressor and limiter |
-| **Modulation** | four LFOs per pad, automation with bends, a compressor keyed from another pad, the DUCK curve |
+| **Sequencer** | steps with note, velocity, chance, ratchets, slices, accent and slide, or a piano roll with note lengths; follow actions between patterns |
+| **Mixer** | 12 strips with inserts, sends and levels in dB; a drawer with reverb, delay, the master and the pad's effects |
+| **Effects** | two inserts per pad from 11 types, reverb and tempo delay, master compressor and limiter |
+| **Modulation** | four LFOs per pad, four automation lanes per pattern with bends, DUCK and keyed compression |
 | **Freeze** | a pad is rendered to audio with its effects: a full song drops from about 40 % to 7 % of the CPU |
 | **Recording** | record what you play with a count-in, or capture it afterwards |
-| **Files** | projects, WAV export of the song or one file per pad, themes, presets, pad icons and names |
-| **Samples** | WAV and OGG; key, tempo and bars are read from file names or from the sound |
+| **Files** | projects, WAV export of every scene in turn or one file per pad, themes, presets, pad icons and names |
+| **Views** | the advanced view, a simple large view (PLAY, NOTES, SOUND) with a kid lock, five themes |
 
 ## Screens
 
-![Screens and windows](docs/images/screens.svg)
+![Screens](docs/images/screens.svg)
 
-**F1 / F2** step through GRID, INSTRUMENT, FX and MIXER; **F1+F2** opens PROJECT from anywhere.
+**HOME** has three screens, **F1 / F2** step through them: PADS, SCENES and MIXER. **EDIT** on a pad opens it: its
+categories PATTERN, SOUND, FX, MOD, MIX and LOOK, each with pages of four cards. The breadcrumbs on top say where you are,
+the footer shows the keys of the screen, **Y** goes back one level, **F1+F2** opens PROJECT from anywhere and returns to
+the same place.
 
 | | |
 |---|---|
-| ![GRID](docs/screenshots/grid.png) | **GRID** shows the 12 pads with name, icon, pattern, steps and state. EDIT starts or stops a pad's clip; on an empty pad it lets you choose an engine. PLAY starts every clip with notes, again stops everything. SHIFT+d-pad selects a rectangle of pads: PLAY or EDIT launch them together, Y mutes them, SHIFT+Y freezes them. Y mute, X icon, SHIFT+X name, EDIT+left/right volume, SHIFT+OPTION copy, SHIFT+EDIT paste. |
-| ![KEYS](docs/screenshots/keys.png) | **MENU** on GRID switches to **PADS** (every button is a pad: a pad with notes launches its clip, an empty pattern plays the sound; SHIFT+F1/F2 choose a scene) and to **KEYS** (the buttons play notes of the project's scale; SHIFT+arrows change scale and octave). |
-| ![SAMPLER](docs/screenshots/sampler.png) | **INSTRUMENT**: the instrument row (EDIT+arrows change the engine, EDIT opens presets or the file browser), the pattern row (EDIT opens the pattern window), the steps or the piano roll, then the engine's panel. L1/R1 choose the lane: TRIG, NOTE, VELOCITY, CHANCE, REPEAT, SLICE, ACCENT and SLIDE on ACID, four automation lanes. SHIFT+X opens RANDOM, a pattern generator. |
-| ![Piano roll](docs/screenshots/roll.png) | **Piano roll** (STEP / ROLL on the pattern): EDIT adds or removes a note, EDIT+left/right its length, EDIT+up/down its pitch, X+up/down velocity, X+left/right chance, L1/R1 the grid from 1/128 to 1/4, Y back. |
-| ![FX](docs/screenshots/fx.png) | **FX**: the pad's two inserts with their parameters and a live picture. L1/R1 walk through the pads, return A (reverb), return B (delay) and the master. Y opens **MOD**: four LFOs per pad with shape, rate or tempo division, depth, target and start on a note of this or another pad. EDIT on a target lets you point at any knob. |
-| ![MIXER](docs/screenshots/mixer.png) | **MIXER**: one strip per pad with two inserts, sends A and B, DK (duck), pan, fader, mute, solo and freeze, then the returns and the master. "FX nn%" shows what the inserts cost; the limit is 40 % of the CPU. |
-| ![DUCK](docs/screenshots/duck.png) | **DUCK window** (EDIT on a strip's DK row): a volume curve of 16 points with eight ready shapes. TRIGGER: the notes of a source pad, its sound passing a threshold, or a grid on the tempo; then SOURCE, AMOUNT, LENGTH, EVERY or THRESHOLD, SMOOTH. |
-| ![PROJECT](docs/screenshots/project.png) | **PROJECT**: SONG (tempo with tap tempo, swing, key, scale), PLAY (launch quantum, metronome, master), RECORD (count-in, quantise), FILE (open, save, save as, export, new) and SYSTEM (themes, sample library, hints). |
-
-The **pattern window** (EDIT on the pattern row) chooses one of 16 patterns, plays or clears it, and sets its FOLLOW
-action: after n times play the next, previous, first, a random or another pattern, jump or stop, or with a chance do
-something else.
+| ![PADS](docs/screenshots/pads.png) | **PADS**: twelve pads with name, engine, icon, pattern and how far the clip has played. EDIT opens a pad (an empty one: choose its engine), X starts or stops its clip, PLAY all clips, Y mute, SHIFT+Y freeze, SHIFT+X name, SHIFT+d-pad selects several pads. MENU turns the buttons into pads to play, again into keys of the scale. |
+| ![SCENES](docs/screenshots/scenes.png) | **SCENES**: a row per scene, a dot per pad. EDIT launches a scene on the next bar while playing; all twelve pads change at once. `+ NEW SCENE` makes an empty one, X copies a scene, OPT+EDIT twice deletes it. Tempo, key, the master and the returns belong to the project. |
+| ![MIXER](docs/screenshots/mixer.png) | **MIXER**: one strip per pad with its two inserts, sends A and B, the fader in dB and the level now in dB. EDIT+up/down the level, Y mute, X solo. The tab at the edge is the drawer with the master's meter. |
+| ![Mixer drawer](docs/screenshots/mixer-drawer.png) | **The drawer** (EDIT on a strip, or R1): reverb, delay and the master as faders with their parameters, and the selected pad's inserts, sends and duck in full. It lies over the strips; they slide so the pad stays in view. With SCENE MIX on, the same sound in another scene shares its mix. |
+| ![A pad](docs/screenshots/pad.png) | **A pad**: its categories with a summary of each. With PROJECT > INTERFACE > PAD MENU = TREE the pad is shown as a tree with every page. |
+| ![Jump](docs/screenshots/jump.png) | **SHIFT held** inside a pad shows a cross: SHIFT+arrow jumps straight to PATTERN, SOUND, FX or MIX. |
+| ![STEPS](docs/screenshots/steps.png) | **PATTERN > STEPS**: 16 steps a page. L1/R1 the lane: NOTE, VELOCITY, CHANCE, REPEAT, and SLICE, ACCENT, SLIDE where the engine has them. EDIT puts a step, EDIT+arrows change it, SHIFT+X a random pattern. |
+| ![ROLL](docs/screenshots/roll.png) | **PATTERN > ROLL**: a piano roll. EDIT adds or removes a note, EDIT+arrows its length and pitch, X+arrows velocity and chance, X+EDIT a chord, L1/R1 the grid from 1/128 to 1/4. |
+| ![PROJECT](docs/screenshots/project.png) | **PROJECT**: SONG (tempo with tap, swing, key, scale), PLAY, RECORD, FILE (open, save, export, new), INTERFACE, MIXER, SYSTEM (themes, library) and ABOUT, every key by topic. |
 
 ## Engines
 
 | | |
 |---|---|
-| ![SAMPLER](docs/screenshots/sampler.png) | **SAMPLER** plays WAV and OGG. PITCH, FINE, ROOT (found from the name or the sound), GATE or POLY, direction, SLICES (equal, by transients or edited by hand), WARP to the project tempo (BEATS, REPITCH, TONES, TEXTURE, COMPLEX phase vocoder), BARS and BPM of a loop (EDIT on BPM taps it), NORM by peak or loudness. DEEP page: FADE IN, FADE OUT and XFADE between slices. |
-| ![GRAND](docs/screenshots/grand.png) | **GRAND**: two oscillators, noise, ladder filter, envelope, glide, MONO or POLY. DEEP page: LFO, sync, high-pass, key tracking, spring reverb, arpeggiator. PATCH: a patch bay with cables. |
-| ![ACID](docs/screenshots/acid.png) | **ACID**: a 303-style line with saw or square, a filter with its envelope, ACCENT and SLIDE per step and four distortions (diode, transistor, tube, fuzz). DEEP page: a sub oscillator and more filter and amp controls. |
-| ![CLOUD](docs/screenshots/cloud.png) | **CLOUD**: a granular engine that plays a sample as a cloud of grains: POSITION, SPRAY, SIZE, DENSITY, SHIMMER, MOTION. DEEP page: window, reverse, pitch, intervals, sync, freeze, attack, release, tone. |
+| ![GRAND](docs/screenshots/grand.png) | **GRAND**: two oscillators, noise, ladder filter, envelope, glide, MONO or POLY; LFO, sync, high-pass, key tracking, arpeggiator; a patch bay with cables. Live pictures of the waves, the filter and the envelope. |
+| ![ACID](docs/screenshots/acid.png) | **ACID**: a 303-style line with saw or square, a filter with its envelope, ACCENT and SLIDE per step, four distortions and a sub oscillator. |
+| | **SAMPLER** plays WAV and OGG: pitch, root (from the name or the sound), slices (equal, transients or by hand), warp to the tempo (BEATS, REPITCH, TONES, TEXTURE, COMPLEX), loop bars and BPM, normalize. **CLOUD** plays a sample as a cloud of grains: position, spray, size, density, shimmer, motion, and a deep page more. |
 
-Every synth engine has factory presets (EDIT on the instrument row) and room for your own. Y, or DOWN past the last
-row of a panel, opens its DEEP page.
+Every synth engine has factory presets in categories and room for your own.
 
 ## Effects and modulation
 
 ![Signal path](docs/images/signal.svg)
 
-- **Inserts** (two per pad): compressor (can be keyed from another pad), distortion, chorus, flanger, phaser, filter,
-  bitcrusher, tape, autopan, ring modulator, multiband.
+| | |
+|---|---|
+| ![FX](docs/screenshots/fx.png) | **FX**: two inserts per pad, X switches one on or off, L1/R1 the other slot. Compressor (can be keyed from another pad), distortion, chorus, flanger, phaser, filter (low, high, band, notch, with Q), bitcrusher, tape, autopan, ring modulator, multiband. The picture shows what the effect does now. |
+| ![LFO](docs/screenshots/lfo.png) | **MOD**: four LFOs per pad with shape, rate or tempo division, depth and a start on the notes of any pad; four automation lanes per pattern, straight or bent; DUCK, a volume curve started by notes, by sound or by the tempo. Any knob can be the target: EDIT on TARGET, then point at it. |
+
 - **Sends**: A is a reverb, B a delay in tempo. **Master**: compressor and limiter.
-- **Automation**: four lanes per pattern, any knob as the target, straight or bent segments. LFOs add on top.
-  OPTION+EDIT on a target unlinks it.
-- **Freeze**: SHIFT+Y on GRID or the F row of the mixer renders a pad with its effects and modulation into audio.
-  Volume, pan, sends, mute, duck and follow actions stay live; editing the pad thaws it. Recordings are kept on the
-  card, so a project opens without rendering again.
-- **Recording**: MENU+PLAY records what you play into the pattern, with a count-in if set; what was played without
-  recording can be captured afterwards. **Export** writes a WAV of the song or one per pad.
-- **Names** of projects, pads and themes are typed on an on-screen keyboard.
+- **Freeze**: SHIFT+Y on a pad renders it with its effects into audio; volume, pan, sends, mute and duck stay live.
+- **Recording**: MENU+PLAY records what you play, with a count-in if set; what was played without recording can be
+  captured afterwards. **Export** writes a WAV of every scene in turn, or one per pad.
 
 ## Install
 
 You need a TrimUI Brick with Knulli and a way to copy files to it: the SD card in a computer, or the Knulli network
 share.
 
-1. Download `brickpad-1.2-alpha-trimui-brick.zip` from the
+1. Download `brickpad-1.0-beta-trimui-brick.zip` from the
    [latest release](https://github.com/obhateion/brickpad/releases/latest) and unpack it:
    ```
-   BrickPad.sh                      the launcher
-   brickpad/brickpad                the program
-   brickpad/projects/DEMO/NEON.bpp  a demo project
+   BrickPad 1.0 beta.sh                       the launcher
+   brickpad-1.0/brickpad                      the program
+   brickpad-1.0/projects/DEMO/HOUSE.bpp       demo: six scenes
+   brickpad-1.0/projects/DEMO/NEON.bpp        demo
    ```
-2. Copy `BrickPad.sh` and the folder `brickpad` into `roms/ports/` on the card (on the Brick itself:
-   `/userdata/roms/ports/`):
-   ```
-   roms/ports/BrickPad.sh
-   roms/ports/brickpad/brickpad
-   roms/ports/brickpad/projects/DEMO/NEON.bpp
-   ```
-3. Make the folder `roms/ports/brickpad/samples/` and put your WAV or OGG files there, in any subfolders. Drums are
+2. Copy `BrickPad 1.0 beta.sh` and the folder `brickpad-1.0` into `roms/ports/` on the card (on the Brick itself:
+   `/userdata/roms/ports/`). It has its own folder: an older BrickPad stays as it is.
+3. Make the folder `roms/ports/brickpad-1.0/samples/` and put your WAV or OGG files there, in any subfolders. Drums are
    recognised by their names and folders (kick, snare, hat...), loops by words or the tempo in the name (`120bpm`,
    `Amin`). **No samples are included.**
-4. On the Brick, update the game list and start **BrickPad** from **Ports**. Hold **MENU** for 3 seconds to quit.
+4. On the Brick, update the game list and start **BrickPad 1.0 beta** from **Ports**. Hold **MENU** for 3 seconds to
+   quit (a ring shows how long is left).
 
-The first start reads the samples folder, which takes a while with many gigabytes of sounds.
-
-**Demo project.** PROJECT → FILE → open `DEMO/NEON`. It uses the packs *Electroclash* and
-*Dark Cinematic Electronica* in `samples/ELECTROCLASH` and `samples/CINEMATIC`; without them only its synth pads
-sound.
+**Demo projects.** PROJECT → FILE → `DEMO/HOUSE` or `DEMO/NEON`. They use the sample packs they were made with; without
+them only their synth pads sound.
 
 **Sound.** BrickPad plays through PipeWire. If a Dirtywave M8 is plugged in and took the default output, the launcher
 switches the output back to the Brick's speaker and headphones. While BrickPad runs, the launcher keeps the CPU at full
 speed so that busy songs do not break up, and restores the old setting on exit.
 
-**Where your work is kept** (inside `roms/ports/brickpad/`): `state.bin` is the autosave of what is open, `projects/`
-the saved projects, `exports/` the WAV files, `frozen/` the cache of frozen pads, `themes/` your themes. To update,
-replace `BrickPad.sh` and `brickpad/brickpad` only; to remove BrickPad, delete both.
+**Where your work is kept** (inside `roms/ports/brickpad-1.0/`): `state.bin` and `scenes.bin` are the autosave of what
+is open, `projects/` the saved projects, `exports/` the WAV files, `frozen/` the cache of frozen pads, `themes/` your
+themes. To update, replace the launcher and `brickpad-1.0/brickpad` only.
 
 ## Buttons
-
-![Button map](docs/images/buttons.svg)
 
 | Button | Does |
 |---|---|
 | D-pad | move the cursor |
-| EDIT (B) | tap: act on what is under the cursor; hold + d-pad: change its value (left/right fine, up/down coarse) |
-| OPTION (A) | listen to the pad; OPTION+EDIT: clear, or back to the default |
-| PLAY | GRID: a tap starts every clip, the next tap stops everything. Other screens: a tap turns the selected pad's clip on or off at once, on the launch quantum. There is no hold |
-| F1 / F2 | previous / next screen; F1+F2: PROJECT |
-| SHIFT | the second layer of every button |
-| X, Y | per screen: icon, solo, mute, DEEP page, back |
-| L1 / R1 | lanes, pages, pads |
+| EDIT (B) | tap: open, act; hold + d-pad: change the value (left/right fine, up/down coarse) |
+| OPTION (A) | listen to the pad; OPTION+EDIT: delete, or back to the default |
+| PLAY | play / stop |
+| Y | back one level; on HOME and in the mixer: mute |
+| X | HOME: the pad's clip; per screen: solo, insert on/off, chord |
+| F1 / F2 | HOME: the next screen; inside a pad: the next pad; F1+F2: PROJECT |
+| SHIFT | the second layer; inside a pad SHIFT+arrow jumps to a category |
+| L1 / R1 | pages, lanes, slots, the mixer drawer |
 | SHIFT+L2 | undo |
-| MENU | GRID → PADS → KEYS; hold 3 s: quit |
+| MENU | pads to play, again keys, again back; MENU+PLAY records; hold 3 s: quit |
 
-Every screen shows its own keys in the footer. The full list is in the [manual](docs/MANUAL.md).
+Every screen shows its keys in the footer; PROJECT > ABOUT lists all of them by topic.
 
 ## Build from source
 
@@ -150,13 +139,12 @@ Cross-compiled on a PC (Windows, Linux or macOS) with [Zig](https://ziglang.org/
 ZIG=/path/to/zig sh build.sh      # writes build/brickpad (aarch64 Linux, glibc)
 ```
 
-Copy `build/brickpad` over `roms/ports/brickpad/brickpad`. The code is C11 with SDL2. `third_party/` holds the SDL2
-headers and the device's `libSDL2-2.0.so.0` to link against (SDL2, zlib licence), `stb_vorbis.c` and
-`font8x8_basic.h` (public domain).
+The code is C11 with SDL2. `third_party/` holds the SDL2 headers and the device's `libSDL2-2.0.so.0` to link against
+(SDL2, zlib licence), `stb_vorbis.c` and `font8x8_basic.h` (public domain). Building is allowed for your own devices
+only: see the licence.
 
-## Status and licence
+## Licence
 
-Beta. Copyright (c) 2026 Timothy Gurto (obhateion). All rights reserved: see [LICENSE](LICENSE). You may read the
-code, install the official releases and build it for your own devices, and send changes as pull requests; copies,
-ports, modified versions, commercial use and the name BrickPad need written permission. Music you make with it is
-yours.
+Copyright (c) 2026 Timothy Gurto (obhateion). All rights reserved: see [LICENSE](LICENSE). You may read the code,
+install the official releases and build it for your own devices, and send changes as pull requests; copies, ports,
+modified versions, commercial use and the name BrickPad need written permission. Music you make with it is yours.
