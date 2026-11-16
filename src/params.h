@@ -1,3 +1,4 @@
+// BrickPad - Copyright (c) 2026 Timothy Gurto (obhateion). All rights reserved. See LICENSE.
 // A pad's sound parameters as data (UI v2, step 1): every P_* id that is a number has a value, a range and two steps
 // (EDIT+<> small, EDIT+^v big). Screens and the simple view read and set them through these, by pad and id.
 // What is not a plain number stays special in par_adjust: TYPE/SAMPLE/SOURCE (files), NORM, DIR/VOICE (toggles),

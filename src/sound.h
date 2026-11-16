@@ -1,3 +1,4 @@
+// BrickPad - Copyright (c) 2026 Timothy Gurto (obhateion). All rights reserved. See LICENSE.
 // PAD > SOUND (UI v2, step 4; mockups A08-A16): an engine's parameters as pages of four to six cards under a picture of
 // what they shape. L1/R1 the page, arrows the card, EDIT+arrows the value; rare parameters on the last page, MORE.
 // The pages are data: a name, a picture, the P_* ids. The cursor's parameter goes through cur_par(), so everything the

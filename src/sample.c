@@ -1,3 +1,4 @@
+// BrickPad - Copyright (c) 2026 Timothy Gurto (obhateion). All rights reserved. See LICENSE.
 // WAV/OGG loading -> stereo float @ SR.
 #include "bp.h"
 #include <dirent.h>

@@ -1,3 +1,4 @@
+// BrickPad - Copyright (c) 2026 Timothy Gurto (obhateion). All rights reserved. See LICENSE.
 // BrickPad — UI with tabs (F1/F2), M8-style controls:
 // arrows cursor · EDIT (B) act, EDIT+arrows value · OPTION (A) listen, OPTION+EDIT delete,
 // OPTION+<> slot · patterns on the pattern field of SEQ+INST · SHIFT+OPTION copy, SHIFT+EDIT paste · PLAY transport.

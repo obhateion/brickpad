@@ -1,3 +1,4 @@
+// BrickPad - Copyright (c) 2026 Timothy Gurto (obhateion). All rights reserved. See LICENSE.
 // UI v2: the windows over the screens in the mockups' look: EXPORT, the questions, the name keyboard, the file menu,
 // RANDOM, the icons, the theme editor, the project list. Keys and state are their own (export_key, nm_key, fm_key,
 // rnd_key, icon_key, theme_key, browse_key); only the drawing lives here. main.c includes this once, before draw().

@@ -1,3 +1,4 @@
+// BrickPad - Copyright (c) 2026 Timothy Gurto (obhateion). All rights reserved. See LICENSE.
 #ifndef BP_PRESETS_H
 #define BP_PRESETS_H
 #include <stdint.h>

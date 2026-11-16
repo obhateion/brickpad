@@ -1,3 +1,4 @@
+// BrickPad - Copyright (c) 2026 Timothy Gurto (obhateion). All rights reserved. See LICENSE.
 // GRAND: a two-oscillator mono/poly synth voice in the manner of a semi-modular classic, included by
 // engine.c only. OSC 1 and 2 (TRI SAW SQR PULSE, band-limited with PolyBLEP) -> MIXER (+ white noise) ->
 // 4-pole ladder low-pass (24 dB, resonance, tanh stages, 2x oversampled) -> VCA. One ADSR drives both the

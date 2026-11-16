@@ -1,3 +1,4 @@
+// BrickPad - Copyright (c) 2026 Timothy Gurto (obhateion). All rights reserved. See LICENSE.
 // Long-hover hints (2026-11-10): the cursor on a panel control for 10 s -> a short line scrolls in the readout.
 // One line per control, in plain words. PROJECT > SYSTEM > HOVER HINTS turns them on and off (hints.cfg).
 #pragma once

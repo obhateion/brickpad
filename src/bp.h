@@ -1,3 +1,4 @@
+// BrickPad - Copyright (c) 2026 Timothy Gurto (obhateion). All rights reserved. See LICENSE.
 // BrickPad — shared declarations.
 #pragma once
 #include <stdint.h>

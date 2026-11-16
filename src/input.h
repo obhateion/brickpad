@@ -1,3 +1,4 @@
+// BrickPad - Copyright (c) 2026 Timothy Gurto (obhateion). All rights reserved. See LICENSE.
 // Input (UI v2, step 1): the Brick's buttons as keys K_*, which keys are held, and whether a held key already served
 // a combo (then its release is no tap). Arrows come from the d-pad hat and repeat while held.
 // key_event keeps the order of what a key does; screens ask held[] and input_tap(). main.c includes this after K_*.

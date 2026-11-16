@@ -1,3 +1,4 @@
+// BrickPad - Copyright (c) 2026 Timothy Gurto (obhateion). All rights reserved. See LICENSE.
 // UI v2, step 7: the simple view (PROJECT > INTERFACE > VIEW; mockups P1-P4). Three large screens over the same song and the
 // same actions: PLAY (the pads as tiles), NOTES (the open pad's steps), SOUND (four knobs with plain names).
 // F1/F2 change the screen, as they change the screens of HOME (2026-11-14, user; it was MENU), L1/R1 the pad (on PLAY: the

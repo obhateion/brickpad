@@ -1,3 +1,4 @@
+// BrickPad - Copyright (c) 2026 Timothy Gurto (obhateion). All rights reserved. See LICENSE.
 // Real-time audio engine: SDL audio callback, sample-accurate sequencer, scales, slices, warp.
 // Lock-free command queue in, retired samples out.
 #include "bp.h"

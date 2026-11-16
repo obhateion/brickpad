@@ -1,3 +1,4 @@
+// BrickPad - Copyright (c) 2026 Timothy Gurto (obhateion). All rights reserved. See LICENSE.
 // ACID: a one-oscillator bass line voice in the manner of the classic 1981 bass machine, with a built-in
 // distortion. Included by engine.c and main.c (names, ranges, defaults); the guard keeps one copy.
 // OSC (SAW or SQUARE, PolyBLEP) -> 4-pole ladder with a high-pass in its resonance path (thin, squelchy) -> VCA

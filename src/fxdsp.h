@@ -1,3 +1,4 @@
+// BrickPad - Copyright (c) 2026 Timothy Gurto (obhateion). All rights reserved. See LICENSE.
 // BrickPad effect DSP (engine.c only): insert slots, the reverb (send A) and delay (send B) returns, master
 // compressor and limiter. Audio thread only, no allocation; parameters are bytes from Song.mix read once per buffer.
 #pragma once

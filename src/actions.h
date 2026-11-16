@@ -1,3 +1,4 @@
+// BrickPad - Copyright (c) 2026 Timothy Gurto (obhateion). All rights reserved. See LICENSE.
 // Actions (UI v2, step 1): what a button does to the song, with the pad passed in, never read from the cursor.
 // A screen decides WHAT (from where its cursor is), an action does it. The advanced and the simple view of UI v2
 // call the same functions. main.c includes this once, right before key_event, so everything above is in reach.

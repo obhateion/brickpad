@@ -1,3 +1,4 @@
+// BrickPad - Copyright (c) 2026 Timothy Gurto (obhateion). All rights reserved. See LICENSE.
 // WARP COMPLEX: a phase vocoder with identity phase locking (Laroche & Dolson), included by engine.c only.
 // Time and pitch are independent: the vocoder stretches by tr / rate into a stream y, the voice then reads y
 // at the pitch rate. Stereo keeps its image: both channels get the phase change of the mid signal, so one

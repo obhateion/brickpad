@@ -1,3 +1,4 @@
+// BrickPad - Copyright (c) 2026 Timothy Gurto (obhateion). All rights reserved. See LICENSE.
 // UI v2, step 5: the pad's FX (A17), MOD (A18-A20) and MIX pages, the MIXER (A21-A23), SCENES (A02), PROJECT (A24).
 // Each page draws after its mockup and drives the 1.2 state underneath (frow/fcol, lcol/lrow, mcol/mrow...), so the
 // actions, undo and the engine stay as they were. main.c includes this once, after sound.h.
@@ -551,7 +552,7 @@ static const char *const ab_rows[AB_N][19] = {
     {"PLAY play / stop", "Y back", "EDIT open, do it", "EDIT+ARROWS change the value (held: shown big)", "OPT listen to the pad", "OPT+EDIT delete, or the default value",
      "F1/F2 the next pad (on HOME: the next screen)", "F1+F2 PROJECT, again: back where you were", "SHIFT+ARROW inside a pad: straight to a category",
      "SHIFT+L2 undo", "SHIFT+OPT copy", "SHIFT+EDIT paste", "MENU pads to play, again: keys, again: back", "MENU+PLAY record, twice: capture what was played",
-     "MENU-3S quit BrickPad (hold)", "SHIFT+PLAY never: the system's own"},
+     "MENU-3S quit BrickPad (hold)", "SHIFT+PLAY never: the system's own", "#BRICKPAD (C) 2026 TIMOTHY GURTO (OBHATEION)"},
     {"EDIT open the pad (an empty one: choose its engine)", "X start / stop the clip of this pad", "PLAY all clips", "Y mute", "SHIFT+Y freeze the pad",
      "SHIFT+X name the pad", "SHIFT+DPAD select several pads", "F1/F2 PADS, SCENES, MIXER", "#SCENES", "EDIT launch the scene (its own twelve pads)", "X a copy of it", "OPT+EDIT twice: delete it", "+ NEW SCENE: empty pads",
      "#A SCENE APPEARS WITH EVERY PATTERN THAT HAS NOTES: UP TO 16"},

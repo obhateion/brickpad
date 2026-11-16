@@ -1,3 +1,4 @@
+// BrickPad - Copyright (c) 2026 Timothy Gurto (obhateion). All rights reserved. See LICENSE.
 // The UI v2 frame (step 2): the path on top with the page on the right, the pad strip under it, the footer with at
 // most three hints, the cross of the jump while SHIFT is held inside a pad and the value popup while EDIT turns a panel control.
 // The screens of 1.2 are drawn inside it until steps 3-5 rebuild them. main.c includes this before draw_header.
