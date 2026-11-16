@@ -2,6 +2,8 @@
 
 <p align="center">
   <a href="https://github.com/obhateion/brickpad/releases/latest"><b>Download</b></a> ·
+  <a href="docs/MANUAL.md"><b>Manual</b></a> ·
+  <a href="docs/BrickPad-Manual.pdf"><b>Manual (PDF)</b></a> ·
   <a href="README.ru.md"><b>По-русски</b></a> ·
   <a href="CHANGELOG.md"><b>Changelog</b></a> ·
   <a href="LICENSE"><b>Licence</b></a>
@@ -129,7 +131,10 @@ themes. To update, replace the launcher and `brickpad-1.0/brickpad` only.
 | SHIFT+L2 | undo |
 | MENU | pads to play, again keys, again back; MENU+PLAY records; hold 3 s: quit |
 
-Every screen shows its keys in the footer; PROJECT > ABOUT lists all of them by topic.
+![Button map](docs/images/buttons.svg)
+
+Every screen shows its keys in the footer; PROJECT > ABOUT lists all of them by topic, and the
+[manual](docs/MANUAL.md) explains every screen.
 
 ## Build from source
 
