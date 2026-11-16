@@ -555,7 +555,7 @@ static const char *const ab_rows[AB_N][19] = {
      "MENU-3S quit BrickPad (hold)", "SHIFT+PLAY never: the system's own", "#BRICKPAD (C) 2026 TIMOTHY GURTO (OBHATEION)"},
     {"EDIT open the pad (an empty one: choose its engine)", "X start / stop the clip of this pad", "PLAY all clips", "Y mute", "SHIFT+Y freeze the pad",
      "SHIFT+X name the pad", "SHIFT+DPAD select several pads", "F1/F2 PADS, SCENES, MIXER", "#SCENES", "EDIT launch the scene (its own twelve pads)", "X a copy of it", "OPT+EDIT twice: delete it", "+ NEW SCENE: empty pads",
-     "#A SCENE APPEARS WITH EVERY PATTERN THAT HAS NOTES: UP TO 16"},
+     "#UP TO 16 SCENES; TEMPO, KEY, MASTER, RETURNS ARE SHARED"},
     {"EDIT open the category or the page", "ARROWS choose", "Y back up: page, category, HOME", "F1/F2 the next pad, the same page",
      "SHIFT+UP PATTERN", "SHIFT+RIGHT SOUND", "SHIFT+DOWN FX", "SHIFT+LEFT MIX", "#LOOK: THE ICON AND ITS COLOUR", "EDIT set", "L1/R1 the group of icons",
      "DOWN from the last row: the colours", "#PAD MENU AS A TREE (PROJECT > INTERFACE)", "<> the level: HOME, pad, category, pages", "^v choose", "EDIT open it"},

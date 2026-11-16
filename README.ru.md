@@ -2,6 +2,7 @@
 
 <p align="center">
   <a href="https://github.com/obhateion/brickpad/releases/latest"><b>Скачать</b></a> ·
+  <a href="docs/MANUAL.md"><b>Руководство (англ.)</b></a> ·
   <a href="README.md"><b>English</b></a> ·
   <a href="CHANGELOG.md"><b>Изменения</b></a> ·
   <a href="LICENSE"><b>Лицензия</b></a>
