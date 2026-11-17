@@ -22,7 +22,7 @@ a pad (its sound, effects, sends, volume, patterns) belongs to its scene.
 |---|---|
 | D-pad | move the cursor |
 | EDIT (B) | tap: open, act. Hold + d-pad: change the value (left/right fine, up/down coarse); held, the value is shown big |
-| OPTION (A) | listen to the pad. OPTION+EDIT: delete, or back to the default |
+| OPTION (A) | listen to the pad. OPTION+EDIT: delete, or back to the default. On a whole thing (a pad on HOME, a scene, a card inside a pad, a PROJECT section) a YES / NO window asks first |
 | PLAY | play / stop |
 | Y | back one level. On HOME and in the mixer: mute |
 | X | HOME: start / stop the pad's clip. Elsewhere: solo, insert on / off, chord |
@@ -60,7 +60,7 @@ for the bar blinks.
   out quickly.
 - `+ NEW SCENE` (the last row): EDIT makes a scene with empty pads.
 - X makes a copy of the scene under the cursor, with all its sounds.
-- OPTION+EDIT twice deletes a scene (not the one that is open).
+- OPTION+EDIT deletes a scene after a YES / NO window. The open one hands over to the next scene first. No undo.
 
 Undo does not go back across a scene change.
 

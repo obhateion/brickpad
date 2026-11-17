@@ -254,10 +254,17 @@ static void tree_key(int k); static void tree_tap(void); static void draw_tree(v
 static void hub_go(void) {               // EDIT on a card
     if (hub_cur == HUB_LOOK) icon_open(); else if (hub_cur == PC_PATTERN) patmenu_open(); else if (hub_cur == PC_MOD) modmenu_open(); else cat_open(hub_cur);
 }
+static void hub_clear(int c) {           // OPT+EDIT on a card of the hub: what it holds, as on an empty pad
+    static const int part[HUB_N] = {PP_PAT, PP_SOUND, PP_FX, PP_LFO | PP_AUTO | PP_DUCK, PP_MIX, PP_LOOK};
+    static const char *const what[HUB_N] = {"ALL 16 PATTERNS", "THE SOUND", "THE EFFECTS", "LFO, AUTOMATION, DUCK", "THE MIX", "THE LOOK"};
+    cfm_pad(sel, part[clampi(c, 0, HUB_N - 1)], what[clampi(c, 0, HUB_N - 1)]);
+}
 static void hub_key(int k, int down) {
     if (!down) { if (k == K_EDIT && !used[K_EDIT]) { if (ui_tree) tree_tap(); else hub_go(); } return; }
     if (k == K_Y) { hubbing = 0; tr_lv = 2; return; }   // back to HOME
     if (k == K_PLAY) { play_key(); return; }
+    if ((k == K_EDIT && held[K_OPT]) || (k == K_OPT && held[K_EDIT])) { used[K_EDIT] = used[K_OPT] = 1;   // clear the card (YES/NO first)
+        if (ui_tree && tr_lv == 1) cfm_pad(sel, PP_ALL, ""); else if (!ui_tree || tr_lv >= 2) hub_clear(hub_cur); return; }
     if (k == K_OPT) { act_listen(sel); return; }
     if (ui_tree) { if (k <= K_RIGHT) tree_key(k); return; }
     if (k == K_UP || k == K_LEFT) hub_cur = (hub_cur + HUB_N - 1) % HUB_N;
@@ -290,7 +297,7 @@ static void draw_hub(void) {              // the cards of A03: stripe, name in t
         hub_line(c, b, sizeof b); ftext(CX + 38, y + 50, FT_M, on ? C_WHITE : C_DIM, b);
         if (c == HUB_LOOK) icon(slot_icon(sel), CX + CWD - 62, y + (CHT - 32) / 2, pad_icol(sel, C_ENG(song.t[sel].type)));   // the icon as it is now
     }
-    draw_footer("EDIT OPEN  F1/F2 PAD  Y BACK");
+    draw_footer("EDIT OPEN  F1/F2 PAD  Y BACK  OPT+EDIT CLEAR");
 }
 
 // PATTERN (UI v2): its pages as a list, STEPS (the roll when the pattern is one) and SELECT; RECORD comes with A04.
@@ -299,6 +306,8 @@ static void patmenu_key(int k, int down) {
         if (pm_cur == 1) pat_open(); else if (pm_cur == 2) recpage = 1; else if (cur_pat(sel)->mode) roll_open(); else { srow = 1; scol = 0; lane = lane_first(); seq_clamp(); } } return; }   // STEPS open on the notes
     if (k == K_Y) { hub_open(); hub_cur = PC_PATTERN; return; }
     if (k == K_PLAY) { play_key(); return; }
+    if ((k == K_EDIT && held[K_OPT]) || (k == K_OPT && held[K_EDIT])) { used[K_EDIT] = used[K_OPT] = 1;   // STEPS: this pattern, SELECT: all 16, RECORD: its settings
+        if (pm_cur == 2) cfm_prj(JS_REC); else { char b[32]; snprintf(b, sizeof b, "PATTERN P%d", song.t[sel].cur + 1); cfm_pad(sel, pm_cur ? PP_PAT : PP_STEPS, pm_cur ? "ALL 16 PATTERNS" : b); } return; }
     if (k == K_OPT) { act_listen(sel); return; }
     if (k == K_UP || k == K_LEFT) pm_cur = (pm_cur + 2) % 3;
     if (k == K_DOWN || k == K_RIGHT) pm_cur = (pm_cur + 1) % 3;
@@ -316,7 +325,7 @@ static void draw_patmenu(void) {
         else snprintf(b, sizeof b, "%d steps \3 %s", p->len, div_name[p->div % 6]);
         ftext(CX + 38, y + 56, FT_M, on ? C_WHITE : C_DIM, b);
     }
-    draw_footer("EDIT OPEN  F1/F2 PAD  Y BACK");
+    draw_footer("EDIT OPEN  F1/F2 PAD  Y BACK  OPT+EDIT CLEAR");
 }
 
 // PATTERN > STEPS (mockup A05): the lanes as tabs (L1/R1), sixteen steps in two rows, the pages follow the cursor.

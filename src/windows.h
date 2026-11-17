@@ -44,6 +44,14 @@ static void draw_ask2(void) {
     for (int i = 0; i < 3; i++) w_btn(x + 30 + i * 226, y + 150, 206, 76, bt[i], i == ask_cur, i == 1 ? C_RED : C_ORANGE, 0);
     draw_footer("EDIT OK  <> CHOOSE  Y CANCEL");
 }
+static void draw_cfm2(void) {            // OPT+EDIT on a whole thing: YES clears it, NO (the cursor's first place) leaves it
+    int x = 152, y = 240, w = 720, h = 270; w_box(x, y, w, h, C_RED);
+    w_center(x + w / 2, y + 34, FT_LB, C_WHITE, cfm_title);
+    w_center(x + w / 2, y + 78, FT_M, C_DIM, cfm_sub);
+    static const char *const bt[2] = {"YES", "NO"};
+    for (int i = 0; i < 2; i++) w_btn(x + 90 + i * 290, y + 150, 250, 76, bt[i], i == cfm_cur, i == 0 ? C_RED : C_ORANGE, 0);
+    draw_footer("EDIT OK  <> CHOOSE  Y CANCEL");
+}
 static void draw_naming2(void) {
     static const char *const ttl[5] = {"the project's name", "the new folder's name", "the new name", "the theme's name (up to 19 characters)", "the pad's name (up to 15 characters, empty: the instrument's)"};
     Col ec = th_cur[TC_SMP]; ftext(26, 78, FT_M, C_DIM, ttl[nm_mode % 5]);

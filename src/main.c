@@ -1980,8 +1980,10 @@ static void scn_mix_sync(void) {          // the open scene's mix goes to the sa
     for (int i = 0; i < scn_n; i++) if (i != scn_cur && scn[i]) for (int s = 0; s < NSLOT; s++)
         if (scn_same(&song, scn[i], s) && scn_mix_copy(scn[i], &song, s)) scn_dirty[i] = 1;
 }
+static void scene_kill_tick(void);
 static void scene_poll(void) {            // every frame: the engine has taken the next scene in
     Sample *old[NSLOT];
+    if (scn_next < 0) scene_kill_tick();   // a deleted open scene goes once the next one plays
     if (scn_next < 0 || !engine_scene_done(old)) return;
     int a = scn_cur, b = scn_next;
     memcpy(scn_smp[a], old, sizeof old); scn_ready[a] = 1; scn_dirty[a] = 1;
@@ -2459,9 +2461,127 @@ static void edit_tap(void) {
     case T_FX: fx_tap(); break;
     }
 }
+// ---- OPT+EDIT on a whole thing asks first (2026-11-17, user): a pad on HOME, a scene, a card inside the pad, a PROJECT
+// section. YES puts it back as in an empty project (undo brings it back; a deleted scene does not come back).
+enum { PP_PAT = 1, PP_SOUND = 2, PP_FX = 4, PP_LFO = 8, PP_AUTO = 16, PP_DUCK = 32, PP_MIX = 64, PP_LOOK = 128, PP_NAME = 256, PP_ALL = 511, PP_STEPS = 512, PP_NOUNDO = 1024 };
+static const Song *song_zero(void) {     // an empty project's song, made once
+    static Song *z; if (z) return z;
+    static Song keep; z = malloc(sizeof *z); if (!z) return NULL;
+    engine_lock(1); keep = song; song_defaults(); *z = song; song = keep; engine_lock(0);
+    return z;
+}
+static void pad_reset(int s, int m) {    // the parts m of pad s as in an empty project; its clip goes on playing (as a paste)
+    const Song *dz = song_zero(); if (!dz || s < 0 || s >= NSLOT) return;
+    Track *t = &song.t[s]; const Track *z = &dz->t[s]; PadMix *pm = &song.mix.pad[s]; const PadMix *pz = &dz->mix.pad[s];
+    int frz = (m & (PP_MIX | PP_SOUND)) && pm->spare[PM_FRZ];
+    if (!(m & PP_NOUNDO)) push_undo();
+    engine_lock(1);
+    if (m & PP_STEPS) { t->pat[clampi(t->cur, 0, NPAT - 1)] = z->pat[0]; memset(song.fol[s][clampi(t->cur, 0, NPAT - 1)], 0, 6); }
+    if (m & PP_PAT) { memcpy(t->pat, z->pat, sizeof t->pat); t->cur = 0; t->queued = -1; memcpy(song.fol[s], dz->fol[s], sizeof song.fol[s]); }
+    if (m & PP_SOUND) {
+        static Track k; k = *t; *t = *z;
+        memcpy(t->pat, k.pat, sizeof t->pat); t->cur = k.cur; t->queued = k.queued; t->on = k.on; t->mute = k.mute;
+        t->vol = k.vol; t->pan = k.pan; t->icon = k.icon; t->icon_hi = k.icon_hi;
+        song.cut[s] = dz->cut[s]; memcpy(song.cx[s], dz->cx[s], sizeof song.cx[s]); memcpy(song.ax[s], dz->ax[s], sizeof song.ax[s]);
+        memcpy(song.gx[s], dz->gx[s], sizeof song.gx[s]); memcpy(song.gp[s], dz->gp[s], sizeof song.gp[s]); memcpy(song.smx[s], dz->smx[s], sizeof song.smx[s]);
+        song.lnote[s] = 0; pm->spare[PM_NORM] = pz->spare[PM_NORM]; pm->spare[PM_FRZ] = 0;
+    }
+    if (m & PP_FX) { memcpy(pm->ins, pz->ins, sizeof pm->ins); memcpy(song.mbx[s], dz->mbx[s], sizeof song.mbx[s]); }
+    if (m & PP_LFO) memcpy(song.lfo[s], dz->lfo[s], sizeof song.lfo[s]);
+    if (m & PP_AUTO) { memcpy(song.aut[s], dz->aut[s], sizeof song.aut[s]); memcpy(song.acurve[s], dz->acurve[s], sizeof song.acurve[s]); }
+    if (m & PP_DUCK) { pm->spare[DK_SRC] = pz->spare[DK_SRC]; pm->spare[DK_AMT] = pz->spare[DK_AMT]; memcpy(song.dkx[s], dz->dkx[s], 8); memcpy(song.dkc[s], dz->dkc[s], 16); }
+    if (m & PP_MIX) { t->vol = z->vol; t->pan = z->pan; t->mute = 0; pm->send_a = pz->send_a; pm->send_b = pz->send_b; pm->solo = pz->solo; pm->flags = pz->flags; pm->spare[PM_FRZ] = 0; }
+    if (m & PP_LOOK) { t->icon = z->icon; t->icon_hi = z->icon_hi; }
+    if (m & PP_NAME) memset(song.pname[s], 0, sizeof song.pname[s]);
+    engine_lock(0);
+    if (frz) frz_drop(s);
+    if (m & (PP_PAT | PP_SOUND)) { last_note[s] = last_vel[s] = last_prob[s] = last_rep[s] = last_slc[s] = 0; }
+    if (m & PP_SOUND) { slot_want[s][0] = 0; slot_bad[s] = 0; sync_samples(); }
+}
+static void prj_reset_row(int j) {       // one PROJECT setting back to its default (actions have none)
+    const Song *dz = song_zero(); if (!dz) return;
+    switch (j) {
+    case J_TEMPO: song.tempo = dz->tempo; break; case J_SWING: song.swing = dz->swing; break;
+    case J_KEY: song.key = dz->key; break; case J_SCALE: song.scale = dz->scale; break;
+    case J_SNAP: song.snap = dz->snap; break; case J_BEATS: song.beats = dz->beats; break;
+    case J_LAUNCH: song.launch = dz->launch; break; case J_METRO: song.metro = dz->metro; break; case J_MASTER: song.master = dz->master; break;
+    case J_COUNT: song.count_in = dz->count_in; break; case J_QUANT: song.rec_quant = dz->rec_quant; song.rec_len = dz->rec_len; break;
+    case J_VIEW: ui_simple = 0; break; case J_STRIP: ui_strip = 1; break; case J_NAV: ui_tree = 0; break; case J_LOCK: ui_lock = 0; break;
+    case J_HINT: if (!hint_on) hint_set(1); break;
+    case J_DRAWER: ui_drawer_left = 0; break; case J_MXFX: ui_mxfx = 1; break; case J_MXLINK: ui_mxlink = 1; break;
+    case J_THEME: if (th_sel) { th_sel = 0; theme_apply(); th_dirty = 1; } break;
+    }
+}
+static int prj_row_resets(int j) { return j < J_LIB || j == J_SNAP || (j >= J_HINT && j <= J_MXLINK); }   // J_THEME < J_LIB too
+static int prj_sec_resets(int sc) { int r[6], n = prj_rows(sc, r); for (int i = 0; i < n; i++) if (prj_row_resets(r[i])) return 1; return 0; }
+static void prj_reset_sec(int sc) {
+    int r[6], n = prj_rows(sc, r); push_undo();
+    for (int i = 0; i < n; i++) prj_reset_row(r[i]);
+    if (sc == JS_UI || sc == JS_MIX) ui_cfg_save();
+}
+enum { CF_PAD = 1, CF_SCENE, CF_PART, CF_PRJ };
+static int cfm, cfm_arg, cfm_part, cfm_cur; static char cfm_title[48], cfm_sub[64];
+static int sc_kill = -1;                 // the open scene to delete once another one plays
+static void cfm_open(int act, int arg, int part, const char *title, const char *sub) {
+    cfm = act; cfm_arg = arg; cfm_part = part; cfm_cur = 1;   // the cursor on NO
+    snprintf(cfm_title, sizeof cfm_title, "%s", title); snprintf(cfm_sub, sizeof cfm_sub, "%s", sub);
+}
+static void cfm_pad(int s, int part, const char *what) {   // a part of pad s, or all of it
+    char t[48]; int n = 0; for (int i = 0; i < NSLOT; i++) n += s < 0 && gsel_in(i);
+    if (part != PP_ALL) snprintf(t, sizeof t, "CLEAR %s?", what);
+    else if (s < 0) snprintf(t, sizeof t, "CLEAR %d PADS?", n); else snprintf(t, sizeof t, "CLEAR PAD %d?", s + 1);
+    cfm_open(part == PP_ALL ? CF_PAD : CF_PART, s, part, t, part == PP_ALL ? "sound, effects, patterns, mix: all of it, on this scene"
+                                                                          : "as on an empty pad  \003  SHIFT+L2 undo");
+}
+static void cfm_scene(int i) {
+    if (i < 0 || i >= scn_n) return;
+    if (scn_n < 2) { toast("THE ONLY SCENE STAYS"); return; }
+    if (sc_kill >= 0 || scn_next >= 0) { toast("WAIT FOR THE SCENE TO CHANGE"); return; }
+    char t[48]; snprintf(t, sizeof t, "DELETE SCENE %d?", i + 1);
+    cfm_open(CF_SCENE, i, 0, t, i == scn_cur ? "it plays: the next one takes over first  \003  no undo" : "its twelve pads go  \003  no undo");
+}
+static void cfm_prj(int sc) {
+    if (!prj_sec_resets(sc)) { toast("NOTHING TO RESET HERE"); return; }
+    char t[48]; snprintf(t, sizeof t, "RESET %s?", prj_sec_name[sc]);
+    cfm_open(CF_PRJ, sc, 0, t, sc == JS_SYS ? "the theme back to BRICK" : "every setting here back to its default");
+}
+static void cfm_do(void) {
+    char b[48];
+    switch (cfm) {
+    case CF_PAD:
+        if (cfm_arg >= 0) { pad_reset(cfm_arg, PP_ALL); snprintf(b, sizeof b, "PAD %d CLEARED", cfm_arg + 1); toast(b); break; }
+        { int n = 0; push_undo(); for (int i = 0; i < NSLOT; i++) if (gsel_in(i)) { pad_reset(i, PP_ALL | PP_NOUNDO); n++; }   // one undo step for them all
+          snprintf(b, sizeof b, "%d PADS CLEARED", n); toast(b); }
+        break;
+    case CF_PART: pad_reset(cfm_arg, cfm_part); toast("CLEARED"); break;
+    case CF_PRJ: prj_reset_sec(cfm_arg); snprintf(b, sizeof b, "%s RESET", prj_sec_name[cfm_arg]); toast(b); break;
+    case CF_SCENE:
+        if (cfm_arg != scn_cur) { scene_del(cfm_arg); break; }
+        scene_go(cfm_arg + 1 < scn_n ? cfm_arg + 1 : cfm_arg - 1);   // the next one takes over (scene_go polls: the mark only after it)
+        if (scn_next < 0) toast("THE SCENE CANNOT CHANGE NOW"); else sc_kill = cfm_arg;
+        break;
+    }
+    cfm = 0;
+}
+static void scene_kill_tick(void) {      // the open scene that was deleted: gone as soon as the next one plays
+    if (sc_kill < 0 || scn_next >= 0) return;
+    int i = sc_kill; sc_kill = -1;
+    if (i != scn_cur) scene_del(i);
+}
+static void cfm_key(int k, int down) {
+    if (!down) { if (k == K_EDIT && !used[K_EDIT]) { if (cfm_cur == 0) cfm_do(); else cfm = 0; } return; }
+    if (k != K_EDIT) used[k] = 1;   // EDIT acts on its release
+    if (k == K_LEFT || k == K_RIGHT || k == K_UP || k == K_DOWN) cfm_cur = !cfm_cur;
+    else if (k == K_Y || k == K_OPT) cfm = 0;
+}
 static void delete_action(void) {   // OPTION + EDIT
     switch (tab) {
-    case T_GRID: act_steps_clear(sel); break;
+    case T_GRID: cfm_pad(gsel_on() ? -1 : sel, PP_ALL, ""); break;   // the pad, or every pad of the selection
+    case T_PRJ:
+        if (!jcol) { cfm_prj(jsec); break; }
+        if (!prj_row_resets(jcur)) break;
+        { int ui = jcur >= J_HINT && jcur <= J_MXLINK; if (!ui && jcur != J_THEME) push_undo(); prj_reset_row(jcur); if (ui) ui_cfg_save(); toast("DEFAULT"); }
+        break;
     case T_SEQ: seq_delete(); break;
     case T_PAT: if (sl_r == 2) break;
         if (pfol) { act_follow_loop(sel, fol_pat()); break; }
@@ -3354,6 +3474,7 @@ static void key_event(int k, int down) {
     if (learning && learn_key(k, down)) return;
     if (exporting) { export_key(k, down); return; }
     if (asking) { ask_key(k, down); return; }
+    if (cfm) { cfm_key(k, down); return; }
     if (naming) { nm_key(k, down); return; }
     if (ui_simple && simple_key(k, down)) return;   // the simple view: its own keys (NOTES lets the steps' keys through)
     if (k == K_EDIT && down && !browsing && !slicing && !rolling && !theming && !iconing && !perform && tab == T_SEQ && srow >= 3 && is_synth(sel) && cur_par() != P_SAMPLE) gb_audition();
@@ -4380,6 +4501,7 @@ static void draw(void) {
         ui2_header(); }
     ui_popup(); ui_cross();
     if (asking) draw_ask2();
+    if (cfm) draw_cfm2();
 shown:;
     ui_quit_hold(); adv_hold_draw();
     if (th_sel == 4) lcd_mask();           // GAMEBOY: the LCD's pixel grid over everything (user, 2026-11-14)

@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+- OPTION+EDIT on a whole thing asks YES / NO first (NO is under the cursor), then puts it back as in an empty project:
+  a pad on HOME (or every selected pad): its sound, effects, patterns, mix, look and name on this scene; a card inside a
+  pad: PATTERN (all 16 patterns), SOUND (no instrument, no sample), FX, MOD, MIX, LOOK; PATTERN's list: STEPS (this
+  pattern), SELECT (all 16), RECORD (its settings); MOD's list: the LFOs, the automation, the duck; a PROJECT section
+  (SONG, PLAY, RECORD, INTERFACE, MIXER, SYSTEM = the theme). SHIFT+L2 undoes it. On a PROJECT setting OPTION+EDIT sets
+  its default at once.
+- A scene is deleted after YES (was OPTION+EDIT twice); the open one hands over to the next scene, then goes.
+- F1+F2 held 3 s goes to the simple view; the MENU quit is a red ring.
+
 ## 1.0 beta (2026-11-16)
 
 A new interface and scenes. The numbering starts again with this beta.
