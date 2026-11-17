@@ -90,7 +90,7 @@ Every synth engine has factory presets in categories and room for your own.
 
 ## Simple view
 
-PROJECT > INTERFACE > VIEW = SIMPLE: three large screens for playing, also for a child (with the kid lock nothing gets
+PROJECT > INTERFACE > VIEW = SIMPLE, or hold F1+F2 for 3 seconds: three large screens for playing, also for a child (with the kid lock nothing gets
 erased). F1/F2 change the screen, L1/R1 the pad, hold F1+F2 for 3 seconds to leave.
 
 | PLAY | NOTES | SOUND |
@@ -140,7 +140,7 @@ themes. To update, replace the launcher and `brickpad-1.0/brickpad` only.
 | PLAY | play / stop |
 | Y | back one level; on HOME and in the mixer: mute |
 | X | HOME: the pad's clip; per screen: solo, insert on/off, chord |
-| F1 / F2 | HOME: the next screen; inside a pad: the next pad; F1+F2: PROJECT |
+| F1 / F2 | HOME: the next screen; inside a pad: the next pad; F1+F2: PROJECT; F1+F2 held 3 s: the simple view and back |
 | SHIFT | the second layer; inside a pad SHIFT+arrow jumps to a category |
 | L1 / R1 | pages, lanes, slots, the mixer drawer |
 | SHIFT+L2 | undo |

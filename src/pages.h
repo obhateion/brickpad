@@ -550,7 +550,7 @@ static void draw_tree(void) {
 static const char *const ab_name[AB_N] = {"EVERYWHERE", "HOME", "INSIDE A PAD", "STEPS", "PIANO ROLL", "SOUND", "FX AND MOD", "MIXER", "PADS, KEYS, RECORD", "PROJECT AND FILES", "SIMPLE VIEW"};
 static const char *const ab_rows[AB_N][19] = {
     {"PLAY play / stop", "Y back", "EDIT open, do it", "EDIT+ARROWS change the value (held: shown big)", "OPT listen to the pad", "OPT+EDIT delete, or the default value",
-     "F1/F2 the next pad (on HOME: the next screen)", "F1+F2 PROJECT, again: back where you were", "SHIFT+ARROW inside a pad: straight to a category",
+     "F1/F2 the next pad (on HOME: the next screen)", "F1+F2 PROJECT, again: back where you were", "F1+F2-3S the simple view (hold)", "SHIFT+ARROW inside a pad: straight to a category",
      "SHIFT+L2 undo", "SHIFT+OPT copy", "SHIFT+EDIT paste", "MENU pads to play, again: keys, again: back", "MENU+PLAY record, twice: capture what was played",
      "MENU-3S quit BrickPad (hold)", "SHIFT+PLAY never: the system's own", "#BRICKPAD (C) 2026 TIMOTHY GURTO (OBHATEION)"},
     {"EDIT open the pad (an empty one: choose its engine)", "X start / stop the clip of this pad", "PLAY all clips", "Y mute", "SHIFT+Y freeze the pad",

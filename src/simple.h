@@ -63,6 +63,31 @@ static int simple_key(int k, int down) {  // 1 = the key is used up here; 0 = NO
     else if (k == K_OPT) act_listen(sel);
     return 1;
 }
+static void sv_ring(int cx, int cy, int r, float a0, float a1, int t, Col c);
+static void sv_arc(int cx, int cy, int r, float f0, float f1, Col c);
+// 2026-11-17 (user): F1+F2 held for 3 s in the advanced view goes into the simple view, as the same hold there comes back.
+// The tap still opens PROJECT at once; the ring appears over it after a quarter of a second.
+static Uint32 adv_hold;
+static void adv_hold_draw(void) {
+    if (!adv_hold) return;
+    if (ui_simple || !held[K_F1] || !held[K_F2]) { adv_hold = 0; return; }
+    Uint32 now = SDL_GetTicks(); int el = (int)ms_since(now, adv_hold); char b[48];
+    if (el >= 3000) { adv_hold = 0; if (tab == T_PRJ) prj_leave(); ui_simple = 1; ui_cfg_save(); sv_mode = 0; simple_sync(); toast("SIMPLE VIEW"); return; }
+    if (el < 250) return;
+    hold_ring(el, C_PLAY, "F1+F2", "to go to the simple view", NULL);
+}
+// A hold of 3 s, drawn the same everywhere (2026-11-17, user): a closed grey circle, the colour filling it from 12 o'clock,
+// the seconds left in the middle. F1+F2 green, MENU (quit) red.
+static void hold_ring(int el, Col c, const char *key, const char *what, const char *note) {
+    char b[48]; int left = el >= 3000 ? 0 : 3 - el / 1000; float f = el / 3000.f; if (f > 1) f = 1;
+    ui_shade(215);
+    sv_ring(512, 300, 84, 0, 2 * (float)M_PI, 14, C_LINE);
+    if (f > 0) sv_ring(512, 300, 84, -(float)M_PI / 2, (float)M_PI * (-0.5f + 2 * f), 14, c);
+    snprintf(b, sizeof b, "%d", left); ftext(512 - ftext_w(FT_XB, b) / 2, 280, FT_XB, C_WHITE, b);
+    snprintf(b, sizeof b, "hold %s for %d more second%s", key, left, left == 1 ? "" : "s"); ftext(512 - ftext_w(FT_MB, b) / 2, 420, FT_MB, C_WHITE, b);
+    ftext(512 - ftext_w(FT_MB, what) / 2, 452, FT_MB, C_WHITE, what);
+    if (note) ftext(512 - ftext_w(FT_S, note) / 2, 500, FT_S, C_DIM, note);
+}
 static void sv_ring(int cx, int cy, int r, float a0, float a1, int t, Col c) {   // an arc t px thick: one polyline per radius
     SDL_Point pt[97]; int n = (int)((a1 - a0) / ((float)M_PI * 2) * 96) + 1; if (n < 2) n = 2; if (n > 97) n = 97;   // (thousands of discs cost the Brick 2026-11-14)
     SDL_SetRenderDrawColor(R, c.r, c.g, c.b, 255);
@@ -129,10 +154,6 @@ static void draw_simple(void) {
     if (sv_exit && held[K_F1] && held[K_F2]) {       // P4: the way out is a hold, with a ring that fills
         int el = (int)ms_since(now, sv_exit);
         if (el >= 3000) { ui_simple = 0; sv_exit = 0; ui_cfg_save(); used[K_F1] = used[K_F2] = 1; set_tab(T_GRID); ui_cat = -1; return; }
-        if (el > 250) { ui_shade(215); sv_arc(512, 300, 84, 0, 1, C_LINE); sv_ring(512, 300, 84, -(float)M_PI / 2, (float)M_PI * (-0.5f + 2 * el / 3000.f), 14, C_PLAY);
-            snprintf(b, sizeof b, "%d", 3 - el / 1000); ftext(512 - ftext_w(FT_XB, b) / 2, 280, FT_XB, C_WHITE, b);
-            snprintf(b, sizeof b, "hold F1+F2 for %d more second%s", 3 - el / 1000, 3 - el / 1000 == 1 ? "" : "s"); ftext(512 - ftext_w(FT_MB, b) / 2, 420, FT_MB, C_WHITE, b);
-            const char *t = "to leave the simple view"; ftext(512 - ftext_w(FT_MB, t) / 2, 452, FT_MB, C_WHITE, t);
-            if (ui_lock) { t = "kid lock: deleting and overwriting are off"; ftext(512 - ftext_w(FT_S, t) / 2, 500, FT_S, C_DIM, t); } }
+        if (el > 250) hold_ring(el, C_PLAY, "F1+F2", "to leave the simple view", ui_lock ? "kid lock: deleting and overwriting are off" : NULL);
     }
 }

@@ -26,12 +26,12 @@ a pad (its sound, effects, sends, volume, patterns) belongs to its scene.
 | PLAY | play / stop |
 | Y | back one level. On HOME and in the mixer: mute |
 | X | HOME: start / stop the pad's clip. Elsewhere: solo, insert on / off, chord |
-| F1 / F2 | HOME: the next screen. Inside a pad: the next pad, the same page. F1+F2: PROJECT, again: back where you were |
+| F1 / F2 | HOME: the next screen. Inside a pad: the next pad, the same page. F1+F2: PROJECT, again: back where you were. F1+F2 held 3 s: the simple view |
 | SHIFT | the second layer. Inside a pad SHIFT+arrow jumps to a category |
 | L1 / R1 | pages, lanes, slots, LFOs; in the mixer the drawer and FREEZE |
 | SHIFT+L2 | undo |
 | SHIFT+OPTION / SHIFT+EDIT | copy / paste |
-| MENU | pads to play, again keys, again back. MENU+PLAY records. Hold 3 s: quit |
+| MENU | pads to play, again keys, again back. MENU+PLAY records. Hold 3 s: quit (a red ring counts down) |
 
 SHIFT+PLAY is the system's own combination: never use it inside BrickPad.
 
@@ -214,7 +214,7 @@ scene in turn, BARS each, into one file; ONE PER PAD writes a file per pad of th
 
 ## 8. Simple view
 
-PROJECT > INTERFACE > VIEW = SIMPLE: three large screens for playing. F1 / F2 change the screen, L1 / R1 the pad (on
+PROJECT > INTERFACE > VIEW = SIMPLE, or F1+F2 held for 3 s (a green ring counts down): three large screens for playing. F1 / F2 change the screen, L1 / R1 the pad (on
 PLAY: the scene), hold F1+F2 for 3 s to leave.
 
 - **PLAY**: the pads as tiles; EDIT plays, EDIT+up/down volume, Y quiet.

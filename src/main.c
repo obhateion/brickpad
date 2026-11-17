@@ -3369,7 +3369,7 @@ static void key_event(int k, int down) {
     }
     if (k == K_F1 || k == K_F2) {        // tabs on release, so that F1+F2 does not move first
         int other = k == K_F1 ? K_F2 : K_F1;
-        if (down && held[other]) { used[K_F1] = used[K_F2] = 1; tab_project(); }
+        if (down && held[other]) { used[K_F1] = used[K_F2] = 1; tab_project(); adv_hold = SDL_GetTicks() | 1; }   // a tap: PROJECT; held 3 s: the simple view
         else if (!down && !used[k]) { if (perform == 1 && held[K_SHIFT]) act_scene(k == K_F2 ? 1 : -1); else if (in_pad() && !perform) pad_step(k == K_F2 ? 1 : -1); else { ui_cat = -1; tab_step(k == K_F2 ? 1 : -1); } }
         return;
     }
@@ -4381,7 +4381,7 @@ static void draw(void) {
     ui_popup(); ui_cross();
     if (asking) draw_ask2();
 shown:;
-    ui_quit_hold();
+    ui_quit_hold(); adv_hold_draw();
     if (th_sel == 4) lcd_mask();           // GAMEBOY: the LCD's pixel grid over everything (user, 2026-11-14)
     Uint64 tp = SDL_GetPerformanceCounter(); draw_build_ms += (tp - t_draw0) * 1000.0 / SDL_GetPerformanceFrequency();
     SDL_RenderPresent(R);

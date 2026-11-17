@@ -214,13 +214,10 @@ static void ui_empty(int x, int y, int w, int h, const char *what, const char *h
     ftext(x + w / 2 - ftext_w(FT_M, how) / 2, y + h / 2 + 8, FT_M, C_DIM, how);
 }
 static int any_sound(void) { for (int s = 0; s < NSLOT; s++) if (has_sound(s)) return 1; return 0; }
-static void ui_quit_hold(void) {          // MENU held: how long until the app quits (3 s, main loop), so a long press is never a surprise
-    if (!menu_down) return; Uint32 d = SDL_GetTicks() - menu_down; if (d < 400) return;
-    enum { PW = 560, PX = (W - PW) / 2, PY = 300, PH = 132 }; int f = clampi((int)(d - 400) * 100 / 2600, 0, 100);
-    rframe(PX, PY, PW, PH, 12, 3, C_RED, C_CELL);
-    ftext(PX + 24, PY + 16, FT_MB, C_WHITE, "QUIT BRICKPAD");
-    const char *r = "release MENU to stay"; ftext(PX + PW - 24 - ftext_w(FT_M, r), PY + 16, FT_M, C_DIM, r);
-    rect(PX + 24, PY + PH - 46, PW - 48, 14, C_LINE, 1); rect(PX + 24, PY + PH - 46, (PW - 48) * f / 100, 14, C_RED, 1);
+static void hold_ring(int el, Col c, const char *key, const char *what, const char *note);   // simple.h
+static void ui_quit_hold(void) {          // MENU held: how long until the app quits (3 s, main loop): the same ring as F1+F2, red
+    if (!menu_down) return; int d = (int)(SDL_GetTicks() - menu_down); if (d < 250) return;
+    hold_ring(d, C_RED, "MENU", "to quit BrickPad", "release MENU to stay");
 }
 
 // The pad hub (UI v2): PATTERN SOUND FX MOD MIX of the selected pad. EDIT opens one, Y goes back up (category -> hub ->
