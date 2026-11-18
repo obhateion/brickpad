@@ -236,6 +236,8 @@ int track_bars(int slot);                // effective bars of a loop (0 = not a 
 float track_bpm(int slot);
 void relayout(int slot);                 // lay slices out on the current pattern
 void engine_set_sample(int slot, Sample *s);  // ownership passes to engine; NULL clears
+int engine_stop_pending(void);
+void engine_queue_stop(int pending);
 void engine_transport(int play);          // 1 start from bar 1, 0 stop
 void engine_stop_all(void);
 void engine_collect_garbage(void);        // frees retired samples (UI thread)

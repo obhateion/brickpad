@@ -33,6 +33,6 @@
   <text x="80" y="226" fill="#d9d9da" font-size="26">sampler · synth · clip sequencer</text>
   <text x="80" y="262" fill="#626877" font-size="22">for the TrimUI Brick handheld</text>
   <rect x="80" y="288" width="150" height="36" rx="4" fill="#3fe0d0"/>
-  <text x="155" y="313" fill="#0b0c10" font-size="20" font-weight="700" text-anchor="middle">v1.0 BETA</text>
+  <text x="155" y="313" fill="#0b0c10" font-size="20" font-weight="700" text-anchor="middle">v1.1 BETA</text>
   <text x="248" y="313" fill="#626877" font-size="18">12 pads · 16 scenes · 4 engines · 11 effects</text>
 </svg>

@@ -121,6 +121,9 @@ static void modmenu_key(int k, int down) {
         return; }
     if (k == K_Y) { modmenu = 0; hub_open(); hub_cur = PC_MOD; return; }
     if (k == K_PLAY) { play_key(); return; }
+    if ((k == K_EDIT && held[K_OPT]) || (k == K_OPT && held[K_EDIT])) { used[K_EDIT] = used[K_OPT] = 1;   // the four LFOs, the automation of every pattern, the duck
+        static const int part[3] = {PP_LFO, PP_AUTO, PP_DUCK}; static const char *const what[3] = {"THE 4 LFOS", "ALL AUTOMATION", "THE DUCK"};
+        cfm_pad(sel, part[clampi(mm_cur, 0, 2)], what[clampi(mm_cur, 0, 2)]); return; }
     if (k == K_OPT) { act_listen(sel); return; }
     if (k == K_UP || k == K_LEFT) mm_cur = (mm_cur + 2) % 3;
     if (k == K_DOWN || k == K_RIGHT) mm_cur = (mm_cur + 1) % 3;
@@ -139,7 +142,7 @@ static void draw_modmenu(void) {
         if (c == 2) { const PadMix *pm = &song.mix.pad[sel]; (void)pm; snprintf(b, sizeof b, "the pad ducks under another one: curve, source, depth, length"); }
         ftext(CX + 38, y + 56, FT_M, on ? C_WHITE : C_DIM, b);
     }
-    draw_footer("EDIT OPEN  F1/F2 PAD  Y BACK");
+    draw_footer("EDIT OPEN  F1/F2 PAD  Y BACK  OPT+EDIT CLEAR");
 }
 
 // ---- MOD > LFO (A18): LFO 1-4 as tabs (L1/R1), its shape, seven cards (the 1.2 rows: lrow) ----
@@ -413,7 +416,7 @@ static void draw_duck2(void) {
 }
 
 // ---- SCENES (A02, HOME): a row per scene, each its own twelve pads (a dot per pad with a sound, bigger with notes); the last row makes one ----
-static int sc_cur, sc_del = -1; static Uint32 sc_del_t;
+static int sc_cur;
 static int scene_count(void) { return scn_n; }
 static void scene_key(int k, int down) {
     int rows = scn_n + (scn_n < NSCENE);
@@ -423,11 +426,8 @@ static void scene_key(int k, int down) {
             else if (sc_cur == scn_cur && scn_next < 0) toast("THIS SCENE IS OPEN");
             else scene_go(sc_cur); }
         return; }
-    if ((k == K_EDIT && held[K_OPT]) || (k == K_OPT && held[K_EDIT])) {   // twice: the scene goes
-        used[K_EDIT] = used[K_OPT] = 1; if (sc_cur >= scn_n) return;
-        if (sc_del == sc_cur && ms_since(SDL_GetTicks() | 1, sc_del_t) < 3000) { scene_del(sc_cur); sc_del = -1; sc_cur = clampi(sc_cur, 0, scn_n - 1); }
-        else { sc_del = sc_cur; sc_del_t = SDL_GetTicks() | 1; toast("AGAIN TO DELETE THE SCENE"); }
-        return; }
+    if ((k == K_EDIT && held[K_OPT]) || (k == K_OPT && held[K_EDIT])) {   // the scene goes, after YES (2026-11-17: was twice)
+        used[K_EDIT] = used[K_OPT] = 1; if (sc_cur < scn_n) cfm_scene(sc_cur); return; }
     if (k == K_X) { scene_new(sc_cur >= scn_n ? scn_cur : sc_cur); sc_cur = scn_n - 1; return; }   // a copy: of this one, or of the open one
     if (k == K_Y) { scening = 0; return; }
     if (k == K_PLAY) { play_key(); return; }
@@ -554,10 +554,10 @@ static const char *const ab_rows[AB_N][19] = {
      "SHIFT+L2 undo", "SHIFT+OPT copy", "SHIFT+EDIT paste", "MENU pads to play, again: keys, again: back", "MENU+PLAY record, twice: capture what was played",
      "MENU-3S quit BrickPad (hold)", "SHIFT+PLAY never: the system's own", "#BRICKPAD (C) 2026 TIMOTHY GURTO (OBHATEION)"},
     {"EDIT open the pad (an empty one: choose its engine)", "X start / stop the clip of this pad", "PLAY all clips", "Y mute", "SHIFT+Y freeze the pad",
-     "SHIFT+X name the pad", "SHIFT+DPAD select several pads", "F1/F2 PADS, SCENES, MIXER", "#SCENES", "EDIT launch the scene (its own twelve pads)", "X a copy of it", "OPT+EDIT twice: delete it", "+ NEW SCENE: empty pads",
+     "SHIFT+X name the pad", "SHIFT+DPAD select several pads", "OPT+EDIT clear the pad, or the selected ones (YES / NO)", "F1/F2 PADS, SCENES, MIXER", "#SCENES", "EDIT launch the scene (its own twelve pads)", "X a copy of it", "OPT+EDIT delete it (YES / NO)", "+ NEW SCENE: empty pads",
      "#UP TO 16 SCENES; TEMPO, KEY, MASTER, RETURNS ARE SHARED"},
     {"EDIT open the category or the page", "ARROWS choose", "Y back up: page, category, HOME", "F1/F2 the next pad, the same page",
-     "SHIFT+UP PATTERN", "SHIFT+RIGHT SOUND", "SHIFT+DOWN FX", "SHIFT+LEFT MIX", "#LOOK: THE ICON AND ITS COLOUR", "EDIT set", "L1/R1 the group of icons",
+     "SHIFT+UP PATTERN", "SHIFT+RIGHT SOUND", "SHIFT+DOWN FX", "SHIFT+LEFT MIX", "OPT+EDIT on a card or a list: clear it (YES / NO)", "#LOOK: THE ICON AND ITS COLOUR", "EDIT set", "L1/R1 the group of icons",
      "DOWN from the last row: the colours", "#PAD MENU AS A TREE (PROJECT > INTERFACE)", "<> the level: HOME, pad, category, pages", "^v choose", "EDIT open it"},
     {"EDIT a note on the step, or off", "EDIT+ARROWS the value of the step", "L1/R1 the lane: note, velocity, chance...", "OPT listen", "OPT+<> walk and listen",
      "X+<> the next pad", "OPT+EDIT delete the step, or its default", "XX (twice) double the clip", "SHIFT+X random", "#SELECT: THE 16 PATTERNS OF THE PAD",
@@ -612,8 +612,8 @@ static void draw_prj2(void) {
         ftext(970 - ftext_w(f, b), y + 10, f, i == J_PROJ && prj_dirty() ? C_ORANGE : C_WHITE, b);
         if (i == J_TEMPO || i == J_SWING) { int v = i == J_TEMPO ? (song.tempo - 40) * 100 / 260 : song.swing * 100 / 75; rect(320, y + ch - 26, 650, 8, C_LINE, 1); rect(320, y + ch - 26, 650 * clampi(v, 0, 100) / 100, 8, ec, 1); }
         if (i == J_MASTER && ch >= 70) { rect(320, y + ch - 26, 650, 8, C_LINE, 1); rect(320, y + ch - 26, 650 * song.master / 100, 8, ec, 1); } }
-    draw_footer(!jcol ? "EDIT ENTER  Y BACK  ^v SECTION" : jcur == J_TEMPO ? "EDIT TAP IN TIME  EDIT+<> VALUE  Y BACK  L1/R1 HELD NUDGE  < SECTIONS"
-                                                    : "EDIT+<> VALUE  EDIT DO IT  Y BACK  < SECTIONS");
+    draw_footer(!jcol ? "EDIT ENTER  Y BACK  ^v SECTION  OPT+EDIT RESET IT" : jcur == J_TEMPO ? "EDIT TAP IN TIME  EDIT+<> VALUE  Y BACK  L1/R1 HELD NUDGE  < SECTIONS  OPT+EDIT DEFAULT"
+                                                    : "EDIT+<> VALUE  EDIT DO IT  Y BACK  < SECTIONS  OPT+EDIT DEFAULT");
 }
 
 // ---- MIXER > RETURN A / RETURN B / MASTER: every parameter of the unit as cards (the 1.2 cursor: fcol the column, frow the row) ----

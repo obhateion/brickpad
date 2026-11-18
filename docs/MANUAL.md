@@ -1,4 +1,4 @@
-# BrickPad 1.0 beta: manual
+# BrickPad 1.1 Beta: manual
 
 BrickPad is a sampler, synthesizer and clip sequencer for the TrimUI Brick. Everything is done with the d-pad and
 the buttons. Each screen shows its keys in the footer, and **PROJECT > ABOUT** lists every key by topic.
@@ -22,7 +22,7 @@ a pad (its sound, effects, sends, volume, patterns) belongs to its scene.
 |---|---|
 | D-pad | move the cursor |
 | EDIT (B) | tap: open, act. Hold + d-pad: change the value (left/right fine, up/down coarse); held, the value is shown big |
-| OPTION (A) | listen to the pad. OPTION+EDIT: delete, or back to the default |
+| OPTION (A) | listen to the pad. OPTION+EDIT: delete, or back to the default. On a whole thing (a pad on HOME, a scene, a card inside a pad, a PROJECT section) a YES / NO window asks first |
 | PLAY | play / stop |
 | Y | back one level. On HOME and in the mixer: mute |
 | X | HOME: start / stop the pad's clip. Elsewhere: solo, insert on / off, chord |
@@ -46,7 +46,7 @@ F1 / F2 step through **PADS**, **SCENES** and **MIXER**.
 Twelve tiles: number, name, engine, icon, pattern and a bar of how far the clip has played.
 
 - EDIT opens the pad. On an empty pad it first asks for an engine: SAMPLER, GRAND, ACID or CLOUD.
-- X starts or stops the pad's clip (a pad without notes plays its sound). PLAY starts every clip, again stops all.
+- X starts or stops the pad's clip (a pad without notes plays its sound). PLAY starts every clip. Press again to queue a global stop on the launch grid, or press it a third time before the boundary to cancel.
 - Y mute, SHIFT+Y freeze, SHIFT+X name, SHIFT+d-pad selects several pads (PLAY or EDIT then launch them together).
 
 ### SCENES
@@ -60,7 +60,7 @@ for the bar blinks.
   out quickly.
 - `+ NEW SCENE` (the last row): EDIT makes a scene with empty pads.
 - X makes a copy of the scene under the cursor, with all its sounds.
-- OPTION+EDIT twice deletes a scene (not the one that is open).
+- OPTION+EDIT deletes a scene after a YES / NO window. The open one hands over to the next scene first. No undo.
 
 Undo does not go back across a scene change.
 
@@ -240,17 +240,17 @@ the tempo in the name (`120bpm`, `Amin`); key, tempo and bars are read from the 
 
 ## 11. Install, update, remove
 
-1. Unpack `brickpad-1.0-beta-trimui-brick.zip`. Copy `BrickPad 1.0 beta.sh` and the folder `brickpad-1.0` into
+1. Unpack `brickpad-1.1-beta-trimui-brick.zip`. Copy `BrickPad 1.1 Beta.sh` and the folder `brickpad-1.1` into
    `roms/ports/` on the card (on the Brick: `/userdata/roms/ports/`).
-2. Put WAV or OGG files into `roms/ports/brickpad-1.0/samples/`. No samples are included.
-3. Update the game list and start BrickPad 1.0 beta from Ports. Hold MENU for 3 seconds to quit.
+2. Put WAV or OGG files into `roms/ports/brickpad-1.1/samples/`. The SWITCHBACK kit is included.
+3. Update the game list and start BrickPad 1.1 Beta from Ports. Hold MENU for 3 seconds to quit.
 
-Your work stays in `roms/ports/brickpad-1.0/`: `state.bin` and `scenes.bin` (autosave), `projects/`, `exports/`,
-`frozen/`, `themes/`, `ui.cfg` (the interface settings). To update, replace the launcher and `brickpad-1.0/brickpad`
+Your work stays in `roms/ports/brickpad-1.1/`: `state.bin` and `scenes.bin` (autosave), `projects/`, `exports/`,
+`frozen/`, `themes/`, `ui.cfg` (the interface settings). To update, replace the launcher and `brickpad-1.1/brickpad`
 only. To remove BrickPad, delete both.
 
-The demos `DEMO/HOUSE` and `DEMO/NEON` use the sample packs they were made with; without them only their synth pads
-sound.
+Open `DEMO/SWITCHBACK` in PROJECT → FILE and press PLAY. Its four electro/breakbeat scenes use the included kit.
+`DEMO/NEON` uses its original sample packs. Its synth pads can play without those packs.
 
 ---
 

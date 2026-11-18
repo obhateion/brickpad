@@ -71,6 +71,7 @@ static Voice voices[NVOICE];
 static unsigned age_ctr;
 static int last_voice = -1;              // the voice start_voice just took, -1 none
 static int playing, play_step[NSLOT];
+static int stop_pending, frozen_stop_at[NSLOT];
 static volatile int skip_step[NSLOT];    // step+1 to pass over once: already heard when it was recorded
 static uint32_t pos32;
 static uint32_t anchor[NSLOT];            // where each clip began (1/32): steps count from there, as a clip launched in Ableton
@@ -690,16 +691,43 @@ static void scene_swap(uint32_t i) {
     for (int v = 0; v < NVOICE; v++) if (voices[v].on) { voices[v].fout = 0; if (voices[v].delay > 0) voices[v].on = 0; else if (voices[v].cut_in < 0) voices[v].cut_in = 0; }   // the old scene's tails: a short fade
     sw_req = 0; sw_force = 0; sw_done = 1;
 }
+static void stop_voices_on_edge(int slot, int offset) {
+    arp_n[slot] = 0;
+    frozen_stop_at[slot] = offset;
+    for (int i = 0; i < NVOICE; i++) {
+        Voice *v = &voices[i];
+        if (!v->on || v->slot != slot) continue;
+        if (v->delay > 0 && v->delay >= offset) { v->on = 0; continue; }
+        v->fout = 0;
+        if (v->cut_in < 0 || v->cut_in > offset) v->cut_in = offset;
+    }
+}
+
 static void tick(uint32_t i, double off, double f32) {
     uint32_t bar = (song.beats > 0 ? song.beats : 4) * 8; (void)bar;
     uint32_t q = (uint32_t)engine_quant32(); int edge = !q || i % q == 0;   // a launch quantum starts here
+    if (edge && __atomic_exchange_n(&stop_pending, 0, __ATOMIC_ACQ_REL)) {
+        for (int s = 0; s < NSLOT; s++) {
+            song.t[s].on = 0;
+            song.t[s].queued = -1;
+            want[s] = -1;
+            play_step[s] = -1;
+            stop_voices_on_edge(s, (int)off);
+        }
+        playing = 0;
+        return;
+    }
     if (sw_req && (edge || sw_force)) scene_swap(i);
     if (song.metro && i % 8 == 0) click = (typeof(click)){(int)off, 0, i % bar ? 1500.f : 2500.f, 0.35f};
     for (int s = 0; s < NSLOT; s++) {
         Track *t = &song.t[s];
         if (anchor_set[s]) { anchor[s] = anchor_req[s]; anchor_set[s] = 0; }
         if (edge && t->queued >= 0) { t->cur = t->queued; t->queued = -1; t->on = 1; anchor[s] = i; }
-        if (edge && want[s] >= 0) { if (want[s]) { t->on = 1; anchor[s] = i; } else t->on = 0; want[s] = -1; }
+        if (edge && want[s] >= 0) {
+            if (want[s]) { t->on = 1; anchor[s] = i; }
+            else { t->on = 0; play_step[s] = -1; stop_voices_on_edge(s, (int)off); }
+            want[s] = -1;
+        }
         frz_seq = -1;
         if (!t->on || i < anchor[s]) continue;
         if (fol_cur[s] != t->cur) { fol_cur[s] = t->cur; fol_n[s] = 0; }   // another pattern (by hand): count again
@@ -780,10 +808,12 @@ static void callback(void *u, Uint8 *stream, int len) {
             if (smp[c.slot]) q_push(&trashq, (Cmd){0, 0, 0, 0, smp[c.slot]});
             smp[c.slot] = c.p; break;
         case CMD_COUNT:
+            engine_queue_stop(0);
             playing = 0; pos32 = 0; next32 = 0; count_next = 0; count_left = c.slot;
             for (int s = 0; s < NSLOT; s++) { play_step[s] = -1; skip_step[s] = 0; }
             break;
         case CMD_TRANSPORT:
+            engine_queue_stop(0);
             count_left = -1;
             playing = (int)c.a; pos32 = 0; next32 = 0;
             for (int s = 0; s < NSLOT; s++) for (int j = 0; j < NLFO; j++) if (song.lfo[s][j].sync) lfos[s][j].ph = 0;   // synced LFOs start with the bar
@@ -809,10 +839,12 @@ static void callback(void *u, Uint8 *stream, int len) {
         }
         if (count_left >= 0) count_next -= n;
     }
+    for (int s = 0; s < NSLOT; s++) frozen_stop_at[s] = -1;
     if (playing) {
         double f32 = SR * 60.0 / tempo / 8;
-        while (next32 < n) { tick(pos32, next32, f32); pos32++; next32 += f32; }
-        next32 -= n;
+        while (playing && next32 < n) { tick(pos32, next32, f32); pos32++; next32 += f32; }
+        if (playing) next32 -= n;
+        else { pos32 = 0; next32 = 0; }
     }
     for (int s = 0; s < NSLOT; s++) if (arp_n[s]) arp_run(s, n);   // ARP: this buffer's notes
     for (int s = 0; s < NSLOT; s++) {      // GRAND DEEP: each GRAND pad's LFO, shared by its voices as on the mono original
@@ -945,9 +977,11 @@ static void callback(void *u, Uint8 *stream, int len) {
         int act = playing && song.t[s].on, at = frz_at[s]; frz_at[s] = -1;
         if (!act && frz_g[s] <= 0) { frz_pos[s] = -1; continue; }
         if (act && frz_g[s] <= 0) frz_g[s] = 1;    // a start is not faded in: the first hit keeps its attack
-        float g = frz_g[s], dg = act ? 0 : -g / n, *fb = frz_out[s]; long p = frz_pos[s]; const FrzBuf *F = &frz[s][frz_q[s] % NPAT];
+        int stop_at = frozen_stop_at[s];
+        float g = frz_g[s], dg = act || stop_at >= 0 ? 0 : -g / n, *fb = frz_out[s]; long p = frz_pos[s]; const FrzBuf *F = &frz[s][frz_q[s] % NPAT];
         for (int k = 0; k < n; k++) {
             if (k == at) { p = 0; frz_q[s] = frz_qn[s]; F = &frz[s][frz_q[s] % NPAT]; }
+            if (k == stop_at) dg = -g / (n - k);
             g += dg;
             if (F->d && p >= 0 && p < F->n) { fb[2 * k] = F->d[2 * p] * g; fb[2 * k + 1] = F->d[2 * p + 1] * g; } else fb[2 * k] = fb[2 * k + 1] = 0;
             if (p >= 0) p++;
@@ -1131,6 +1165,8 @@ int engine_want(int slot) { return slot >= 0 && slot < NSLOT ? want[slot] : -1; 
 uint32_t engine_anchor(int slot) { return slot >= 0 && slot < NSLOT ? anchor[slot] : 0; }
 void engine_set_anchor(int slot, uint32_t pos) { if (slot >= 0 && slot < NSLOT) { anchor_req[slot] = pos; anchor_set[slot] = 1; } }
 void engine_transport_skip(int slot, int step) { send((Cmd){CMD_TRANSPORT, slot + 1, 1.f, (float)step, 0}); }
+int engine_stop_pending(void) { return __atomic_load_n(&stop_pending, __ATOMIC_ACQUIRE); }
+void engine_queue_stop(int pending) { __atomic_store_n(&stop_pending, pending, __ATOMIC_RELEASE); }
 void engine_transport(int play) { send((Cmd){CMD_TRANSPORT, 0, (float)play, 0, 0}); }
 void engine_stop_all(void) { send((Cmd){CMD_STOP_ALL, 0, 0, 0, 0}); }
 void engine_collect_garbage(void) { Cmd c; while (q_pop(&trashq, &c)) sample_free(c.p); }
