@@ -3,7 +3,7 @@
 <p align="center">
   <a href="https://github.com/obhateion/brickpad/releases/latest"><b>Download</b></a> ·
   <a href="docs/MANUAL.md"><b>Manual</b></a> ·
-  <a href="docs/BrickPad-Manual.pdf"><b>Manual (PDF)</b></a> ·
+  <a href="docs/BrickPad-Manual.pdf"><b>1.0 beta manual (PDF)</b></a> ·
   <a href="README.ru.md"><b>По-русски</b></a> ·
   <a href="CHANGELOG.md"><b>Changelog</b></a> ·
   <a href="LICENSE"><b>Licence</b></a>
@@ -15,7 +15,7 @@ screen, no mouse, the hands stay on the device.
 
 ![A tour: HOME, scenes, the mixer and its drawer, a pad, the piano roll, SOUND, the jump, FX, LFO, steps, PROJECT](docs/images/tour.gif)
 
-*A tour of the interface on the HOUSE demo; the line under the screen says which keys were pressed.*
+*A tour of the interface from the 1.0 beta; the line under the screen says which keys were pressed.*
 
 > **Beta.** BrickPad is used every day on the device, but the project file format may still change.
 
@@ -103,32 +103,33 @@ erased). F1/F2 change the screen, L1/R1 the pad, hold F1+F2 for 3 seconds to lea
 You need a TrimUI Brick with Knulli and a way to copy files to it: the SD card in a computer, or the Knulli network
 share.
 
-1. Download `brickpad-1.0-beta-trimui-brick.zip` from the
+1. Download `brickpad-1.1-beta-trimui-brick.zip` from the
    [latest release](https://github.com/obhateion/brickpad/releases/latest) and unpack it:
    ```
-   BrickPad 1.0 beta.sh                       the launcher
-   brickpad-1.0/brickpad                      the program
-   brickpad-1.0/projects/DEMO/HOUSE.bpp       demo: six scenes
-   brickpad-1.0/projects/DEMO/NEON.bpp        demo
+   BrickPad 1.1 Beta.sh                       the launcher
+   brickpad-1.1/brickpad                      the program
+   brickpad-1.1/projects/DEMO/SWITCHBACK.bpp demo: four scenes
+   brickpad-1.1/projects/DEMO/NEON.bpp        demo
    ```
-2. Copy `BrickPad 1.0 beta.sh` and the folder `brickpad-1.0` into `roms/ports/` on the card (on the Brick itself:
+2. Copy `BrickPad 1.1 Beta.sh` and the folder `brickpad-1.1` into `roms/ports/` on the card (on the Brick itself:
    `/userdata/roms/ports/`). It has its own folder: an older BrickPad stays as it is.
-3. Make the folder `roms/ports/brickpad-1.0/samples/` and put your WAV or OGG files there, in any subfolders. Drums are
+3. Add your own WAV or OGG files in `roms/ports/brickpad-1.1/samples/`. Drums are
    recognised by their names and folders (kick, snare, hat...), loops by words or the tempo in the name (`120bpm`,
-   `Amin`). **No samples are included.**
-4. On the Brick, update the game list and start **BrickPad 1.0 beta** from **Ports**. Hold **MENU** for 3 seconds to
+   `Amin`). The original SWITCHBACK drum kit is included.
+4. On the Brick, update the game list and start **BrickPad 1.1 Beta** from **Ports**. Hold **MENU** for 3 seconds to
    quit (a ring shows how long is left).
 
-**Demo projects.** PROJECT → FILE → `DEMO/HOUSE` or `DEMO/NEON`. They use the sample packs they were made with; without
-them only their synth pads sound.
+**Demo projects.** Open `DEMO/SWITCHBACK` in PROJECT → FILE, then press PLAY. It is a four-scene electro/breakbeat
+project at 124 BPM and plays with the included drum kit. `DEMO/NEON` uses its original sample packs. Without those packs,
+its synth pads still play.
 
 **Sound.** BrickPad plays through PipeWire. If a Dirtywave M8 is plugged in and took the default output, the launcher
 switches the output back to the Brick's speaker and headphones. While BrickPad runs, the launcher keeps the CPU at full
 speed so that busy songs do not break up, and restores the old setting on exit.
 
-**Where your work is kept** (inside `roms/ports/brickpad-1.0/`): `state.bin` and `scenes.bin` are the autosave of what
+**Where your work is kept** (inside `roms/ports/brickpad-1.1/`): `state.bin` and `scenes.bin` are the autosave of what
 is open, `projects/` the saved projects, `exports/` the WAV files, `frozen/` the cache of frozen pads, `themes/` your
-themes. To update, replace the launcher and `brickpad-1.0/brickpad` only.
+themes. To update, replace the launcher and `brickpad-1.1/brickpad` only.
 
 ## Buttons
 
@@ -137,7 +138,7 @@ themes. To update, replace the launcher and `brickpad-1.0/brickpad` only.
 | D-pad | move the cursor |
 | EDIT (B) | tap: open, act; hold + d-pad: change the value (left/right fine, up/down coarse) |
 | OPTION (A) | listen to the pad; OPTION+EDIT: delete, or back to the default |
-| PLAY | play / stop |
+| PLAY | play / stop. With playback running, stops follow the clip launch grid |
 | Y | back one level; on HOME and in the mixer: mute |
 | X | HOME: the pad's clip; per screen: solo, insert on/off, chord |
 | F1 / F2 | HOME: the next screen; inside a pad: the next pad; F1+F2: PROJECT; F1+F2 held 3 s: the simple view and back |

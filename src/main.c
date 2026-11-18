@@ -586,6 +586,7 @@ static void rec_hit(int s, int slice, int note);
 static int play_solo;                    // the count was started from inside a pad: it stops with the last clip
 static int rec_wait;                     // a take is armed with the transport stopped: the first hit starts it
 static void transport_toggle(void);
+static void scn_unwait(void);
 // As in Ableton: with the count running a clip starts (from its step one) or stops on the next launch quantum
 // (PROJECT LAUNCH: 1/2/4 BARS, NONE = the next 1/32); pressing again before that cancels. Stopped: at once.
 static void clip_toggle(int s) {
@@ -839,11 +840,17 @@ static void play_key(void) {
     if (gsel_launch()) return;
     if (tab == T_GRID && !perform && !browsing && !iconing) {   // GRID (2026-11-12, user: "the old PLAY back on GRID: everything on, everything off")
         int any = 0; for (int s = 0; s < NSLOT; s++) any |= song.t[s].on || engine_want(s) == 1;
-        play_down = 0;                       // no hold here: the tap already is the stop
+        play_down = 0;
+        if (engine_stop_pending()) { engine_queue_stop(0); toast("STOP CANCELLED"); return; }
         if (engine_playing() && !any) {      // the count runs on with no clip: every clip with notes joins on the quantum
             int n = 0; for (int s = 0; s < NSLOT; s++) if (has_sound(s) && pat_used(cur_pat(s))) { engine_launch(s, 1); n++; }
             toast(n ? "ALL CLIPS START" : "NO CLIPS TO PLAY"); return; }
-        transport_toggle(); return;
+        if (engine_playing()) {
+            scn_unwait();
+            engine_queue_stop(1);
+            toast("STOP QUEUED");
+        } else transport_toggle();
+        return;
     }
     if (!has_sound(sel)) { toast("EMPTY PAD: NOTHING TO PLAY"); return; }
     clip_toggle(sel);                        // the pad's clip on or off at once, on the launch quantum
@@ -2006,6 +2013,7 @@ static void scenes_clear(void) {          // another project: one scene, the pla
 static void scene_go(int n) {             // launch: on the quantum while playing, at once when stopped
     scn_unwait();
     if (n < 0 || n >= scn_n || n == scn_cur || scn_next >= 0 || !scn[n] || !scn[scn_cur]) return;
+    engine_queue_stop(0);
     scn_mix_sync(); scn_preload(n);
     static Song in; in = *scn[n]; int any = 0;
     for (int s = 0; s < NSLOT; s++) { Track *t = &in.t[s]; t->queued = -1; t->cur = (int8_t)clampi(t->cur, 0, NPAT - 1);
@@ -2745,6 +2753,7 @@ static void rec_toggle(double pos, Uint32 pressed) {   // MENU+PLAY: pos and tim
     if (rec && engine_counting() >= 0) { transport_toggle(); toast("REC CANCELLED"); return; }
     if (rec && rec_wait) { rec = 0; rec_wait = 0; toast("REC CANCELLED"); return; }
     if (rec) { rec_finish(pos); return; }
+    engine_queue_stop(0);
     push_undo();
     int playing = engine_playing();
     rec_n = 0; rec_end = -1; rec_from = 0;

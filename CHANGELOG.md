@@ -1,6 +1,10 @@
 # Changelog
 
-## Unreleased
+## 1.1 Beta (2026-11-18)
+
+- Global and pad stops land on the PROJECT → LAUNCH grid. Press again before the boundary to cancel a queued stop.
+
+- SWITCHBACK: an original electro/breakbeat demo at 124 BPM with four scenes and its own bundled drum kit. It replaces HOUSE. NEON is included.
 
 - OPTION+EDIT on a whole thing asks YES / NO first (NO is under the cursor), then puts it back as in an empty project:
   a pad on HOME (or every selected pad): its sound, effects, patterns, mix, look and name on this scene; a card inside a
