@@ -303,24 +303,26 @@ static void draw_hub(void) {              // the cards of A03: stripe, name in t
 // PATTERN (UI v2): its pages as a list, STEPS (the roll when the pattern is one) and SELECT; RECORD comes with A04.
 static void patmenu_key(int k, int down) {
     if (!down) { if (k == K_EDIT && !used[K_EDIT]) { patmenu = 0;
-        if (pm_cur == 1) pat_open(); else if (pm_cur == 2) recpage = 1; else if (cur_pat(sel)->mode) roll_open(); else { srow = 1; scol = 0; lane = lane_first(); seq_clamp(); } } return; }   // STEPS open on the notes
+        if (pm_cur == 1) pat_open(); else if (pm_cur == 2) recpage = 1; else if (cur_pat(sel)->mode) roll_open(); else { srow = 1; scol = 0; lane = lane_first(); seq_clamp(); }
+        if (pm_cur == 3) rnd_open(); } return; }   // RANDOM: its window over the steps (or the roll)   // STEPS open on the notes
     if (k == K_Y) { hub_open(); hub_cur = PC_PATTERN; return; }
     if (k == K_PLAY) { play_key(); return; }
     if ((k == K_EDIT && held[K_OPT]) || (k == K_OPT && held[K_EDIT])) { used[K_EDIT] = used[K_OPT] = 1;   // STEPS: this pattern, SELECT: all 16, RECORD: its settings
-        if (pm_cur == 2) cfm_prj(JS_REC); else { char b[32]; snprintf(b, sizeof b, "PATTERN P%d", song.t[sel].cur + 1); cfm_pad(sel, pm_cur ? PP_PAT : PP_STEPS, pm_cur ? "ALL 16 PATTERNS" : b); } return; }
+        if (pm_cur == 3) return; if (pm_cur == 2) cfm_prj(JS_REC); else { char b[32]; snprintf(b, sizeof b, "PATTERN P%d", song.t[sel].cur + 1); cfm_pad(sel, pm_cur ? PP_PAT : PP_STEPS, pm_cur ? "ALL 16 PATTERNS" : b); } return; }
     if (k == K_OPT) { act_listen(sel); return; }
-    if (k == K_UP || k == K_LEFT) pm_cur = (pm_cur + 2) % 3;
-    if (k == K_DOWN || k == K_RIGHT) pm_cur = (pm_cur + 1) % 3;
+    if (k == K_UP || k == K_LEFT) pm_cur = (pm_cur + 3) % 4;
+    if (k == K_DOWN || k == K_RIGHT) pm_cur = (pm_cur + 1) % 4;
 }
 static void draw_patmenu(void) {
     enum { CX = 122, CWD = 778, CHT = 104, DY = 122, Y0 = 82 };
     const Track *t = &song.t[sel]; const Pattern *p = cur_pat(sel); int used = 0; for (int q = 0; q < NPAT; q++) used += pat_used(&t->pat[q]);
-    for (int c = 0; c < 3; c++) {
+    for (int c = 0; c < 4; c++) {
         int y = Y0 + c * DY, on = c == pm_cur; Col cc = C_CAT(PC_PATTERN); char b[96];
         rrect(CX, y, CWD, CHT, 8, on ? mix(C_SELBG, C_DIM, 40) : C_CELL);
         rect(CX, y, 9, CHT, cc, 1);
-        ftext(CX + 38, y + 12, FT_LB, cc, c == 2 ? "RECORD" : c ? "SELECT" : p->mode ? "ROLL" : "STEPS");
-        if (c == 2) snprintf(b, sizeof b, "count-in %d \3 quantize %s \3 play it on KEYS or PADS (MENU)", song.count_in, quant_name[song.rec_quant % 5]);
+        ftext(CX + 38, y + 12, FT_LB, cc, c == 3 ? "RANDOM" : c == 2 ? "RECORD" : c ? "SELECT" : p->mode ? "ROLL" : "STEPS");
+        if (c == 3) snprintf(b, sizeof b, "rhythm, notes or both \3 in the key and scale of %s", t->scale || t->key ? "the pad" : "the project");
+        else if (c == 2) snprintf(b, sizeof b, "count-in %d \3 quantize %s \3 play it on KEYS or PADS (MENU)", song.count_in, quant_name[song.rec_quant % 5]);
         else if (c) snprintf(b, sizeof b, "P%02d of %d used \3 length \3 division \3 what plays after", t->cur + 1, used);
         else snprintf(b, sizeof b, "%d steps \3 %s", p->len, div_name[p->div % 6]);
         ftext(CX + 38, y + 56, FT_M, on ? C_WHITE : C_DIM, b);
@@ -345,6 +347,13 @@ static void step_value(const Pattern *p, int i, int ln, int nsl, char *b) {   //
     case L_ACC: case L_SLD: snprintf(b, 8, "%s", p->slice[i] >= 0 && (p->slice[i] & (ln == L_ACC ? ACID_ACCENT : ACID_SLIDE)) ? (ln == L_ACC ? "ACC" : "SLD") : "-"); break;
     default: b[0] = 0;
     }
+}
+static void draw_phones(int x, int y) {   // the headphones (R2): lit = a note being put sounds; off = crossed out
+    Col c = hear_on ? C_ORANGE : C_DIM;
+    rect(x + 3, y, 22, 4, c, 1); rect(x, y + 3, 4, 14, c, 1); rect(x + 24, y + 3, 4, 14, c, 1);   // the band
+    rect(x - 2, y + 14, 9, 13, c, 1); rect(x + 21, y + 14, 9, 13, c, 1);                         // the cups
+    if (!hear_on) for (int i = 0; i < 30; i++) rect(x - 2 + i, y + 27 - i, 3, 3, C_RED, 1);
+    ftext(x + 38, y + 6, FT_S, C_DIM, "R2");
 }
 static void draw_steps2(void) {
     const Pattern *p = cur_pat(sel); Col ec = C_ENG(song.t[sel].type); int nsl = track_nslices(sel);
@@ -375,7 +384,8 @@ static void draw_steps2(void) {
         step_value(p, cs, L_TRIG, nsl, nb); snprintf(b, sizeof b, "step %d \3 %s \3 vel %d", cs + 1, nb, p->vel[cs]); }
     else snprintf(b, sizeof b, "step %d", cs + 1);
     ftext(W - 28 - ftext_w(FT_M, b), 660, FT_M, C_WHITE, b);
-    draw_footer(lane == L_TRIG || lane == L_SLICE ? "EDIT NOTE  L1/R1 LANE  Y BACK  EDIT+ARROWS VALUE  OPT LISTEN  OPT+<> WALK AND LISTEN  X+<> PAD  OPT+EDIT DELETE  XX DOUBLE CLIP  SHIFT+X RANDOM"
+    draw_phones(850, 16);
+    draw_footer(lane == L_TRIG || lane == L_SLICE ? "EDIT NOTE  L1/R1 LANE  Y BACK  L2 PIANO ROLL  R2 HEAR  EDIT+ARROWS VALUE  OPT LISTEN  OPT+<> WALK AND LISTEN  X+<> PAD  OPT+EDIT DELETE  XX DOUBLE CLIP  SHIFT+X RANDOM"
                                                   : "EDIT+ARROWS VALUE  L1/R1 LANE  Y BACK  OPT LISTEN  X+<> PAD  OPT+EDIT DEFAULT  XX DOUBLE CLIP  SHIFT+X RANDOM");
 }
 

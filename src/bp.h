@@ -74,7 +74,7 @@ typedef struct { int32_t n, pos[32]; } Cuts;
 
 // Mixer and effects (2026-11-09): per pad 2 insert slots, sends A (reverb) and B (delay); returns and master.
 #define NINS 2
-enum { FX_NONE, FX_COMP, FX_DIST, FX_CHORUS, FX_FLANGER, FX_PHASER, FX_FILTER, FX_CRUSH, FX_TAPE, FX_AUTOPAN, FX_RING, FX_MULTI, FX_N };
+enum { FX_NONE, FX_COMP, FX_DIST, FX_CHORUS, FX_FLANGER, FX_PHASER, FX_FILTER, FX_CRUSH, FX_TAPE, FX_AUTOPAN, FX_RING, FX_MULTI, FX_EQ, FX_N };   // EQ appended 2026-11-19: the numbers are saved
 typedef struct { uint8_t type, on; int8_t p[6]; } FxSlot;            // on 0 = bypass, the params are kept
 typedef struct { FxSlot ins[NINS]; uint8_t send_a, send_b, solo, flags; int8_t spare[4]; } PadMix;   // spare[0], spare[1]: DUCK (sidechain, 2026-11-11): the pad whose notes duck this one (0 off, 1..12) and how much (0..100)
 #define DK_SRC 0

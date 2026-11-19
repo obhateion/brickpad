@@ -1178,6 +1178,8 @@ static const char *slot_name(int s) { const Sample *x = engine_sample(s);   // t
 static const char *warp_name[6] = {"OFF", "BEATS", "REPITCH", "TONES", "TEXTURE", "COMPLEX"};
 #define PROWS 9
 static int srow = 1, scol = 0, lane;
+static int hear_on = 1;                  // the headphones (2026-11-19, user, as in Ableton): a note being put or moved sounds; R2 in STEPS and the roll
+static int edit_put;                     // the step under the cursor was put by this EDIT press (its release must not take it away)
 static int paint_anchor = -1, paint_val; static int8_t paint_snap[NSTEP];   // rows: -1 name, 0 header(2), 1-2 steps(16), 3+ params(2)
 static int spage;                        // the steps are shown 32 at a time
 static int cur_step(void) { return spage * 32 + (srow - 1) * 16 + scol; }
@@ -1609,7 +1611,7 @@ static void step_audition(int st);
 static void step_reset(Pattern *p, int st);
 static void step_seed(Pattern *p, int st);
 static void step_hear(int st) {          // an edit sounds, unless the pad's clip plays it anyway
-    if (!(engine_playing() && song.t[sel].on)) step_audition(st);
+    if (hear_on && !(engine_playing() && song.t[sel].on)) step_audition(st);
 }
 static void step_adjust(int st, int d, int big) {
     Pattern *p = cur_pat(sel); edit_begin();
@@ -1842,6 +1844,7 @@ static void seq_tap(void) {
             if (!p->trig[st]) { p->trig[st] = 1; f |= bit; } else f ^= bit;
             p->slice[st] = (int8_t)(f ? f : -1); return;   // it sounded when B went down
         }
+        if (edit_put) { edit_put = 0; return; }   // put when EDIT went down: the release leaves it on
         if (p->trig[st] && lane != L_TRIG) { char b[32]; snprintf(b, sizeof b, "ERASE ON THE %s LANE", lane_nm(L_TRIG)); toast(b); return; }   // 2026-11-12, user
         if (!p->trig[st]) step_seed(p, st);
         p->trig[st] = !p->trig[st];
@@ -2845,7 +2848,7 @@ static int roll_add(Pattern *p, int start, int len, int note, int vel) {
 static void roll_del(Pattern *p, int i) { __atomic_store_n(&p->roll[i].len, 0, __ATOMIC_RELEASE); }
 static int roll_base(int s) { return 60 - note_semis(s, 60); }   // the pitch that plays the pad as it is
 static void roll_hear(int n) {           // the note while EDIT is held; editing is not playing: no take
-    if (engine_playing() && song.t[sel].on) return;
+    if (!hear_on || (engine_playing() && song.t[sel].on)) return;
     engine_release_key(RL_TAG); engine_trig_key(sel, 1.f, (float)note_semis(sel, n), -1, RL_TAG); flash[sel] = SDL_GetTicks(); rl_heard = 1;
 }
 static void roll_view(void) {            // the cursor stays on screen
@@ -2892,6 +2895,8 @@ static void roll_leave(void) {           // out of the editor: no note it starte
 static void rnd_open(void);
 static void roll_key(int k, int down) {
     Pattern *p = cur_pat(sel); int T = roll_ticks(p);
+    if (k == K_L2 && !held[K_SHIFT]) { if (down) { roll_mode(); if (!cur_pat(sel)->mode) { roll_leave(); srow = 1; } } return; }   // 2026-11-19 (user): back to STEPS on the fly
+    if (k == K_R2) { if (down && !held[K_SHIFT]) { hear_on = !hear_on; toast(hear_on ? "HEAR NOTES ON" : "HEAR NOTES OFF"); } return; }
     if (!down) {
         if (k == K_EDIT) {
             if (rl_heard) { rl_heard = 0; engine_release_key(RL_TAG); }
@@ -3494,8 +3499,9 @@ static void key_event(int k, int down) {
     }
     if (k == K_EDIT && down && !browsing && !slicing && !rolling && tab == T_SEQ && srow >= 1 && srow <= 2 && lane == L_TRIG && !cur_pat(sel)->mode) {
         Pattern *p = cur_pat(sel); int st = cur_step();
-        if (st < p->len && p->trig[st]) { paint_anchor = -1; last_note[sel] = p->note[st] == NOTE_NONE ? 0 : p->note[st] + 1; }   // a lit step: EDIT+arrows change its note
-        else { memcpy(paint_snap, p->trig, NSTEP); paint_anchor = st; paint_val = 1; }                 // an empty one: they paint
+        paint_anchor = -1; edit_put = 0;   // 2026-11-19 (user): no drag-painting any more
+        if (st < p->len && !p->trig[st]) { edit_begin(); p->trig[st] = 1; edit_put = 1; }   // the note is put as EDIT goes down; held, the arrows change it
+        if (st < p->len) last_note[sel] = p->note[st] == NOTE_NONE ? 0 : p->note[st] + 1;
     }
     if (k == K_F1 || k == K_F2) {        // tabs on release, so that F1+F2 does not move first
         int other = k == K_F1 ? K_F2 : K_F1;
@@ -3602,6 +3608,8 @@ static void key_event(int k, int down) {
         char b[40], nn[8]; listen_name(sel, nn); snprintf(b, sizeof b, "LISTEN %s", nn); toast(b); return;
     }
     if (held[K_SHIFT] && k == K_L2) { act_undo(); return; }
+    if (k == K_L2 && !held[K_SHIFT] && tab == T_SEQ && srow >= 1 && srow <= 2 && !is_auto(lane)) { roll_mode(); if (cur_pat(sel)->mode) roll_open(); return; }   // STEPS <> PIANO ROLL on the fly
+    if (k == K_R2 && !held[K_SHIFT] && tab == T_SEQ && srow >= 1 && srow <= 2 && !is_auto(lane)) { hear_on = !hear_on; toast(hear_on ? "HEAR NOTES ON" : "HEAR NOTES OFF"); return; }   // the headphones
     if (held[K_SHIFT] && k == K_OPT) { used[K_OPT] = 1; copy_paste(0); return; }
     if (held[K_SHIFT] && k == K_EDIT) { used[K_EDIT] = 1; copy_paste(1); return; }
     if (held[K_SHIFT] && k == K_X && tab == T_SEQ) { used[K_X] = 1; rnd_open(); return; }   // RANDOM
@@ -3846,7 +3854,8 @@ static void draw_roll(void) {
     if (i >= 0) { const Note *n = &p->roll[i]; snprintf(b, sizeof b, "%s \3 len %d/128 \3 vel %d \3 chance %d%s", nm, n->len, n->vel, n->prob, n->flags & NF_ACC ? " \3 acc" : ""); }
     else snprintf(b, sizeof b, "%s", nm);
     ftext(W - 28 - ftext_w(FT_S, b), 694, FT_S, C_WHITE, b);
-    draw_footer(i >= 0 ? "EDIT DELETE  EDIT+ARROWS LENGTH/PITCH  Y BACK  X+ARROWS VEL/CHANCE  L1/R1 GRID  OPT+<> NEXT  SHIFT+X RANDOM"
+    draw_phones(850, 16);
+    draw_footer(i >= 0 ? "EDIT DELETE  EDIT+ARROWS LENGTH/PITCH  Y BACK  L2 STEPS  R2 HEAR  X+ARROWS VEL/CHANCE  L1/R1 GRID  OPT+<> NEXT  SHIFT+X RANDOM"
                        : "EDIT NOTE  L1/R1 GRID  Y BACK  OPT+<> NEXT  X+EDIT CHORD  SHIFT+ARROWS PAGE  SHIFT+X RANDOM");
 }
 static void slice_card(int x, int y, int w, const char *lb, const char *v, Col ec, int on) {   // UI v2: a name and a value, as on the SOUND cards
@@ -4007,6 +4016,10 @@ static void fx_pstr(int type, int k, int v, char *b) {   // a parameter as the u
     case FX_FILTER: if (k == 0) { snprintf(b, 16, "%s", filt_mode[v & 3]); return; } if (k == 4) { snprintf(b, 16, "%s", v ? div_label[(v - 1) % NDIV] : "OFF"); return; }
         if (k == 2) { snprintf(b, 16, "%.1f", 1 / (2 - 2 * (v / 100.f) * 0.98f)); return; } break;   // Q as fxdsp.h makes it: 0.5 .. 25
     case FX_PHASER: if (k == 4) { snprintf(b, 16, "%d", 4 + 2 * v); return; } break;
+    case FX_EQ: { float hz = k == 2 ? eq_mid_hz(v) : k == 4 ? eq_lc_hz(v) : k == 5 ? eq_hc_hz(v) : 0;
+        if ((k == 4 && !v) || (k == 5 && v >= 100)) { snprintf(b, 16, "OFF"); return; }
+        if (hz > 0) { if (hz < 1000) snprintf(b, 16, "%.0fHZ", hz); else snprintf(b, 16, "%.1fKHZ", hz / 1000); return; }
+        snprintf(b, 16, "%+.1fDB", eq_db(v)); return; }
     case FX_AUTOPAN: if (k == 0) { snprintf(b, 16, "%s", div_label[v % NDIV]); return; } if (k == 2) { snprintf(b, 16, "%s", pan_shape[v % 3]); return; } break;
     case FX_RING: if (k == 0) { snprintf(b, 16, "%.0fHZ", 20 * exp2f(v / 100.f * 8)); return; } if (k == 1) { snprintf(b, 16, "%+dC", v); return; } break;
     case FX_MULTI: if (k == 4 || k == 5) { float hz = k == 4 ? mb_xlow(v) : mb_xhigh(v); if (hz < 1000) snprintf(b, 16, "%.0fHZ", hz); else snprintf(b, 16, "%.1fKHZ", hz / 1000); return; }

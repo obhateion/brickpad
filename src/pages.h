@@ -46,6 +46,8 @@ static void fx2_picture(int x, int y, int w, int h, const FxSlot *f, Col c) {   
             float den = (1 - w2) * (1 - w2) + k * k * w2, m = f->p[0] & 3, num = m == 1 ? w2 * w2 : m == 2 ? k * k * w2 : m == 3 ? (1 - w2) * (1 - w2) : 1;
             float db = 10 * log10f(num / den + 1e-9f); v = 0.35f + db / 48; if (v > 0.95f) v = 0.95f; if (v < -0.9f) v = -0.9f; break; }
         case FX_RING: v = sinf(t * 6.2832f * 3) * sinf(t * 6.2832f * (3 + p0 * 12)); break;
+        case FX_EQ: { static float ec[5][5]; static int en; if (i == 0) en = eq_coefs(f->p, ec, 48000);   // the real response, 20 Hz .. 20 kHz, +-18 dB
+            v = eq_mag_db(ec, en, 20 * exp2f(t * 9.97f), 48000) / 18; if (v > 0.95f) v = 0.95f; if (v < -0.95f) v = -0.95f; break; }
         case FX_AUTOPAN: v = f->p[2] == 2 ? (fmodf(t * 4, 1) < 0.5f ? 0.8f : -0.8f) : f->p[2] == 1 ? 1.6f * fabsf(fmodf(t * 4, 1) - 0.5f) * 2 - 0.8f : 0.8f * sinf(t * 6.2832f * 2); break;
         default: v = (0.3f + 0.6f * p1) * sinf(t * 6.2832f * (1 + p0 * 3));   // CHORUS FLANGER PHASER: the sweep
         }

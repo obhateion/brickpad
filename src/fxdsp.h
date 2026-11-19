@@ -68,7 +68,7 @@ static void fx_insert_ex(FxState *st, const FxSlot *f, const int8_t *mbx, int on
     const int8_t *p = st->p; int ty = st->type;
     float mix = 1;
     // per-buffer coefficients
-    float c0 = 0, c1 = 0, c2 = 0, c3 = 0, c4 = 0;
+    float c0 = 0, c1 = 0, c2 = 0, c3 = 0, c4 = 0, eq[5][5]; int neq = 0;
     double lfo_inc = 0;
     switch (ty) {
     case FX_COMP: c0 = -40 + 40 * p[0] / 100.f; c1 = 1 + 19 * (p[1] / 100.f) * (p[1] / 100.f);
@@ -91,6 +91,7 @@ static void fx_insert_ex(FxState *st, const FxSlot *f, const int8_t *mbx, int on
     case FX_AUTOPAN: lfo_inc = tempo / 60.0 / div_beats[p[0] % NDIV] / SR; c0 = p[1] / 100.f; break;
     case FX_MULTI: c0 = tanf((float)M_PI * mb_xlow(p[4]) / SR); c1 = tanf((float)M_PI * (mb_xhigh(p[5]) < SR * 0.45f ? mb_xhigh(p[5]) : SR * 0.45f) / SR);
         c2 = 1 - expf(-1.f / (0.002f * mb_tscale(p[1]) * SR)); c3 = 1 - expf(-1.f / (0.06f * mb_tscale(p[1]) * SR)); break;
+    case FX_EQ: neq = eq_coefs(p, eq, SR); break;
     case FX_RING: { float hz = 20 * exp2f(p[0] / 100.f * 8 + p[1] / 1200.f); c0 = 2 * (float)M_PI * hz / SR;
         lfo_inc = 0.05 * pow(200, p[2] / 100.0) / SR; c1 = p[3] / 100.f * 2; mix = p[4] / 100.f; break; }
     }
@@ -184,6 +185,11 @@ static void fx_insert_ex(FxState *st, const FxSlot *f, const int8_t *mbx, int on
             }
             wl *= st->mbs[MB_OUT]; wr *= st->mbs[MB_OUT];
             break; }
+        case FX_EQ: for (int c = 0; c < 2; c++) {   // direct form II transposed, the stages in a row (states in mb[c][i])
+                float x = c ? dr : dl;
+                for (int i = 0; i < neq; i++) { float *z = st->mb[c][i], y = eq[i][0] * x + z[0]; z[0] = eq[i][1] * x - eq[i][3] * y + z[1]; z[1] = eq[i][2] * x - eq[i][4] * y; x = y; }
+                if (c) wr = x; else wl = x;
+            } break;
         case FX_RING: {
             float w = c0 * (lfo_inc && c1 ? exp2f(c1 * fx_lfo_sin(st->lfo)) : 1), cw = cosf(w), sw = sinf(w);
             float nc = st->rc * cw - st->rs * sw, ns = st->rc * sw + st->rs * cw; st->rc = nc; st->rs = ns;
