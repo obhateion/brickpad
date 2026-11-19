@@ -3714,6 +3714,9 @@ static void key_event(int k, int down) {
     if (v2_mixer() && (k == K_L1 || k == K_R1)) { mixer2_page(k == K_R1 ? 1 : -1); return; }   // UI v2: the faders, the drawer open, FREEZE
     if (tab == T_MIX && (k == K_L1 || k == K_R1)) { mcol = k == K_R1 ? (mcol < NSLOT ? (mcol / 4 + 1) * 4 : 0) : (mcol < 4 ? NSLOT : mcol <= NSLOT ? (mcol - 1) / 4 * 4 : NSLOT); if (mcol > NSLOT + 2) mcol = 0; if (mcol < NSLOT) sel = mcol; return; }
     if (ui_cat == PC_SOUND && tab == T_SEQ && (k == K_L1 || k == K_R1)) { sound_page_step(k == K_R1 ? 1 : -1); return; }   // SOUND: the page
+    if (tab == T_SEQ && (k == K_L1 || k == K_R1) && held[K_SHIFT] && srow >= 1 && srow <= 2 && ui_cat != PC_SOUND) {   // the grid (2026-11-19, user: "a grid size in NOTE mode")
+        used[K_SHIFT] = 1; act_pattern_div_step(sel, song.t[sel].cur, k == K_R1 ? 1 : -1);
+        char b[32]; snprintf(b, sizeof b, "GRID %s", div_name[cur_pat(sel)->div % 6]); toast(b); return; }
     if (tab == T_SEQ && (k == K_L1 || k == K_R1)) {   // the pad's own lanes, round (PATTERN: without A1-A4, they are MOD's)
         int l[L_N], n = lane_list(l), i = 0; if (ui_cat == PC_PATTERN) n -= NAUTO; while (i < n && l[i] != lane) i++;
         lane = l[((i < n ? i : 0) + (k == K_R1 ? 1 : n - 1)) % n]; return; }
