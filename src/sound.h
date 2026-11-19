@@ -350,7 +350,7 @@ static void draw_browse2(void) {
     }
     if (rn > ROWS) { int th = ROWS * RH - 11, tw = th * ROWS / rn; rect(RX + RW + 4, LY, 4, th, C_CELL, 1); rect(RX + RW + 4, LY + (th - tw) * rtop / (rn - ROWS), 4, tw, C_DIM, 1); }
     if (!rn) ftext(RX + 23, LY + 13, FT_M, C_DIM, act ? "empty folder" : "no sounds here");
-    if (!fmenu && !fconfirm) draw_footer(act ? "EDIT OPEN  HOLD KIT  Y BACK  < UP  X FILES" : "EDIT LOAD  OPTION LISTEN  Y BACK  < UP  X FILES");
+    if (!fmenu && !fconfirm) draw_footer(act ? "EDIT OPEN  HOLD KIT  Y BACK  < UP  X FILES" : browse_listen ? "EDIT LOAD  R2 LISTEN: ON  OPTION HEAR  Y BACK  < UP  X FILES" : "EDIT LOAD  R2 LISTEN: OFF  OPTION HEAR  Y BACK  < UP  X FILES");
     draw_fmenu();
 }
 

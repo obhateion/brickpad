@@ -7,6 +7,9 @@
 - PATTERN list: a RANDOM card. EQUALIZER insert (shelves, a bell, low and high cut).
 - MIDI (PROJECT > MIDI): the USB port (remembered by name, found again when plugged in), CLOCK OUT (Start, Stop, 24 a
   beat), notes in as KEYS (the open pad at their pitch) or PADS (36-47 = pads 1-12) with velocity, a channel or ALL.
+- The count (and so the MIDI clock and the metronome) stops as soon as no clip plays or waits; the next clip starts the bar at the press. Not with CLOCK IN.
+- Footer metronome again (as in 1.2): the tempo now and a light per beat, the first in orange.
+- Browser: R2 turns LISTEN on/off (off: the arrows are silent, OPTION hears one), kept in listen.cfg.
 - OUTPUT TRIM (PROJECT > PLAY): 0..+24 dB after the limiter and the clip, to the speaker only (exports stay as they are).
 - TEMPO: L1/R1 nudge shows FASTER/SLOWER, the percent and the BPM it gives; TAP averages up to 12 taps (a straight line through them).
 - EXPORT menu with settings as in Ableton (what, scenes, loop, tail, bits, mono, normalize).

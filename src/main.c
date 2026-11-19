@@ -604,17 +604,17 @@ static void rec_tick(void) {             // a take that ends on a quantum: finis
 }
 static Uint32 last_input;                // the last button or d-pad event (defined again below)
 static void play_hold_tick(void);
-// 2026-11-11 (user: no transport of its own, as in Ableton): the count goes on after the last clip stops, so the next
-// clip falls into the same grid. Only to spare the battery it stops by itself after a minute with no clip, no sound
-// and no key (the screen saver is held off while it runs).
+// 2026-11-11 (user: no transport of its own, as in Ableton): the count went on after the last clip stopped.
+// 2026-11-19 (user: "the MIDI clock and the metronome must stop when every clip is stopped, else a live set cannot move
+// the start of the bar"): the count stops as soon as no clip plays or waits to start; the next clip starts it again
+// from the bar's beginning at the press. The sounds ring out (no stop of the voices). With CLOCK IN the other device
+// leads, so it is left alone.
+static int midi_clk_in;
 static void launch_tick(void) {
-    static Uint32 idle_t; Uint32 now = SDL_GetTicks();
     play_hold_tick();
-    if (!engine_playing() || rec) { idle_t = 0; return; }
-    for (int i = 0; i < NSLOT; i++) if (song.t[i].on || engine_want(i) == 1) { idle_t = 0; return; }
-    if (engine_voices() > 0 || (last_input && ms_since(now, last_input) < 60000)) { idle_t = 0; return; }
-    if (!idle_t) { idle_t = now | 1; return; }
-    if (ms_since(now, idle_t) > 60000) { idle_t = 0; transport_toggle(); }
+    if (!engine_playing() || rec || rec_wait || midi_clk_in || engine_stop_pending()) return;
+    for (int i = 0; i < NSLOT; i++) if (song.t[i].on || song.t[i].queued >= 0 || engine_want(i) == 1) return;
+    play_solo = 0; engine_transport(0);
 }
 static void transport_toggle(void) {
     play_solo = 0; rec_wait = 0; rec_starting = 0;
@@ -925,6 +925,11 @@ static void browse_open(const char *dir) {
     browsing = 1;
 }
 static void browse_close(void) { engine_set_sample(PREVIEW, NULL); browsing = 0; fmenu = fconfirm = 0; }
+// LISTEN in the browser (2026-11-19, user: "in a live set the sample I am choosing plays into the master"): R2 turns
+// it off, the arrows are silent then and OPTION still listens on purpose. Kept in listen.cfg beside the binary.
+static int browse_listen = 1;
+static void browse_listen_set(int on) { browse_listen = on; write_whole("listen.cfg", on ? "1\n" : "0\n", 2); if (!on) engine_set_sample(PREVIEW, NULL); }
+static void browse_listen_load(void) { FILE *f = fopen("listen.cfg", "r"); if (f) { int v = 1; if (fscanf(f, "%d", &v) == 1) browse_listen = v != 0; fclose(f); } }
 static void browse_preview(void) {
     if (bmode || bcur >= bn || bent[bcur].dir) return;
     char p[1024]; snprintf(p, sizeof p, "%s/%s", bdir, bent[bcur].name);
@@ -1094,7 +1099,7 @@ static char blast[256];                  // the folder the last sound came from:
 static void browse_key(int k) {
     if (k == K_UP || k == K_DOWN) {
         if (!bn) return;
-        bcur = clampi(bcur + (k == K_DOWN ? 1 : -1), 0, bn - 1); browse_preview();
+        bcur = clampi(bcur + (k == K_DOWN ? 1 : -1), 0, bn - 1); if (browse_listen) browse_preview();
     } else if (k == K_LEFT) {
         char *sl = strrchr(bdir, '/');
         if (sl && strcmp(bdir, bmode ? PRJ_DIR : "samples")) {   // never above the root; copy first (browse_open writes bdir)
@@ -3589,6 +3594,7 @@ static void key_event(int k, int down) {
             if (fm_key(k)) return;           // the file menu (X) and its question
             if (k == K_Y) { browse_close(); return; }   // Y leaves here as in the editors
             if (k == K_OPT && !bmode) { browse_preview(); return; }   // UI v2 (A11): OPTION listens again
+            if (k == K_R2 && !bmode) { browse_listen_set(!browse_listen); toast(browse_listen ? "LISTEN ON" : "LISTEN OFF: OPTION HEARS ONE"); return; }
             browse_key(k);
         }
         return;
@@ -4731,7 +4737,7 @@ int main(int argc, char **argv) {
     logmsg("audio: %s", SDL_GetCurrentAudioDriver());
     idx_load();
     load_state(); scenes_read(SCN_FILE, 0); prj_startup();
-    theme_load(); presets_load(); hint_load(); trim_load(); ui_cfg_load(); midi_cfg_load(); mmap_load(); midi_open();
+    theme_load(); presets_load(); hint_load(); trim_load(); browse_listen_load(); ui_cfg_load(); midi_cfg_load(); mmap_load(); midi_open();
     if (test_secs) {  // demo beat for automated checks
         song.tempo = 128; song.swing = 20;
         for (int i = 0; i < 16; i++) {

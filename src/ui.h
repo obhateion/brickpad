@@ -99,15 +99,30 @@ static void ui2_header(void) {           // NEON > PADS on the left, the transpo
     snprintf(t, sizeof t, "%c %d", engine_playing() ? 1 : 2, (int)(song.tempo * tempo_mul + 0.5f));
     ftext(W - 20 - ftext_w(FT_MB, t), y, FT_MB, engine_playing() ? th_cur[TC_SMP] : C_DIM, t);
 }
+// The metronome at the right of the footer (2026-11-19, user: "as it was before", 1.2's lights): the tempo now and a
+// light per beat of the bar, the one that plays lit, the bar's first in the accent. Returns where it starts.
+static int ui2_metro(void) {
+    char b[24]; float bpm = song.tempo * tempo_mul; int nb = song.beats > 0 ? song.beats : 4, pl = engine_playing();
+    int beat = pl ? (int)(engine_pos32() / 8 % nb) : -1;
+    if (fabsf(tempo_mul - 1) >= 0.0005f) snprintf(b, sizeof b, "%.1f BPM", bpm); else snprintf(b, sizeof b, "%d BPM", song.tempo);
+    int tw = ftext_w(FT_MB, b), tx = W - 18 - tw, y = V2_FOOT + 10;
+    ftext(tx, y + 4, FT_MB, fabsf(tempo_mul - 1) >= 0.0005f ? (tempo_mul > 1 ? C_PLAY : C_ORANGE) : C_WHITE, b);
+    int bw = nb > 8 ? 120 / nb : 15, gap = 5, lx = tx - 16 - nb * (bw + gap);
+    for (int i = 0; i < nb; i++) { Col c = i == beat ? (i == 0 ? C_ORANGE : C_PLAY) : C_LINE;
+        rrect(lx + i * (bw + gap), y + 6, bw, 20, 3, c); }
+    if (song.metro) ftext(lx - 18 - ftext_w(FT_M, "M"), y + 4, FT_M, C_DIM, "M"), lx -= 18 + ftext_w(FT_M, "M");
+    return lx - 16;
+}
 static void ui2_footer(const char *h) {  // at most three key chips: the key in the accent, what it does after it
     rect(0, V2_FOOT, W, H - V2_FOOT, C_CELL, 1);
-    int x = 18, y = V2_FOOT + 10, left = 3;
+    int x = 18, y = V2_FOOT + 10, left = 3, lim = ui2_metro();
     if (msg_t && SDL_GetTicks() - msg_t < 1500) { int w = ftext_w(FT_MB, msg) + 24; rrect(x, y, w, 32, 6, C_ORANGE); ftext(x + 12, y + 4, FT_MB, C_BG, msg); return; }
     if (!hint_on) return;                // PROJECT > SYSTEM > FOOTER HINTS off: every key is in PROJECT > ABOUT
     while (*h && left--) {
         const char *e = strstr(h, "  "); int n = e ? (int)(e - h) : (int)strlen(h), k = (int)strcspn(h, " "); char b[64];
         if (k > n) k = n;
         snprintf(b, sizeof b, "%.*s", k, h); int kw = ftext_w(FT_MB, b) + 24;
+        if (x + kw > lim) break;            // no hint under the metronome
         rrect(x, y, kw, 32, 6, C_SELBG); ftext(x + 12, y + 4, FT_MB, C_ORANGE, b); x += kw + 10;
         snprintf(b, sizeof b, "%.*s", n - k > 0 ? n - k - 1 : 0, h + k + (n > k));
         for (char *q = b; *q; q++) if (*q >= 'A' && *q <= 'Z') *q += 32;   // the mockups write what a key does in small letters
