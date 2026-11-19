@@ -1909,13 +1909,13 @@ static void pat_play(void) {             // PLAY in the window: the pattern unde
 }
 
 // ---------- PROJECT ----------
-enum { J_TEMPO, J_SWING, J_KEY, J_SCALE, J_LAUNCH, J_METRO, J_BEATS, J_COUNT, J_QUANT, J_MASTER, J_THEME, J_LIB, J_NEW, J_SNAP, J_PROJ, J_SAVE, J_SAVEAS, J_EXPORT, J_HINT, J_STRIP, J_VIEW, J_LOCK, J_NAV, J_DRAWER, J_MXFX, J_MXLINK, J_MPORT, J_MCLK, J_MNOTE, J_MCH, J_MCLKIN, J_ABOUT, J_N };
+enum { J_TEMPO, J_SWING, J_KEY, J_SCALE, J_LAUNCH, J_METRO, J_BEATS, J_COUNT, J_QUANT, J_MASTER, J_THEME, J_LIB, J_NEW, J_SNAP, J_PROJ, J_SAVE, J_SAVEAS, J_EXPORT, J_HINT, J_STRIP, J_VIEW, J_LOCK, J_NAV, J_DRAWER, J_MXFX, J_MXLINK, J_MPORT, J_MCLK, J_MNOTE, J_MCH, J_MCLKIN, J_TRIM, J_ABOUT, J_N };
 // The sections of PROJECT (2026-11-09): the left column chooses one, the middle shows its settings
 // 2026-11-14 (user): INTERFACE holds how BrickPad looks and moves, ABOUT every key of it by topic (the sheet SHIFT used to show)
 enum { JS_SONG, JS_PLAY, JS_REC, JS_MIDI, JS_FILE, JS_UI, JS_MIX, JS_SYS, JS_ABOUT, JS_N };
 enum { AB_N = 11 }; static int ab_pg;   // ABOUT: its topics, the one shown
 static const char *const prj_sec_name[JS_N] = {"SONG", "PLAY", "RECORD", "MIDI", "FILE", "INTERFACE", "MIXER", "SYSTEM", "ABOUT"};
-static const int8_t prj_sec[JS_N][6] = {{J_TEMPO, J_SWING, J_KEY, J_SCALE, J_SNAP, J_BEATS}, {J_LAUNCH, J_METRO, J_MASTER, -1},
+static const int8_t prj_sec[JS_N][6] = {{J_TEMPO, J_SWING, J_KEY, J_SCALE, J_SNAP, J_BEATS}, {J_LAUNCH, J_METRO, J_MASTER, J_TRIM, -1},
                                         {J_COUNT, J_QUANT, -1}, {J_MPORT, J_MCLKIN, J_MCLK, J_MNOTE, J_MCH, -1}, {J_PROJ, J_SAVE, J_SAVEAS, J_EXPORT, J_NEW, -1},
                                         {J_VIEW, J_STRIP, J_NAV, J_HINT, J_LOCK, -1}, {J_DRAWER, J_MXFX, J_MXLINK, -1}, {J_THEME, J_LIB, -1}, {J_ABOUT, -1}};
 static const char *const prj_help[J_N] = {"THE PROJECT'S SPEED. EDIT TAPS IT, L1/R1 HELD NUDGE WHILE PLAYING", "LATE EVEN 1/16 STEPS: A SHUFFLE",
@@ -1931,8 +1931,9 @@ static const char *const prj_help[J_N] = {"THE PROJECT'S SPEED. EDIT TAPS IT, L1
     "THE SAME SOUND ON THE SAME PAD IN ANOTHER SCENE: ONE MIX FOR EVERY SCENE, OR ITS OWN IN EACH. ANOTHER SOUND ALWAYS KEEPS ITS OWN",
     "THE MIDI DEVICE ON USB (THE M8, A KEYBOARD, A CONTROLLER). EDIT+<> CHOOSES, EDIT LOOKS AGAIN", "ON: BRICKPAD SENDS START, STOP AND 24 CLOCKS A BEAT: THE OTHER DEVICE FOLLOWS ITS TEMPO",
     "KEYS: NOTES PLAY THE OPEN PAD AT THEIR PITCH. PADS: NOTES 36-47 (C1-B1) PLAY PADS 1-12", "THE MIDI CHANNEL NOTES ARE TAKEN FROM",
-    "ON: BRICKPAD FOLLOWS THE OTHER DEVICE: ITS TEMPO, START AND STOP. KNOBS: R2 ON A SOUND CARD, THEN TURN ONE", NULL};
-static const char *prj_name[J_N] = {"TEMPO", "SWING", "KEY", "SCALE", "CLIP LAUNCH", "METRONOME", "BEATS/BAR", "COUNT-IN", "REC QUANT", "MASTER VOL", "THEME", "CHECK LIBRARY", "NEW PROJECT", "SCALE SNAP", "PROJECT", "SAVE", "SAVE AS", "EXPORT WAV", "FOOTER HINTS", "PAD STRIP", "VIEW", "KID LOCK", "PAD MENU", "MIXER DRAWER", "STRIP EFFECTS", "SCENE MIX", "MIDI PORT", "CLOCK OUT", "MIDI NOTES", "MIDI CHANNEL", "CLOCK IN", "ABOUT"};
+    "ON: BRICKPAD FOLLOWS THE OTHER DEVICE: ITS TEMPO, START AND STOP. KNOBS: R2 ON A SOUND CARD, THEN TURN ONE",
+    "LOUDER OUT OF THE BRICK, AFTER THE LIMITER AND THE CLIP (MAY DISTORT). EXPORTS STAY AS THEY ARE", NULL};
+static const char *prj_name[J_N] = {"TEMPO", "SWING", "KEY", "SCALE", "CLIP LAUNCH", "METRONOME", "BEATS/BAR", "COUNT-IN", "REC QUANT", "MASTER VOL", "THEME", "CHECK LIBRARY", "NEW PROJECT", "SCALE SNAP", "PROJECT", "SAVE", "SAVE AS", "EXPORT WAV", "FOOTER HINTS", "PAD STRIP", "VIEW", "KID LOCK", "PAD MENU", "MIXER DRAWER", "STRIP EFFECTS", "SCENE MIX", "MIDI PORT", "CLOCK OUT", "MIDI NOTES", "MIDI CHANNEL", "CLOCK IN", "OUTPUT TRIM", "ABOUT"};
 static int ui_strip = 1, ui_simple, ui_lock;   // PROJECT > INTERFACE: the pad strip (0 hidden, 1 thin, 2 big), the simple view, its kid lock (ui.cfg beside the binary)
 static int ui_tree, ui_drawer_left;          // the pad menu as a tree (A23) instead of the list; the mixer's drawer on the left
 static int ui_mxlink = 1;                    // PROJECT > MIXER > SCENE MIX (2026-11-15, user): one mix for the same sound in every scene
@@ -1940,6 +1941,10 @@ static int ui_mxfx = 1;                      // PROJECT > MIXER > STRIP EFFECTS 
 static void ui_cfg_save(void) { char b[48]; int n = snprintf(b, sizeof b, "%d %d %d %d %d %d %d\n", ui_strip, ui_simple, ui_lock, ui_tree, ui_drawer_left, ui_mxfx, ui_mxlink); write_whole("ui.cfg", b, n); }
 static void ui_cfg_load(void) { FILE *f = fopen("ui.cfg", "r"); if (f) { int a = 1, b = 0, c = 0, d = 0, e = 0, g = 1, l = 1;
     if (fscanf(f, "%d %d %d %d %d %d %d", &a, &b, &c, &d, &e, &g, &l) >= 1) { ui_strip = clampi(a, 0, 2); ui_simple = b != 0; ui_lock = c != 0; ui_tree = d != 0; ui_drawer_left = e != 0; ui_mxfx = g != 0; ui_mxlink = l != 0; } fclose(f); } }
+static int trim_db;                        // OUTPUT TRIM 0..24 dB (trim.cfg beside the binary: a device setting, not the project's)
+static void trim_apply(void) { out_trim = powf(10, trim_db / 20.f); }
+static void trim_save(void) { char b[16]; int n = snprintf(b, sizeof b, "%d\n", trim_db); write_whole("trim.cfg", b, n); trim_apply(); }
+static void trim_load(void) { FILE *f = fopen("trim.cfg", "r"); if (f) { int v = 0; if (fscanf(f, "%d", &v) == 1) trim_db = clampi(v, 0, 24); fclose(f); } trim_apply(); }
 static int hint_on = 1;                    // HOVER HINTS (hints.cfg beside the binary: "0" = off)
 static void hint_set(int on) { hint_on = on; write_whole("hints.cfg", on ? "1\n" : "0\n", 2); }
 #include "midi.h"
@@ -2104,7 +2109,7 @@ static void new_project(void) {
 }
 static const char *quant_name[5] = {"CLIP STEP", "1/32", "1/16", "1/8", "1/4"};
 static int prj_dirty(void);
-static int jcur, jsec, jcol; static Uint32 taps[5]; static int ntaps;   // jcol 0: the sections, 1: the settings of jsec
+static int jcur, jsec, jcol;   // jcol 0: the sections, 1: the settings of jsec
 
 static void leave_screen(void) {         // what a key held across a screen change must not carry over
     tempo_mul = 1.f; memset(key_on, 0, sizeof key_on); browse_hold = 0;
@@ -2258,6 +2263,7 @@ static void prj_edit_arrow(int k) {
     if (jcur == J_MPORT) { midi_pick(d); return; }
     if (jcur == J_MCLK) { midi_clk_out = !midi_clk_out; midi_cfg_save(); return; }
     if (jcur == J_MCLKIN) { midi_clk_in = !midi_clk_in; if (!midi_clk_in) tempo_mul = 1.f; midi_cfg_save(); return; }
+    if (jcur == J_TRIM) { trim_db = clampi(trim_db + d * (big ? 6 : 1), 0, 24); trim_save(); return; }
     if (jcur == J_MNOTE) { midi_notes = !midi_notes; midi_cfg_save(); return; }
     if (jcur == J_MCH) { midi_ch = (midi_ch + d * (big ? 4 : 1) + 17) % 17; midi_cfg_save(); return; }
     if (jcur == J_STRIP) { ui_strip = (ui_strip + 1) % 3; ui_cfg_save(); return; }
@@ -2286,19 +2292,26 @@ static void prj_edit_arrow(int k) {
 }
 static void export_open(void);
 static int prj_dirty(void); static int prj_changed(void); static void prj_browse(void); static void prj_save(const char *name); static void naming_open(int then); static void ask_open(int act, const char *path);
-// TAP TEMPO (2026-11-12, as on the M8): EDIT taps in time; the mean of the last four gaps, a pause over 2 s starts again
+// TAP TEMPO (2026-11-12, as on the M8): EDIT taps in time. 2026-11-19 (user: "tap is not exact, average over more"):
+// up to 12 taps, the tempo is the straight line through all of them (least squares), so one late tap moves it little.
+// A pause over 2 s, or a gap far off the others (under half or over twice the mean), starts again from that tap.
+#define TAP_N 12
 static int tap_bpm(Uint32 *t, int *n) {
     Uint32 now = SDL_GetTicks();
-    if (*n && now - t[(*n - 1) % 8] > 2000) *n = 0;
-    t[*n % 8] = now; (*n)++;
-    if (*n < 2) return 0;
-    int k = *n - 1 < 4 ? *n - 1 : 4; Uint32 a = t[(*n - 1 - k) % 8];
-    return now > a ? (int)lrint(60000.0 * k / (now - a)) : 0;
+    if (*n) { Uint32 g = now - t[*n - 1]; double mean = *n > 1 ? (double)(t[*n - 1] - t[0]) / (*n - 1) : g;
+        if (g > 2000 || (*n > 1 && (g < mean * 0.5 || g > mean * 2))) *n = 0; }
+    if (*n == TAP_N) { memmove(t, t + 1, (TAP_N - 1) * sizeof *t); *n = TAP_N - 1; }
+    t[(*n)++] = now;
+    if (*n < 3) return 0;               // two gaps at least
+    double sx = 0, sy = 0, sxx = 0, sxy = 0; int m = *n;
+    for (int i = 0; i < m; i++) { double y = (double)(t[i] - t[0]); sx += i; sy += y; sxx += (double)i * i; sxy += i * y; }
+    double per = (m * sxy - sx * sy) / (m * sxx - sx * sx);   // ms a beat
+    return per > 0 ? (int)lrint(60000.0 / per) : 0;
 }
 static void prj_tap(void) {
     if (!jcol) { jcol = 1; return; }     // EDIT on a section: into its settings
-    if (jcur == J_TEMPO) { static Uint32 tt[8]; static int tn; int b = tap_bpm(tt, &tn); char m[32];
-        if (b) { edit_begin(); song.tempo = (int16_t)clampi(b, 40, 300); snprintf(m, sizeof m, "TAP  %d BPM", song.tempo); } else snprintf(m, sizeof m, "TAP: GO ON IN TIME");
+    if (jcur == J_TEMPO) { static Uint32 tt[TAP_N]; static int tn; int b = tap_bpm(tt, &tn); char m[40];
+        if (b) { edit_begin(); song.tempo = (int16_t)clampi(b, 40, 300); snprintf(m, sizeof m, "TAP  %d BPM  (%d TAPS)", song.tempo, tn); } else snprintf(m, sizeof m, "TAP: GO ON IN TIME");
         toast(m); return; }
     if (jcur == J_ABOUT) { ab_pg = (ab_pg + 1) % AB_N; return; }
     if (jcur == J_PROJ) { prj_browse(); return; }
@@ -2313,13 +2326,7 @@ static void prj_tap(void) {
         else { new_armed = now | 1; toast("EDIT AGAIN: ERASE THIS PROJECT"); }
         return;
     }
-    if (jcur == J_TEMPO) {   // tap tempo
-        Uint32 now = SDL_GetTicks();
-        if (ntaps && now - taps[ntaps - 1] > 2000) ntaps = 0;
-        if (ntaps == 5) { memmove(taps, taps + 1, 4 * sizeof *taps); ntaps = 4; }
-        taps[ntaps++] = now;
-        if (ntaps >= 2) { edit_begin(); song.tempo = clampi((int)(60000.0 * (ntaps - 1) / (now - taps[0]) + 0.5), 40, 300); }
-    } else if (jcur == J_LAUNCH || jcur == J_METRO || jcur == J_COUNT || jcur == J_QUANT || jcur == J_SNAP || jcur == J_HINT || jcur == J_STRIP || jcur == J_VIEW || jcur == J_LOCK || jcur == J_NAV || jcur == J_DRAWER || jcur == J_MXFX || jcur == J_MXLINK || jcur == J_MCLK || jcur == J_MCLKIN || jcur == J_MNOTE || jcur == J_MCH) prj_edit_arrow(K_RIGHT);
+    if (jcur == J_LAUNCH || jcur == J_METRO || jcur == J_COUNT || jcur == J_QUANT || jcur == J_SNAP || jcur == J_HINT || jcur == J_STRIP || jcur == J_VIEW || jcur == J_LOCK || jcur == J_NAV || jcur == J_DRAWER || jcur == J_MXFX || jcur == J_MXLINK || jcur == J_MCLK || jcur == J_MCLKIN || jcur == J_MNOTE || jcur == J_MCH) prj_edit_arrow(K_RIGHT);
     else if (jcur == J_MPORT) { if (midi_want[0] && midi_open()) toast("MIDI: CONNECTED"); else if (midi_want[0]) toast("MIDI: THE DEVICE IS NOT HERE"); else { midi_pick(1); toast(midi_want[0] ? "MIDI: CONNECTED" : "NO MIDI DEVICE FOUND"); } }
 }
 
@@ -2533,10 +2540,11 @@ static void prj_reset_row(int j) {       // one PROJECT setting back to its defa
     case J_MPORT: midi_want[0] = 0; midi_close(); midi_cfg_save(); break; case J_MCLK: midi_clk_out = 0; midi_cfg_save(); break;
     case J_MNOTE: midi_notes = 0; midi_cfg_save(); break; case J_MCH: midi_ch = 0; midi_cfg_save(); break;
     case J_MCLKIN: midi_clk_in = 0; tempo_mul = 1.f; midi_cfg_save(); break;
+    case J_TRIM: trim_db = 0; trim_save(); break;
     case J_THEME: if (th_sel) { th_sel = 0; theme_apply(); th_dirty = 1; } break;
     }
 }
-static int prj_row_resets(int j) { return j < J_LIB || j == J_SNAP || (j >= J_HINT && j <= J_MCLKIN); }   // J_THEME < J_LIB too
+static int prj_row_resets(int j) { return j < J_LIB || j == J_SNAP || (j >= J_HINT && j <= J_TRIM); }   // J_THEME < J_LIB too
 static int prj_sec_resets(int sc) { int r[6], n = prj_rows(sc, r); for (int i = 0; i < n; i++) if (prj_row_resets(r[i])) return 1; return 0; }
 static void prj_reset_sec(int sc) {
     int r[6], n = prj_rows(sc, r); push_undo();
@@ -3980,6 +3988,7 @@ static void draw_pat(void) {
 static void prj_value(int i, char *b) {
     switch (i) {
     case J_TEMPO: snprintf(b, 32, "%d BPM", song.tempo); break;
+    case J_TRIM: snprintf(b, 32, "%+d DB", trim_db); break;
     case J_SWING: snprintf(b, 32, "%d%%", song.swing); break;
     case J_LAUNCH: { static const char *const ln[5] = {"1 BAR", "1 BAR", "2 BARS", "4 BARS", "NONE"}; snprintf(b, 32, "%s", ln[song.launch % 5]); break; }
     case J_KEY: snprintf(b, 32, "%s", note_name[song.key]); break;
@@ -4722,7 +4731,7 @@ int main(int argc, char **argv) {
     logmsg("audio: %s", SDL_GetCurrentAudioDriver());
     idx_load();
     load_state(); scenes_read(SCN_FILE, 0); prj_startup();
-    theme_load(); presets_load(); hint_load(); ui_cfg_load(); midi_cfg_load(); mmap_load(); midi_open();
+    theme_load(); presets_load(); hint_load(); trim_load(); ui_cfg_load(); midi_cfg_load(); mmap_load(); midi_open();
     if (test_secs) {  // demo beat for automated checks
         song.tempo = 128; song.swing = 20;
         for (int i = 0; i < 16; i++) {

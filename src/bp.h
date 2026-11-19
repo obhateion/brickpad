@@ -160,6 +160,7 @@ static inline float auto_value(const AutoLane *a, const int8_t *bend, int len, d
     return a->v[back] + (a->v[fwd] - a->v[back]) * auto_bend((float)f, bend ? bend[back] : 0);
 }
          // shared: UI writes, audio thread reads
+extern volatile float out_trim;    // gain after the limiter and the clip, to the device only (not the export)
 extern volatile float tempo_mul;   // temporary nudge (PROJECT L1/R1)
 
 // sample.c

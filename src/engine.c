@@ -11,6 +11,7 @@
 
 Song song;
 volatile float tempo_mul = 1.f;
+volatile float out_trim = 1.f;   // PROJECT > PLAY > OUTPUT TRIM, linear
 
 // ---------- scales ----------
 const char *scale_name[NSCALE] = {"CHROMATIC", "MAJOR", "MINOR", "DORIAN", "PHRYGIAN", "LYDIAN", "MIXOLYDIAN",
@@ -1066,9 +1067,8 @@ static void callback(void *u, Uint8 *stream, int len) {
         click.delay -= n;
         if (click.t >= 2400) click.f = 0;
     }
-#define OUT_BOOST 10.f   // +20 dB on the whole output, before the compressor and limiter
     {   // master: VOL (ramped), compressor, limiter, then the soft clip as a last safety
-        float tg = song.master / 100.f * OUT_BOOST; if (master_g < 0) master_g = tg;   // 2026-11-19 (user: "0 is very quiet"): +20 dB
+        float tg = song.master / 100.f; if (master_g < 0) master_g = tg;
         float dg = (tg - master_g) / n;
         for (int k = 0; k < n; k++) { float g = master_g + dg * (k + 1); o[2 * k] *= g; o[2 * k + 1] *= g; }
         master_g = tg;
@@ -1079,6 +1079,11 @@ static void callback(void *u, Uint8 *stream, int len) {
         float x = o[k], ax = fabsf(x);
         if (ax > 0.9f) x = copysignf(0.9f + 0.1f * tanhf((ax - 0.9f) * 10), x);
         o[k] = x; if (ax > pk) pk = ax;
+    }
+    if (u) {   // OUTPUT TRIM (2026-11-19, user: "a TRIM after the limiter and the clipper"): the speaker only, not the export
+        static float tr = -1; float tt = out_trim; if (tr < 0) tr = tt; float dt = (tt - tr) / n;
+        for (int k = 0; k < n; k++) { float g = tr + dt * (k + 1); o[2 * k] *= g; o[2 * k + 1] *= g; }
+        tr = tt;
     }
     if (pk > peak_acc) peak_acc = pk;
     if (pk > mpk[NSLOT + 2]) mpk[NSLOT + 2] = pk;
@@ -1103,7 +1108,7 @@ int engine_start(int buffer_frames) {
     for (int s = 0; s < NSLOT; s++) play_step[s] = -1;
     SDL_AudioSpec want = {0}, got;
     want.freq = SR; want.format = AUDIO_F32SYS; want.channels = 2; want.samples = buffer_frames;
-    want.callback = callback;
+    want.callback = callback; want.userdata = (void *)1;   // 1: the device (engine_render passes 0)
     dev = SDL_OpenAudioDevice(NULL, 0, &want, &got, 0);
     if (!dev) return -1;
     SDL_PauseAudioDevice(dev, 0);

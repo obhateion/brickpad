@@ -612,10 +612,18 @@ static void draw_prj2(void) {
     for (int j = first; j < n && j < first + 4; j++) { int i = r[j], y = 82 + (j - first) * dy, on = jcol && i == jcur; char b[32]; prj_value(i, b);
         if (on) { rframe(300, y, 690, ch, 8, 4, ec, C_CELL); ui_focus(prj_name[i], b, i == J_MASTER ? song.master : -1, ec); } else rrect(300, y, 690, ch, 8, C_CELL);
         ftext(320, y + 14, FT_M, C_DIM, prj_name[i]);
-        if (prj_help[i]) ftext_wrap(320, y + 56, 650, 2, FT_S, on ? mix(C_WHITE, C_CELL, 70) : C_DIM, prj_help[i]);   // what the setting does (1.2's help line)
+        float nd = i == J_TEMPO ? (tempo_mul - 1) * 100 : 0; int nudging = fabsf(nd) >= 0.05f;
+        if (nudging) {   // 2026-11-19 (user: "you cannot see how much the BPM is pushed or held back"): the shift and the BPM it gives
+            char nb[64]; Col nc = nd > 0 ? C_PLAY : C_ORANGE;
+            snprintf(nb, sizeof nb, "%s %+.1f%%   NOW %.1f BPM%s", nd > 0 ? "FASTER" : "SLOWER", nd, song.tempo * tempo_mul, midi_clk_in ? "  (MIDI CLOCK)" : "");
+            ftext(320, y + 56, FT_M, nc, nb);
+            int cx = 320 + 325, w = (int)(325 * clampi((int)fabsf(nd * 10), 0, 100) / 100);   // centre = no shift, the full half = 10 %
+            rect(320, y + ch - 26, 650, 8, C_LINE, 1); rect(nd > 0 ? cx : cx - w, y + ch - 30, w, 16, nc, 1); rect(cx - 1, y + ch - 34, 3, 24, C_WHITE, 1);
+        } else if (prj_help[i]) ftext_wrap(320, y + 56, 650, 2, FT_S, on ? mix(C_WHITE, C_CELL, 70) : C_DIM, prj_help[i]);   // what the setting does (1.2's help line)
         int f = ftext_w(FT_XB, b) <= 640 - ftext_w(FT_M, prj_name[i]) ? FT_XB : FT_M;
         ftext(970 - ftext_w(f, b), y + 10, f, i == J_PROJ && prj_dirty() ? C_ORANGE : C_WHITE, b);
-        if (i == J_TEMPO || i == J_SWING) { int v = i == J_TEMPO ? (song.tempo - 40) * 100 / 260 : song.swing * 100 / 75; rect(320, y + ch - 26, 650, 8, C_LINE, 1); rect(320, y + ch - 26, 650 * clampi(v, 0, 100) / 100, 8, ec, 1); }
+        if ((i == J_TEMPO && !nudging) || i == J_SWING) { int v = i == J_TEMPO ? (song.tempo - 40) * 100 / 260 : song.swing * 100 / 75; rect(320, y + ch - 26, 650, 8, C_LINE, 1); rect(320, y + ch - 26, 650 * clampi(v, 0, 100) / 100, 8, ec, 1); }
+        if (i == J_TRIM) { rect(320, y + ch - 26, 650, 8, C_LINE, 1); rect(320, y + ch - 26, 650 * trim_db / 24, 8, trim_db > 12 ? C_ORANGE : ec, 1); }
         if (i == J_MASTER && ch >= 70) { rect(320, y + ch - 26, 650, 8, C_LINE, 1); rect(320, y + ch - 26, 650 * song.master / 100, 8, ec, 1); } }
     draw_footer(!jcol ? "EDIT ENTER  Y BACK  ^v SECTION  OPT+EDIT RESET IT" : jcur == J_TEMPO ? "EDIT TAP IN TIME  EDIT+<> VALUE  Y BACK  L1/R1 HELD NUDGE  < SECTIONS  OPT+EDIT DEFAULT"
                                                     : "EDIT+<> VALUE  EDIT DO IT  Y BACK  < SECTIONS  OPT+EDIT DEFAULT");
