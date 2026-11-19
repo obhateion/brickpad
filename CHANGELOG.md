@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- STEPS: EDIT puts the note as it goes down; held, the arrows change it. Drag-painting is gone.
+- Headphones (R2) in STEPS and the piano roll: hear the note being put, or not. L2 switches STEPS and PIANO ROLL.
+- PATTERN list: a RANDOM card. EQUALIZER insert (shelves, a bell, low and high cut).
+- MODULATION: CHORUS, FLANGER and PHASER are one effect with a MODE card; old projects play as before.
+
 ## 1.1 Beta (2026-11-18)
 
 - Global and pad stops land on the PROJECT → LAUNCH grid. Press again before the boundary to cancel a queued stop.

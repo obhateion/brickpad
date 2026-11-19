@@ -3008,7 +3008,10 @@ static int8_t *fx_side(int c, int r, int *lo, int *hi) {   // the right half of 
     return NULL;
 }
 static int fx_multi_row(int c, int r) { int lo, hi; return fx_side(c, r, &lo, &hi) != NULL; }
-static void fx_cycle(FxSlot *f, int d) { edit_begin(); fx_set_type(f, ((f->type + d) % FX_N + FX_N) % FX_N); mbx_clear(f); fx_turn_on(f); }
+static void fx_cycle(FxSlot *f, int d) {   // the next type; FLANGER and PHASER are modes of MODULATION (CHORUS's stop)
+    int t = fx_is_mod(f->type) ? FX_CHORUS : f->type;
+    do t = ((t + d) % FX_N + FX_N) % FX_N; while (t == FX_FLANGER || t == FX_PHASER);
+    edit_begin(); fx_set_type(f, t); mbx_clear(f); fx_turn_on(f); }
 static int8_t *unit_param(int unit, int k, int *lo, int *hi, int *def) {   // returns, master: their parameter k
     static const int8_t rvd[8] = {50, 40, 50, 10, 100, 20, 80, 0}, dld[8] = {7, 35, 70, 20, 0, 100, 80, 0}, msd[12] = {0, 70, 20, 30, 40, 0, 1, 89, 30, 0, 0, 30};
     if (unit == NSLOT) { rv_range(k, lo, hi); *def = rvd[k]; return &song.mix.rv[k]; }
@@ -3180,6 +3183,7 @@ static void fx_value(int d, int big) {
         return;
     }
     FxSlot *f = &pm->ins[fcol];
+    if (frow == 9 && fx_is_mod(f->type)) { edit_begin(); fx_mod_mode(f, f->type - FX_CHORUS + d); return; }   // MODULATION's MODE
     if (frow == 0) { act_insert_type_step(fx_unit, fcol, d); return; }
     if (frow == 1) { act_insert_on(fx_unit, fcol, d > 0); return; }
     if (!f->type) return;
@@ -3192,7 +3196,8 @@ static void fx_tap(void) {
         if (hi == 1) { edit_begin(); *v = !*v; } return; }
     if (frow == 8) return;
     FxSlot *f = &song.mix.pad[fx_unit].ins[fcol];
-    if (frow == 0) fx_cycle(f, 1);
+    if (frow == 9 && fx_is_mod(f->type)) { edit_begin(); fx_mod_mode(f, (f->type - FX_CHORUS + 1) % 3); }   // EDIT: the next mode, round
+    else if (frow == 0) fx_cycle(f, 1);
     else if (frow == 1) { edit_begin(); if (f->on) f->on = 0; else fx_turn_on(f); }
 }
 static void fx_delete(void) {
@@ -3203,6 +3208,7 @@ static void fx_delete(void) {
     if (frow == 8) { if (fcol == 0) pm->send_a = 0; else if (fcol == 1) pm->send_b = 0; else if (fcol == 2) song.t[fx_unit].pan = 0; else song.t[fx_unit].vol = 75; return; }
     FxSlot *f = &pm->ins[fcol];
     if (fx_sub && fx_multi_row(fcol, frow)) { int lo2, hi2; *fx_side(fcol, frow, &lo2, &hi2) = 0; return; }
+    if (frow == 9) { if (fx_is_mod(f->type)) fx_mod_mode(f, 0); return; }
     if (frow <= 1) { fx_set_type(f, FX_NONE); mbx_clear(f); } else if (f->type) f->p[frow - 2] = fx_def[f->type][frow - 2];
 }
 // ---------- MOD page of the FX tab: 4 LFOs per pad (2026-11-09; user: in the FX tab for now, Y switches FX/MOD) ----------

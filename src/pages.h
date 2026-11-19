@@ -12,6 +12,7 @@ typedef struct { int8_t row, side; } FxCard;   // a card is a 1.2 row of the slo
 static int fx2_cards(FxCard *c) {
     const FxSlot *f = &song.mix.pad[fx_unit].ins[fx2_slot]; int n = 0;
     if (!f->type) return 0;              // ON/OFF: X (the tab dims), as A17 has no card for it
+    if (fx_is_mod(f->type)) c[n++] = (FxCard){9, 0};   // MODULATION: its MODE first
     for (int k = 0; k < 6; k++) if (fx_pname[f->type][k][0]) c[n++] = (FxCard){(int8_t)(2 + k), 0};
     for (int r = 2; r < 8; r++) if (fx_multi_row(fx2_slot, r)) c[n++] = (FxCard){(int8_t)r, 1};
     return n;
@@ -82,7 +83,8 @@ static void fx2_live(int x, int y, int w, int h, const FxSlot *f, Col c) {   // 
 }
 static void fx2_card(int x, int y, int w, int h, const FxSlot *f, FxCard cd, int on, Col ec) {
     char v[24]; const char *lb; int val, lo = 0, hi = 1;
-    if (cd.row == 1) { lb = "ON"; snprintf(v, sizeof v, "%s", f->on ? "ON" : "OFF"); val = f->on; }
+    if (cd.row == 9) { lb = "MODE"; val = f->type - FX_CHORUS; hi = 2; snprintf(v, sizeof v, "%s", mod_mode_name[clampi(val, 0, 2)]); }
+    else if (cd.row == 1) { lb = "ON"; snprintf(v, sizeof v, "%s", f->on ? "ON" : "OFF"); val = f->on; }
     else if (cd.side) { int8_t *g = fx_side(fx2_slot, cd.row, &lo, &hi); val = *g;
         if (f->type == FX_COMP) { lb = "KEY"; if (val) snprintf(v, sizeof v, "PAD %d", val); else snprintf(v, sizeof v, "SELF"); }
         else { lb = mb_name[cd.row - 2]; snprintf(v, sizeof v, "%+d DB", val); } }
@@ -96,7 +98,8 @@ static void draw_fx2(void) {
     PadMix *pm = &song.mix.pad[fx_unit]; Col ec = C_CAT(PC_FX); fx2_sync();
     for (int s = 0; s < 2; s++) {        // the inserts as tabs
         const FxSlot *f = &pm->ins[s]; char b[32]; int x = 26 + s * 492, on = s == fx2_slot;
-        snprintf(b, sizeof b, "%d \003 %s", s + 1, f->type ? fx_name[f->type] : "EMPTY");
+        if (fx_is_mod(f->type)) snprintf(b, sizeof b, "%d \003 MODULATION \003 %s", s + 1, fx_name[f->type]);
+        else snprintf(b, sizeof b, "%d \003 %s", s + 1, f->type ? fx_name[f->type] : "EMPTY");
         rrect(x, 76, 479, 56, 6, on ? ec : C_CELL);
         ftext(x + 240 - ftext_w(FT_MB, b) / 2, 92, FT_MB, on ? C_BG : f->type && f->on ? C_WHITE : C_DIM, b);
     }

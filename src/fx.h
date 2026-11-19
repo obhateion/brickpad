@@ -100,6 +100,18 @@ static const char *const ms_name[12] = {"COMP", "THRESH", "RATIO", "ATTACK", "RE
 static inline void rv_range(int k, int *lo, int *hi) { *lo = 0; *hi = k == RV_MUTE ? 1 : 100; }
 static inline void dl_range(int k, int *lo, int *hi) { *lo = 0; *hi = k == DL_TIME ? NDIV - 1 : k == DL_PING || k == DL_MUTE ? 1 : k == DL_FB ? 95 : 100; }
 static inline void ms_range(int k, int *lo, int *hi) { *lo = 0; *hi = k == MS_COMP || k == MS_LIM ? 1 : k == MS_DUCKSRC ? NSLOT : 100; }
+// MODULATION (2026-11-19, user: "chorus, flanger, phaser as one effect, as in Ableton"): the three stay their own types
+// (saved projects, LFO targets and the sound do not change), but they are one stop in the list of effects and its
+// MODE switches between them. RATE, DEPTH, FEEDBACK and MIX go along; the 3rd and 5th knobs mean another thing in each.
+static inline int fx_is_mod(int t) { return t == FX_CHORUS || t == FX_FLANGER || t == FX_PHASER; }
+static const char *const mod_mode_name[3] = {"CHORUS", "FLANGER", "PHASER"};
+static inline void fx_mod_mode(FxSlot *f, int m) {       // m 0 CHORUS 1 FLANGER 2 PHASER
+    int t = FX_CHORUS + (m < 0 ? 0 : m > 2 ? 2 : m); if (t == f->type) return;
+    int8_t keep[6]; for (int k = 0; k < 6; k++) keep[k] = f->p[k];
+    for (int k = 0; k < 6; k++) f->p[k] = (k == 0 || k == 1 || k == 3 || k == 5) ? keep[k] : fx_def[t][k];
+    if (t == FX_PHASER && f->p[3] > 90) f->p[3] = 90;
+    f->type = (uint8_t)t;
+}
 static inline void fx_set_type(FxSlot *f, int type) {    // a fresh type gets its defaults; the type byte is written last
     for (int k = 0; k < 6; k++) f->p[k] = fx_def[type][k];
     f->on = type != FX_NONE; f->type = (uint8_t)type;
