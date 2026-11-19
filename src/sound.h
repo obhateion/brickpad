@@ -293,7 +293,7 @@ static void draw_sound2(void) {
     else { int p = sound_par();          // the cards with a key of their own say so
         draw_footer(p == P_BPM ? "EDIT TAP IN TIME  EDIT+ARROWS VALUE  Y BACK  OPT+EDIT AUTO  L1/R1 PAGE  OPT LISTEN"
                   : p == P_ROOT ? "EDIT SET AS PROJECT KEY  EDIT+ARROWS VALUE  Y BACK  OPT+EDIT AUTO  L1/R1 PAGE  OPT LISTEN"
-                  : "EDIT+ARROWS VALUE  L1/R1 PAGE  Y BACK  OPT LISTEN  OPT+EDIT DEFAULT  OPT+ARROWS LISTEN NOTE  EDIT HEAR IT"); }
+                  : "EDIT+ARROWS VALUE  L1/R1 PAGE  Y BACK  OPT LISTEN  R2 MIDI KNOB  OPT+EDIT DEFAULT  OPT+ARROWS LISTEN NOTE  EDIT HEAR IT"); }
 }
 static const char *snd_page_name(void) { return snd_page()->name; }
 static void snd_page_count(char *b, int n) { int k; const SndPage *pgs = snd_pages(song.t[sel].type, &k); snprintf(b, n, "%d/%d", (int)(snd_page() - pgs) + 1, k); }

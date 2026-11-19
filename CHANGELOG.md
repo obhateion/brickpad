@@ -7,6 +7,9 @@
 - PATTERN list: a RANDOM card. EQUALIZER insert (shelves, a bell, low and high cut).
 - MIDI (PROJECT > MIDI): the USB port (remembered by name, found again when plugged in), CLOCK OUT (Start, Stop, 24 a
   beat), notes in as KEYS (the open pad at their pitch) or PADS (36-47 = pads 1-12) with velocity, a channel or ALL.
+- MIDI CLOCK IN: BrickPad follows the other device (tempo from the clocks, the phase pulled to theirs, its Start and
+  Stop). MIDI knobs: R2 on a SOUND card, then turn a knob on the controller (midimap.cfg); R2 again unlinks.
+- brickpad.log keeps the last run as brickpad.log.1, writes a crash with its call stack, and the free memory every 30 s.
 - MODULATION: CHORUS, FLANGER and PHASER are one effect with a MODE card; old projects play as before.
 
 ## 1.1 Beta (2026-11-18)

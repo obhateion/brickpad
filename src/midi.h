@@ -12,10 +12,25 @@
 typedef struct { char path[32], name[24]; } MidiDev;
 static MidiDev midi_dev[MIDI_MAXDEV]; static int midi_ndev;
 static char midi_want[24];               // the card's name chosen in PROJECT ("" = off)
-static int midi_clk_out, midi_notes, midi_ch;   // CLOCK OUT on/off; NOTES 0 KEYS (the open pad), 1 PADS (36..47 = pads 1-12); CH 0 ALL, 1..16
+static int midi_clk_out, midi_notes, midi_ch, midi_clk_in;   // ... CLOCK IN: BrickPad follows another device's clock   // CLOCK OUT on/off; NOTES 0 KEYS (the open pad), 1 PADS (36..47 = pads 1-12); CH 0 ALL, 1..16
 static int midi_fd = -1; static char midi_open_name[24];
 static volatile int midi_run; static pthread_t midi_th;
 static uint8_t midi_ring[256][3]; static volatile unsigned midi_wr, midi_rd;   // the reader writes, the UI reads
+// CLOCK IN: the reader times the clocks (ns); the UI turns them into the tempo and keeps the phase (midi_follow in main.c)
+static volatile int64_t mclk_last_ns, mclk_per_ns; static volatile long mclk_count;   // the last clock, the smoothed period, clocks since Start
+static int64_t mono_ns(void) { struct timespec ts; clock_gettime(CLOCK_MONOTONIC, &ts); return (int64_t)ts.tv_sec * 1000000000 + ts.tv_nsec; }
+static void midi_push(uint8_t a, uint8_t b, uint8_t c) {
+    unsigned w = midi_wr; if (w - midi_rd >= 256) return;
+    midi_ring[w & 255][0] = a; midi_ring[w & 255][1] = b; midi_ring[w & 255][2] = c; __atomic_store_n(&midi_wr, w + 1, __ATOMIC_RELEASE);
+}
+// CC -> a parameter of a pad (MIDI LEARN: R2 on a SOUND card, then turn the knob). midimap.cfg beside the binary.
+#define MMAP_N 64
+typedef struct { uint8_t ch, cc, pad; int16_t par; } MidiMap;
+static MidiMap mmap_[MMAP_N]; static int mmap_n, mlearn_pad = -1, mlearn_par = -1;
+static void mmap_save(void) { char b[MMAP_N * 20 + 8]; int n = 0; for (int i = 0; i < mmap_n; i++) n += snprintf(b + n, sizeof b - n, "%d %d %d %d\n", mmap_[i].ch, mmap_[i].cc, mmap_[i].pad, mmap_[i].par); write_whole("midimap.cfg", b, n); }
+static void mmap_load(void) { FILE *f = fopen("midimap.cfg", "r"); if (!f) return; int a, b, c, d; mmap_n = 0;
+    while (mmap_n < MMAP_N && fscanf(f, "%d %d %d %d", &a, &b, &c, &d) == 4) if (c >= 0 && c < NSLOT && b >= 0 && b < 128) mmap_[mmap_n++] = (MidiMap){(uint8_t)a, (uint8_t)b, (uint8_t)c, (int16_t)d}; fclose(f); }
+static int mmap_find(int pad, int par) { for (int i = 0; i < mmap_n; i++) if (mmap_[i].pad == pad && mmap_[i].par == par) return i; return -1; }
 
 static void midi_scan(void) {            // the ports there are now, with their cards' names
     midi_ndev = 0;
@@ -39,7 +54,12 @@ static void *midi_thread(void *arg) {
         if (r > 0 && (pf.revents & POLLIN)) {
             uint8_t buf[64]; ssize_t n = read(midi_fd, buf, sizeof buf);
             for (ssize_t i = 0; i < n; i++) { uint8_t b = buf[i];
-                if (b >= 0xF8) continue;                        // real-time: CLOCK IN comes with the second step
+                if (b >= 0xF8) {                                // real-time, between any bytes
+                    if (b == 0xF8) { int64_t t = mono_ns(), l = mclk_last_ns, d = t - l;
+                        if (l && d > 500000 && d < 200000000) mclk_per_ns = mclk_per_ns ? mclk_per_ns + (d - mclk_per_ns) / 12 : d;   // smoothed over about half a beat
+                        mclk_last_ns = t; mclk_count++; }
+                    else if (b == 0xFA || b == 0xFB || b == 0xFC) { if (b != 0xFC) mclk_count = 0; midi_push(b, 0, 0); }
+                    continue; }
                 if (b & 0x80) { st = b >= 0xF0 ? 0 : b; got = 0; need = (b & 0xE0) == 0xC0 ? 1 : 2; continue; }   // a status (system ones dropped)
                 if (!st) continue;
                 msg[1 + got++] = b;
@@ -74,11 +94,11 @@ static int midi_open(void) {             // the wanted card, if it is there; 1 =
     }
     return 0;
 }
-static void midi_cfg_save(void) { char b[64]; int n = snprintf(b, sizeof b, "%d %d %d %s\n", midi_clk_out, midi_notes, midi_ch, midi_want); write_whole("midi.cfg", b, n); }
+static void midi_cfg_save(void) { char b[64]; int n = snprintf(b, sizeof b, "%d %d %d %d %s\n", midi_clk_out, midi_notes, midi_ch, midi_clk_in, midi_want); write_whole("midi.cfg", b, n); }
 static void midi_cfg_load(void) {
     FILE *f = fopen("midi.cfg", "r"); if (!f) return;
-    char nm[32] = ""; if (fscanf(f, "%d %d %d %31[^\n]", &midi_clk_out, &midi_notes, &midi_ch, nm) >= 3) snprintf(midi_want, sizeof midi_want, "%s", nm);
-    midi_clk_out = midi_clk_out != 0; midi_notes = midi_notes != 0; midi_ch = midi_ch < 0 || midi_ch > 16 ? 0 : midi_ch; fclose(f);
+    char nm[32] = ""; if (fscanf(f, "%d %d %d %d %31[^\n]", &midi_clk_out, &midi_notes, &midi_ch, &midi_clk_in, nm) >= 4) snprintf(midi_want, sizeof midi_want, "%s", nm);
+    midi_clk_out = midi_clk_out != 0; midi_clk_in = midi_clk_in != 0; midi_notes = midi_notes != 0; midi_ch = midi_ch < 0 || midi_ch > 16 ? 0 : midi_ch; fclose(f);
 }
 static void midi_pick(int d) {           // EDIT+<> on MIDI PORT: OFF and the ports found now, round
     midi_scan(); int cur = -1;

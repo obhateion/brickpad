@@ -1909,14 +1909,14 @@ static void pat_play(void) {             // PLAY in the window: the pattern unde
 }
 
 // ---------- PROJECT ----------
-enum { J_TEMPO, J_SWING, J_KEY, J_SCALE, J_LAUNCH, J_METRO, J_BEATS, J_COUNT, J_QUANT, J_MASTER, J_THEME, J_LIB, J_NEW, J_SNAP, J_PROJ, J_SAVE, J_SAVEAS, J_EXPORT, J_HINT, J_STRIP, J_VIEW, J_LOCK, J_NAV, J_DRAWER, J_MXFX, J_MXLINK, J_MPORT, J_MCLK, J_MNOTE, J_MCH, J_ABOUT, J_N };
+enum { J_TEMPO, J_SWING, J_KEY, J_SCALE, J_LAUNCH, J_METRO, J_BEATS, J_COUNT, J_QUANT, J_MASTER, J_THEME, J_LIB, J_NEW, J_SNAP, J_PROJ, J_SAVE, J_SAVEAS, J_EXPORT, J_HINT, J_STRIP, J_VIEW, J_LOCK, J_NAV, J_DRAWER, J_MXFX, J_MXLINK, J_MPORT, J_MCLK, J_MNOTE, J_MCH, J_MCLKIN, J_ABOUT, J_N };
 // The sections of PROJECT (2026-11-09): the left column chooses one, the middle shows its settings
 // 2026-11-14 (user): INTERFACE holds how BrickPad looks and moves, ABOUT every key of it by topic (the sheet SHIFT used to show)
 enum { JS_SONG, JS_PLAY, JS_REC, JS_MIDI, JS_FILE, JS_UI, JS_MIX, JS_SYS, JS_ABOUT, JS_N };
 enum { AB_N = 11 }; static int ab_pg;   // ABOUT: its topics, the one shown
 static const char *const prj_sec_name[JS_N] = {"SONG", "PLAY", "RECORD", "MIDI", "FILE", "INTERFACE", "MIXER", "SYSTEM", "ABOUT"};
 static const int8_t prj_sec[JS_N][6] = {{J_TEMPO, J_SWING, J_KEY, J_SCALE, J_SNAP, J_BEATS}, {J_LAUNCH, J_METRO, J_MASTER, -1},
-                                        {J_COUNT, J_QUANT, -1}, {J_MPORT, J_MCLK, J_MNOTE, J_MCH, -1}, {J_PROJ, J_SAVE, J_SAVEAS, J_EXPORT, J_NEW, -1},
+                                        {J_COUNT, J_QUANT, -1}, {J_MPORT, J_MCLKIN, J_MCLK, J_MNOTE, J_MCH, -1}, {J_PROJ, J_SAVE, J_SAVEAS, J_EXPORT, J_NEW, -1},
                                         {J_VIEW, J_STRIP, J_NAV, J_HINT, J_LOCK, -1}, {J_DRAWER, J_MXFX, J_MXLINK, -1}, {J_THEME, J_LIB, -1}, {J_ABOUT, -1}};
 static const char *const prj_help[J_N] = {"THE PROJECT'S SPEED. EDIT TAPS IT, L1/R1 HELD NUDGE WHILE PLAYING", "LATE EVEN 1/16 STEPS: A SHUFFLE",
     "THE TONIC EVERY PAD PLAYS IN (A PAD CAN HAVE ITS OWN)", "WHICH NOTES THE DEGREES, KEYS AND RANDOM USE",
@@ -1930,8 +1930,9 @@ static const char *const prj_help[J_N] = {"THE PROJECT'S SPEED. EDIT TAPS IT, L1
     "EFFECTS AND SENDS IN SMALL ON EVERY STRIP. OFF: A CLEANER MIXER. THE DRAWER ALWAYS SHOWS THEM IN FULL",
     "THE SAME SOUND ON THE SAME PAD IN ANOTHER SCENE: ONE MIX FOR EVERY SCENE, OR ITS OWN IN EACH. ANOTHER SOUND ALWAYS KEEPS ITS OWN",
     "THE MIDI DEVICE ON USB (THE M8, A KEYBOARD, A CONTROLLER). EDIT+<> CHOOSES, EDIT LOOKS AGAIN", "ON: BRICKPAD SENDS START, STOP AND 24 CLOCKS A BEAT: THE OTHER DEVICE FOLLOWS ITS TEMPO",
-    "KEYS: NOTES PLAY THE OPEN PAD AT THEIR PITCH. PADS: NOTES 36-47 (C1-B1) PLAY PADS 1-12", "THE MIDI CHANNEL NOTES ARE TAKEN FROM", NULL};
-static const char *prj_name[J_N] = {"TEMPO", "SWING", "KEY", "SCALE", "CLIP LAUNCH", "METRONOME", "BEATS/BAR", "COUNT-IN", "REC QUANT", "MASTER VOL", "THEME", "CHECK LIBRARY", "NEW PROJECT", "SCALE SNAP", "PROJECT", "SAVE", "SAVE AS", "EXPORT WAV", "FOOTER HINTS", "PAD STRIP", "VIEW", "KID LOCK", "PAD MENU", "MIXER DRAWER", "STRIP EFFECTS", "SCENE MIX", "MIDI PORT", "CLOCK OUT", "MIDI NOTES", "MIDI CHANNEL", "ABOUT"};
+    "KEYS: NOTES PLAY THE OPEN PAD AT THEIR PITCH. PADS: NOTES 36-47 (C1-B1) PLAY PADS 1-12", "THE MIDI CHANNEL NOTES ARE TAKEN FROM",
+    "ON: BRICKPAD FOLLOWS THE OTHER DEVICE: ITS TEMPO, START AND STOP. KNOBS: R2 ON A SOUND CARD, THEN TURN ONE", NULL};
+static const char *prj_name[J_N] = {"TEMPO", "SWING", "KEY", "SCALE", "CLIP LAUNCH", "METRONOME", "BEATS/BAR", "COUNT-IN", "REC QUANT", "MASTER VOL", "THEME", "CHECK LIBRARY", "NEW PROJECT", "SCALE SNAP", "PROJECT", "SAVE", "SAVE AS", "EXPORT WAV", "FOOTER HINTS", "PAD STRIP", "VIEW", "KID LOCK", "PAD MENU", "MIXER DRAWER", "STRIP EFFECTS", "SCENE MIX", "MIDI PORT", "CLOCK OUT", "MIDI NOTES", "MIDI CHANNEL", "CLOCK IN", "ABOUT"};
 static int ui_strip = 1, ui_simple, ui_lock;   // PROJECT > INTERFACE: the pad strip (0 hidden, 1 thin, 2 big), the simple view, its kid lock (ui.cfg beside the binary)
 static int ui_tree, ui_drawer_left;          // the pad menu as a tree (A23) instead of the list; the mixer's drawer on the left
 static int ui_mxlink = 1;                    // PROJECT > MIXER > SCENE MIX (2026-11-15, user): one mix for the same sound in every scene
@@ -2256,6 +2257,7 @@ static void prj_edit_arrow(int k) {
     if (jcur == J_MXLINK) { ui_mxlink = !ui_mxlink; ui_cfg_save(); return; }
     if (jcur == J_MPORT) { midi_pick(d); return; }
     if (jcur == J_MCLK) { midi_clk_out = !midi_clk_out; midi_cfg_save(); return; }
+    if (jcur == J_MCLKIN) { midi_clk_in = !midi_clk_in; if (!midi_clk_in) tempo_mul = 1.f; midi_cfg_save(); return; }
     if (jcur == J_MNOTE) { midi_notes = !midi_notes; midi_cfg_save(); return; }
     if (jcur == J_MCH) { midi_ch = (midi_ch + d * (big ? 4 : 1) + 17) % 17; midi_cfg_save(); return; }
     if (jcur == J_STRIP) { ui_strip = (ui_strip + 1) % 3; ui_cfg_save(); return; }
@@ -2317,7 +2319,7 @@ static void prj_tap(void) {
         if (ntaps == 5) { memmove(taps, taps + 1, 4 * sizeof *taps); ntaps = 4; }
         taps[ntaps++] = now;
         if (ntaps >= 2) { edit_begin(); song.tempo = clampi((int)(60000.0 * (ntaps - 1) / (now - taps[0]) + 0.5), 40, 300); }
-    } else if (jcur == J_LAUNCH || jcur == J_METRO || jcur == J_COUNT || jcur == J_QUANT || jcur == J_SNAP || jcur == J_HINT || jcur == J_STRIP || jcur == J_VIEW || jcur == J_LOCK || jcur == J_NAV || jcur == J_DRAWER || jcur == J_MXFX || jcur == J_MXLINK || jcur == J_MCLK || jcur == J_MNOTE || jcur == J_MCH) prj_edit_arrow(K_RIGHT);
+    } else if (jcur == J_LAUNCH || jcur == J_METRO || jcur == J_COUNT || jcur == J_QUANT || jcur == J_SNAP || jcur == J_HINT || jcur == J_STRIP || jcur == J_VIEW || jcur == J_LOCK || jcur == J_NAV || jcur == J_DRAWER || jcur == J_MXFX || jcur == J_MXLINK || jcur == J_MCLK || jcur == J_MCLKIN || jcur == J_MNOTE || jcur == J_MCH) prj_edit_arrow(K_RIGHT);
     else if (jcur == J_MPORT) { if (midi_want[0] && midi_open()) toast("MIDI: CONNECTED"); else if (midi_want[0]) toast("MIDI: THE DEVICE IS NOT HERE"); else { midi_pick(1); toast(midi_want[0] ? "MIDI: CONNECTED" : "NO MIDI DEVICE FOUND"); } }
 }
 
@@ -2530,10 +2532,11 @@ static void prj_reset_row(int j) {       // one PROJECT setting back to its defa
     case J_DRAWER: ui_drawer_left = 0; break; case J_MXFX: ui_mxfx = 1; break; case J_MXLINK: ui_mxlink = 1; break;
     case J_MPORT: midi_want[0] = 0; midi_close(); midi_cfg_save(); break; case J_MCLK: midi_clk_out = 0; midi_cfg_save(); break;
     case J_MNOTE: midi_notes = 0; midi_cfg_save(); break; case J_MCH: midi_ch = 0; midi_cfg_save(); break;
+    case J_MCLKIN: midi_clk_in = 0; tempo_mul = 1.f; midi_cfg_save(); break;
     case J_THEME: if (th_sel) { th_sel = 0; theme_apply(); th_dirty = 1; } break;
     }
 }
-static int prj_row_resets(int j) { return j < J_LIB || j == J_SNAP || (j >= J_HINT && j <= J_MCH); }   // J_THEME < J_LIB too
+static int prj_row_resets(int j) { return j < J_LIB || j == J_SNAP || (j >= J_HINT && j <= J_MCLKIN); }   // J_THEME < J_LIB too
 static int prj_sec_resets(int sc) { int r[6], n = prj_rows(sc, r); for (int i = 0; i < n; i++) if (prj_row_resets(r[i])) return 1; return 0; }
 static void prj_reset_sec(int sc) {
     int r[6], n = prj_rows(sc, r); push_undo();
@@ -2601,7 +2604,7 @@ static void delete_action(void) {   // OPTION + EDIT
     case T_PRJ:
         if (!jcol) { cfm_prj(jsec); break; }
         if (!prj_row_resets(jcur)) break;
-        { int ui = jcur >= J_HINT && jcur <= J_MCH; if (!ui && jcur != J_THEME) push_undo(); prj_reset_row(jcur); if (ui) ui_cfg_save(); toast("DEFAULT"); }
+        { int ui = jcur >= J_HINT && jcur <= J_MCLKIN; if (!ui && jcur != J_THEME) push_undo(); prj_reset_row(jcur); if (ui) ui_cfg_save(); toast("DEFAULT"); }
         break;
     case T_SEQ: seq_delete(); break;
     case T_PAT: if (sl_r == 2) break;
@@ -3625,6 +3628,14 @@ static void key_event(int k, int down) {
     }
     if (held[K_SHIFT] && k == K_L2) { act_undo(); return; }
     if (k == K_L2 && !held[K_SHIFT] && tab == T_SEQ && srow >= 1 && srow <= 2 && !is_auto(lane)) { roll_mode(); if (cur_pat(sel)->mode) roll_open(); return; }   // STEPS <> PIANO ROLL on the fly
+    if (k == K_R2 && !held[K_SHIFT] && tab == T_SEQ && srow >= 3 && !browsing && !slicing && !rolling) {   // MIDI LEARN on a SOUND card (2026-11-19)
+        int pr = cur_par(), i = pr >= 0 ? mmap_find(sel, pr) : -1;
+        if (mlearn_par >= 0) { mlearn_par = -1; toast("MIDI LEARN CANCELLED"); }
+        else if (pr < 0 || !par_is_number(pr)) toast("NOT A KNOB: NO MIDI HERE");
+        else if (i >= 0) { mmap_[i] = mmap_[--mmap_n]; mmap_save(); toast("MIDI KNOB UNLINKED"); }
+        else if (midi_fd < 0) toast("NO MIDI PORT: PROJECT > MIDI");
+        else { mlearn_pad = sel; mlearn_par = pr; toast("TURN A KNOB ON THE MIDI CONTROLLER"); }
+        return; }
     if (k == K_R2 && !held[K_SHIFT] && tab == T_SEQ && srow >= 1 && srow <= 2 && !is_auto(lane)) { hear_on = !hear_on; toast(hear_on ? "HEAR NOTES ON" : "HEAR NOTES OFF"); return; }   // the headphones
     if (held[K_SHIFT] && k == K_OPT) { used[K_OPT] = 1; copy_paste(0); return; }
     if (held[K_SHIFT] && k == K_EDIT) { used[K_EDIT] = 1; copy_paste(1); return; }
@@ -3985,6 +3996,7 @@ static void prj_value(int i, char *b) {
     case J_MXLINK: snprintf(b, 32, ui_mxlink ? "SHARED" : "OWN"); break;
     case J_MPORT: if (!midi_want[0]) snprintf(b, 32, "OFF"); else snprintf(b, 32, "%.20s%s", midi_want, midi_fd >= 0 && midi_run ? "" : " (NOT HERE)"); break;
     case J_MCLK: snprintf(b, 32, midi_clk_out ? "ON" : "OFF"); break;
+    case J_MCLKIN: if (midi_clk_in && mclk_per_ns) snprintf(b, 32, "ON  %.1f BPM", 60e9 / (mclk_per_ns * 24.0)); else snprintf(b, 32, midi_clk_in ? "ON" : "OFF"); break;
     case J_MNOTE: snprintf(b, 32, midi_notes ? "PADS" : "KEYS"); break;
     case J_MCH: if (midi_ch) snprintf(b, 32, "%d", midi_ch); else snprintf(b, 32, "ALL"); break;
     case J_ABOUT: b[0] = 0; break;
@@ -4560,13 +4572,45 @@ static void screenshot(const char *path) {
 
 // MIDI in (midi.h reads the port): notes play like KEYS (the open pad, at their pitch) or PADS (36..47 = pads 1-12),
 // with their velocity, into takes and capture like the Brick's own keys. Tags 700+note (KEYS) and 100+pad (PADS).
+static void midi_follow(void) {          // CLOCK IN: the tempo from the clocks, and the phase pulled to theirs
+    if (!midi_clk_in || !mclk_per_ns) return;
+    int64_t now = mono_ns(), per = mclk_per_ns, last = mclk_last_ns;
+    if (now - last > 500000000) return;  // no clock for half a second: stopped or unplugged, keep the tempo
+    double bpm = 60e9 / (per * 24.0);
+    if (bpm < 40 || bpm > 300) return;
+    int bt = (int)(bpm + 0.5); if (bt != song.tempo && abs((int)(bpm * 10) - song.tempo * 10) > 6) song.tempo = (int16_t)bt;   // whole BPM in the project; the rest in tempo_mul
+    double mul = bpm / song.tempo;
+    if (engine_playing() && mclk_count > 0) {   // where they are, in 1/32 (3 clocks), against where we are
+        double ext = (mclk_count - 1) / 3.0 + (double)(now - last) / per / 3.0, err = ext - engine_posf();
+        if (fabs(err) < 4) mul *= 1 + (err > 0.5 ? 0.5 : err < -0.5 ? -0.5 : err) * 0.04;   // up to 2 % faster or slower until they meet
+    }
+    tempo_mul = (float)mul;
+}
 static void midi_poll(Uint32 now) {
     static Uint32 retry;
+    midi_follow();
     if (midi_want[0] && (midi_fd < 0 || !midi_run) && ms_since(now, retry) > 2000) { retry = now | 1; midi_open(); }   // plugged in later, or again
     while (midi_rd != midi_wr) {
         unsigned r = midi_rd; uint8_t st = midi_ring[r & 255][0], n = midi_ring[r & 255][1], v = midi_ring[r & 255][2];
         __atomic_store_n(&midi_rd, r + 1, __ATOMIC_RELEASE);
+        if (st == 0xFA || st == 0xFB || st == 0xFC) {   // CLOCK IN: the other device starts and stops us
+            if (!midi_clk_in) continue;
+            int run = engine_playing() || engine_counting() >= 0;
+            if (st == 0xFC) { if (run) transport_toggle(); continue; }
+            if (run && st == 0xFA) transport_toggle();
+            if (!engine_playing()) transport_toggle();
+            continue; }
         int ty = st & 0xF0, ch = (st & 15) + 1, on = ty == 0x90 && v > 0;
+        if (ty == 0xB0) {                // a knob: MIDI LEARN takes it, or it turns what it was bound to
+            if (mlearn_par >= 0) { int i = mmap_find(mlearn_pad, mlearn_par); if (i < 0 && mmap_n < MMAP_N) i = mmap_n++;
+                if (i >= 0) { for (int j = 0; j < mmap_n; j++) if (j != i && mmap_[j].ch == ch && mmap_[j].cc == n) { mmap_[j] = mmap_[--mmap_n]; if (i == mmap_n) i = j; break; }   // one knob, one parameter
+                    mmap_[i] = (MidiMap){(uint8_t)ch, n, (uint8_t)mlearn_pad, (int16_t)mlearn_par}; mmap_save();
+                    char b[48]; snprintf(b, sizeof b, "CC %d -> %s", n, par_name[mlearn_par]); toast(b); }
+                mlearn_par = -1; continue; }
+            for (int i = 0; i < mmap_n; i++) if (mmap_[i].cc == n && mmap_[i].ch == ch) {
+                int pad = mmap_[i].pad, pr = mmap_[i].par, lo, hi, st2, bg; par_limits(pad, pr, &lo, &hi, &st2, &bg);
+                int val = lo + (int)((hi - lo) * v / 127.0 + 0.5); if (val != par_get(pad, pr)) { edit_begin(); par_put(pad, pr, val); } }
+            continue; }
         if ((ty != 0x80 && ty != 0x90) || (midi_ch && ch != midi_ch)) continue;   // CC comes with the second step
         last_input = now | 1;
         if (midi_notes) {                // PADS
@@ -4585,9 +4629,22 @@ static void midi_poll(Uint32 now) {
         }
     }
 }
+// A crash leaves its trace (2026-11-19: the Brick went down once and the log said nothing): the signal and the call
+// stack go into brickpad.log at once; the next start keeps that log as brickpad.log.1.
+#include <execinfo.h>
+#include <signal.h>
+static void crash_handler(int sig) {
+    char b[64]; int n = snprintf(b, sizeof b, "CRASH: signal %d (%s)\n", sig, sig == SIGSEGV ? "SEGV" : sig == SIGBUS ? "BUS" : sig == SIGABRT ? "ABORT" : sig == SIGFPE ? "FPE" : "ILL");
+    int fd = logf ? fileno(logf) : 2; if (write(fd, b, (size_t)n) < 0) {}
+    void *bt[32]; int k = backtrace(bt, 32); backtrace_symbols_fd(bt, k, fd); fsync(fd);
+    signal(sig, SIG_DFL); raise(sig);
+}
 int main(int argc, char **argv) {
     srand((unsigned)time(NULL));         // figures, random files and kits differ from run to run
+    rename("brickpad.log", "brickpad.log.1");   // the last run's log, kept (a crash or a freeze is read there)
     logf = fopen("brickpad.log", "w"); if (!logf) logf = stderr;
+    { time_t t = time(NULL); char d[32]; strftime(d, sizeof d, "%F %T", localtime(&t)); logmsg("start %s", d); }
+    { int sg[5] = {SIGSEGV, SIGBUS, SIGABRT, SIGFPE, SIGILL}; for (int i = 0; i < 5; i++) signal(sg[i], crash_handler); }
     int test_secs = 0, buffer = 128;
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "--test") && i + 1 < argc) test_secs = atoi(argv[++i]);
@@ -4627,7 +4684,7 @@ int main(int argc, char **argv) {
     logmsg("audio: %s", SDL_GetCurrentAudioDriver());
     idx_load();
     load_state(); scenes_read(SCN_FILE, 0); prj_startup();
-    theme_load(); presets_load(); hint_load(); ui_cfg_load(); midi_cfg_load(); midi_open();
+    theme_load(); presets_load(); hint_load(); ui_cfg_load(); midi_cfg_load(); mmap_load(); midi_open();
     if (test_secs) {  // demo beat for automated checks
         song.tempo = 128; song.swing = 20;
         for (int i = 0; i < 16; i++) {
@@ -4678,7 +4735,7 @@ int main(int argc, char **argv) {
           if (!st0) st0 = now;
           if (!test_secs && ms_since(now, st0) >= 30000) {   // a line every 30 s: frames per second and the cost of a frame
               { float amx, agap; int aov, an; engine_stats(&amx, &aov, &agap, &an);
-              logmsg("frames: %.1f fps, build %.2f ms, present %.2f ms, tab %d%s | audio: load avg %d%% max %d%%, %d of %d calls over time, longest wait %.1f ms, voices %d", nf * 1000.0 / ms_since(now, st0), draw_build_ms / nf, draw_present_ms / nf, tab, is_synth(sel) && tab == T_SEQ ? " synth" : "", (int)(engine_load() * 100), (int)(amx * 100), aov, an, agap, engine_voices()); }
+              logmsg("frames: %.1f fps, build %.2f ms, present %.2f ms, tab %d%s | audio: load avg %d%% max %d%%, %d of %d calls over time, longest wait %.1f ms, voices %d | free %ld MB", nf * 1000.0 / ms_since(now, st0), draw_build_ms / nf, draw_present_ms / nf, tab, is_synth(sel) && tab == T_SEQ ? " synth" : "", (int)(engine_load() * 100), (int)(amx * 100), aov, an, agap, engine_voices(), mem_avail_mb()); }
               st0 = now; nf = 0; draw_build_ms = draw_present_ms = 0; } }
         engine_collect_garbage();
         { static Uint64 next; int fps = pace ? pace : frame_rate(now);
@@ -4698,7 +4755,7 @@ int main(int argc, char **argv) {
         printf("fps %.1f, dsp load %.1f%%, buffer %d\n", frames / secs, engine_load() * 100, engine_frames());
         screenshot("/tmp/bp2.bmp");
     } else { save_state(); theme_save(); saver_pause(0); }
-    midi_close();
+    midi_close(); logmsg("quit");
     lib_end();
     if (idx_dirty) idx_save();
     engine_stop();
