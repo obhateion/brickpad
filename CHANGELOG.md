@@ -7,6 +7,7 @@
 - PATTERN list: a RANDOM card. EQUALIZER insert (shelves, a bell, low and high cut).
 - MIDI (PROJECT > MIDI): the USB port (remembered by name, found again when plugged in), CLOCK OUT (Start, Stop, 24 a
   beat), notes in as KEYS (the open pad at their pitch) or PADS (36-47 = pads 1-12) with velocity, a channel or ALL.
+- REVERB and DELAY as pad inserts (the returns' DSP: SIZE DECAY DAMP PREDELAY LOW CUT MIX / TIME FEEDBACK TONE PING-PONG LOW CUT MIX); up to 4 of each at once, more stay dry.
 - The count (and so the MIDI clock and the metronome) stops as soon as no clip plays or waits; the next clip starts the bar at the press. Not with CLOCK IN.
 - Footer metronome again (as in 1.2): the tempo now and a light per beat, the first in orange.
 - Browser: R2 turns LISTEN on/off (off: the arrows are silent, OPTION hears one), kept in listen.cfg.

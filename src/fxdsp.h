@@ -18,7 +18,9 @@ typedef struct {
     float mb[2][8][2], mbe[3], mbg[3];    // MULTIBAND: 8 filter states per channel, band detectors, band gains (linear)
     float mbs[MB_N];                      // MULTIBAND gains IN LOW MID HIGH OUT, smoothed (linear; 0 = not set yet)
     float view[6];                        // for the screen: COMP in dB and GR; FILTER cutoff; MULTIBAND levels and gains
+    int8_t sp;                            // REVERB / DELAY: the pool's line it holds + 1 (0 none)
 } FxState;
+static int fx_space(FxState *st, int ty, const int8_t *p, const float *in, float *wet, int n, double tempo);   // below, after the returns
 
 static inline float fx_tanh(float x) { if (x > 3) return 1; if (x < -3) return -1; float x2 = x * x; return x * (27 + x2) / (27 + 9 * x2); }
 static inline float fx_rand(uint32_t *s) { *s ^= *s << 13; *s ^= *s >> 17; *s ^= *s << 5; return (float)(*s >> 8) / 8388608.f - 1.f; }
@@ -68,7 +70,7 @@ static void fx_insert_ex(FxState *st, const FxSlot *f, const int8_t *mbx, int on
     const int8_t *p = st->p; int ty = st->type;
     float mix = 1;
     // per-buffer coefficients
-    float c0 = 0, c1 = 0, c2 = 0, c3 = 0, c4 = 0, eq[5][5]; int neq = 0;
+    float c0 = 0, c1 = 0, c2 = 0, c3 = 0, c4 = 0, eq[5][5]; int neq = 0; static float sp_wet[2 * 4096];
     double lfo_inc = 0;
     switch (ty) {
     case FX_COMP: c0 = -40 + 40 * p[0] / 100.f; c1 = 1 + 19 * (p[1] / 100.f) * (p[1] / 100.f);
@@ -92,6 +94,9 @@ static void fx_insert_ex(FxState *st, const FxSlot *f, const int8_t *mbx, int on
     case FX_MULTI: c0 = tanf((float)M_PI * mb_xlow(p[4]) / SR); c1 = tanf((float)M_PI * (mb_xhigh(p[5]) < SR * 0.45f ? mb_xhigh(p[5]) : SR * 0.45f) / SR);
         c2 = 1 - expf(-1.f / (0.002f * mb_tscale(p[1]) * SR)); c3 = 1 - expf(-1.f / (0.06f * mb_tscale(p[1]) * SR)); break;
     case FX_EQ: neq = eq_coefs(p, eq, SR); break;
+    case FX_REVERB: case FX_DELAY: mix = p[5] / 100.f;
+        if (n > 4096 || !fx_space(st, ty, p, b, sp_wet, n, tempo)) mix = 0;   // no free line: dry
+        break;
     case FX_RING: { float hz = 20 * exp2f(p[0] / 100.f * 8 + p[1] / 1200.f); c0 = 2 * (float)M_PI * hz / SR;
         lfo_inc = 0.05 * pow(200, p[2] / 100.0) / SR; c1 = p[3] / 100.f * 2; mix = p[4] / 100.f; break; }
     }
@@ -190,6 +195,7 @@ static void fx_insert_ex(FxState *st, const FxSlot *f, const int8_t *mbx, int on
                 for (int i = 0; i < neq; i++) { float *z = st->mb[c][i], y = eq[i][0] * x + z[0]; z[0] = eq[i][1] * x - eq[i][3] * y + z[1]; z[1] = eq[i][2] * x - eq[i][4] * y; x = y; }
                 if (c) wr = x; else wl = x;
             } break;
+        case FX_REVERB: case FX_DELAY: wl = sp_wet[2 * k]; wr = sp_wet[2 * k + 1]; break;
         case FX_RING: {
             float w = c0 * (lfo_inc && c1 ? exp2f(c1 * fx_lfo_sin(st->lfo)) : 1), cw = cosf(w), sw = sinf(w);
             float nc = st->rc * cw - st->rs * sw, ns = st->rc * sw + st->rs * cw; st->rc = nc; st->rs = ns;
@@ -278,6 +284,24 @@ static void delay_run(Delay *d, const int8_t *pr, double tempo, const float *in,
         float m = 0.5f * (r[0] + r[1]);
         out[2 * k] += (m + (r[0] - m) * w) * lvl; out[2 * k + 1] += (m + (r[1] - m) * w) * lvl;
     }
+}
+
+// ---------- REVERB and DELAY as inserts (2026-11-19, user): the returns' DSP on a pad, from a pool of lines ----------
+// A slot takes a free line when it starts (cleared then) and keeps it while it is that type; a state wiped by a reset
+// lets its line go by itself (the owner no longer points back at it).
+static Reverb sp_rv[FX_SPACES]; static Delay sp_dl[FX_SPACES]; static FxState *sp_own[2][FX_SPACES];
+static int fx_space(FxState *st, int ty, const int8_t *p, const float *in, float *wet, int n, double tempo) {
+    int kind = ty == FX_DELAY, i = st->sp - 1;
+    if (i < 0 || sp_own[kind][i] != st) {
+        for (i = 0; i < FX_SPACES; i++) { FxState *o = sp_own[kind][i]; if (!o || o->sp != i + 1 || o->type != ty) break; }
+        if (i == FX_SPACES) { st->sp = 0; return 0; }
+        if (kind) memset(&sp_dl[i], 0, sizeof sp_dl[i]); else memset(&sp_rv[i], 0, sizeof sp_rv[i]);
+        sp_own[kind][i] = st; st->sp = (int8_t)(i + 1);
+    }
+    memset(wet, 0, sizeof(float) * 2 * n);
+    if (kind) { int8_t pr[8] = {p[0], p[1], p[2], p[4], p[3], 100, 100, 0}; delay_run(&sp_dl[i], pr, tempo, in, wet, n); }   // DL_TIME FB TONE LOWCUT PING WIDTH LEVEL MUTE
+    else { int8_t pr[8] = {p[0], p[1], p[2], p[3], 100, p[4], 100, 0}; reverb_run(&sp_rv[i], pr, in, wet, n); }      // RV_SIZE DECAY DAMP PRE WIDTH LOWCUT LEVEL MUTE
+    return 1;
 }
 
 // ---------- master: compressor and limiter ----------

@@ -1019,7 +1019,8 @@ static void callback(void *u, Uint8 *stream, int len) {
         float ta = ea * ea, tb = eb * eb;
         int spr_on = t->type == 1 && song.gx[s][GX_MARK] == GX_INIT && song.gx[s][GX_SPRING] > 0;
         int idle = 0;
-        if (bus_live[s]) { strip_tail[s] = 4096; spr_tail[s] = spr_on ? SR * 4 : 0; }
+        int space = 0; for (int i = 0; i < NINS; i++) space |= fx_live[s][i] && (pm->ins[i].type == FX_REVERB || pm->ins[i].type == FX_DELAY);
+        if (bus_live[s]) { strip_tail[s] = space ? SR * 10 : 4096; spr_tail[s] = spr_on ? SR * 4 : 0; }   // a REVERB / DELAY insert rings on after the last note
         else if (strip_tail[s] > 0 && (fxs[s][0].xf > 0 || fxs[s][1].xf > 0)) strip_tail[s] -= n;
         else if (spr_on && spr_tail[s] > 0) spr_tail[s] -= n;   // the spring rings on after the last note
         else { strip_tail[s] = 0; idle = 1; }

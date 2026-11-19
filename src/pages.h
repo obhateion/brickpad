@@ -50,6 +50,8 @@ static void fx2_picture(int x, int y, int w, int h, const FxSlot *f, Col c) {   
         case FX_EQ: { static float ec[5][5]; static int en; if (i == 0) en = eq_coefs(f->p, ec, 48000);   // the real response, 20 Hz .. 20 kHz, +-18 dB
             v = eq_mag_db(ec, en, 20 * exp2f(t * 9.97f), 48000) / 18; if (v > 0.95f) v = 0.95f; if (v < -0.95f) v = -0.95f; break; }
         case FX_AUTOPAN: v = f->p[2] == 2 ? (fmodf(t * 4, 1) < 0.5f ? 0.8f : -0.8f) : f->p[2] == 1 ? 1.6f * fabsf(fmodf(t * 4, 1) - 0.5f) * 2 - 0.8f : 0.8f * sinf(t * 6.2832f * 2); break;
+        case FX_REVERB: { float e = expf(-t * (6 - p1 * 5)); v = e * 0.85f * sinf(t * 6.2832f * 23) * sinf(t * 6.2832f * 7.3f); break; }   // a tail that dies away, longer with DECAY
+        case FX_DELAY: { int n = 2 + f->p[0] / 2; float ph = fmodf(t * n, 1), e = powf(0.15f + 0.8f * p1, floorf(t * n)); v = ph < 0.12f ? e * 0.85f * sinf(ph / 0.12f * 3.1416f) : 0; break; }   // echoes, each quieter by FEEDBACK
         default: v = (0.3f + 0.6f * p1) * sinf(t * 6.2832f * (1 + p0 * 3));   // CHORUS FLANGER PHASER: the sweep
         }
         int nx = x + i, ny = y + h / 2 - (int)(v * (h / 2 - 14));

@@ -5,8 +5,8 @@
 #pragma once
 #include "bp.h"
 
-static const char *const fx_name[FX_N] = {"NONE", "COMPRESSOR", "DISTORTION", "CHORUS", "FLANGER", "PHASER", "FILTER", "BITCRUSHER", "TAPE", "AUTOPAN", "RING MOD", "MULTIBAND", "EQUALIZER"};
-static const char *const fx_short[FX_N] = {"---", "CMP", "DST", "CHO", "FLG", "PHS", "FLT", "BIT", "TAP", "PAN", "RNG", "MLT", "EQ"};
+static const char *const fx_name[FX_N] = {"NONE", "COMPRESSOR", "DISTORTION", "CHORUS", "FLANGER", "PHASER", "FILTER", "BITCRUSHER", "TAPE", "AUTOPAN", "RING MOD", "MULTIBAND", "EQUALIZER", "REVERB", "DELAY"};
+static const char *const fx_short[FX_N] = {"---", "CMP", "DST", "CHO", "FLG", "PHS", "FLT", "BIT", "TAP", "PAN", "RNG", "MLT", "EQ", "REV", "DLY"};
 static const char *const fx_pname[FX_N][6] = {
     {"", "", "", "", "", ""},
     {"THRESH", "RATIO", "ATTACK", "RELEASE", "MAKEUP", "MIX"},
@@ -21,17 +21,21 @@ static const char *const fx_pname[FX_N][6] = {
     {"FREQ", "FINE", "LFO RATE", "LFO DEPTH", "MIX", ""},
     {"DEPTH", "TIME", "UPWARD", "DOWNWARD", "X LOW", "X HIGH"},
     {"LOW", "MID", "MID FREQ", "HIGH", "LOW CUT", "HIGH CUT"},   // EQ (2026-11-19, user): gains 50 = 0 dB, the cuts off at their ends
+    {"SIZE", "DECAY", "DAMP", "PREDELAY", "LOW CUT", "MIX"},      // REVERB and DELAY as inserts (2026-11-19, user): the returns' DSP
+    {"TIME", "FEEDBACK", "TONE", "PING-PONG", "LOW CUT", "MIX"},
 };
 static const int8_t fx_def[FX_N][6] = {
     {0}, {60, 30, 30, 40, 0, 100}, {0, 40, 70, 50, 100, 0}, {30, 50, 40, 0, 100, 50}, {20, 60, 30, 50, 100, 50},
     {25, 70, 50, 40, 1, 50}, {0, 60, 20, 0, 0, 0}, {50, 30, 0, 100, 100, 0}, {30, 20, 20, 70, 0, 100},
     {8, 70, 0, 0, 0, 0}, {40, 0, 0, 0, 50, 0}, {60, 50, 100, 100, 23, 41}, {50, 50, 50, 50, 0, 100},
+    {50, 45, 40, 10, 20, 30}, {7, 40, 60, 0, 10, 30},
 };
 // What an insert costs, measured on the Brick (tools/fxcost.c, 2026-11-11): tenths of a per cent of one audio buffer
 // (2.667 ms) per running instance. FX_BUDGET = 40 % of a buffer for inserts in all: both slots of all 12 pads fit with
 // any type but MULTIBAND (18 of those). The old weights were guesses, 3-5 times too careful (the cap of 24 units was
 // about 9 % of a buffer). Silent pads cost nothing; the real load is the DSP figure in the footer.
-static const int8_t fx_weight[FX_N] = {0, 4, 4, 10, 9, 9, 7, 3, 12, 9, 5, 22, 8};   // EQ: five biquads, guessed from FILTER
+static const int8_t fx_weight[FX_N] = {0, 4, 4, 10, 9, 9, 7, 3, 12, 9, 5, 22, 8, 30, 8};   // EQ: five biquads, guessed from FILTER; REVERB, DELAY guessed from the returns
+#define FX_SPACES 4                       // REVERB and DELAY inserts that can run at once, each (their lines are big)
 #ifndef FX_BUDGET
 #define FX_BUDGET 400
 #endif
@@ -58,6 +62,8 @@ static inline void fx_range(int type, int k, int *lo, int *hi) {
     if (type == FX_AUTOPAN && k == 0) *hi = NDIV - 1;
     if (type == FX_AUTOPAN && k == 2) *hi = 2;
     if (type == FX_RING && k == 1) { *lo = -50; *hi = 50; }
+    if (type == FX_DELAY && k == 0) *hi = NDIV - 1;
+    if (type == FX_DELAY && k == 3) *hi = 1;
 }
 // EQUALIZER: a low shelf (200 Hz), a bell (MID FREQ 100 Hz .. 8 kHz, Q 0.9), a high shelf (5 kHz), then a 12 dB low cut
 // (LOW CUT 0 = off, else 20 Hz .. 2 kHz) and high cut (HIGH CUT 100 = off, else 20 kHz down to 500 Hz). Gains: 0..100 = -15..+15 dB.

@@ -4067,6 +4067,8 @@ static void fx_pstr(int type, int k, int v, char *b) {   // a parameter as the u
         if ((k == 4 && !v) || (k == 5 && v >= 100)) { snprintf(b, 16, "OFF"); return; }
         if (hz > 0) { if (hz < 1000) snprintf(b, 16, "%.0fHZ", hz); else snprintf(b, 16, "%.1fKHZ", hz / 1000); return; }
         snprintf(b, 16, "%+.1fDB", eq_db(v)); return; }
+    case FX_DELAY: if (k == 0) { snprintf(b, 16, "%s", div_label[v % NDIV]); return; } if (k == 3) { snprintf(b, 16, "%s", v ? "ON" : "OFF"); return; } if (k == 5) { snprintf(b, 16, "%d%%", v); return; } break;
+    case FX_REVERB: if (k == 3) { snprintf(b, 16, "%dMS", v * 2); return; } if (k == 5) { snprintf(b, 16, "%d%%", v); return; } break;
     case FX_AUTOPAN: if (k == 0) { snprintf(b, 16, "%s", div_label[v % NDIV]); return; } if (k == 2) { snprintf(b, 16, "%s", pan_shape[v % 3]); return; } break;
     case FX_RING: if (k == 0) { snprintf(b, 16, "%.0fHZ", 20 * exp2f(v / 100.f * 8)); return; } if (k == 1) { snprintf(b, 16, "%+dC", v); return; } break;
     case FX_MULTI: if (k == 4 || k == 5) { float hz = k == 4 ? mb_xlow(v) : mb_xhigh(v); if (hz < 1000) snprintf(b, 16, "%.0fHZ", hz); else snprintf(b, 16, "%.1fKHZ", hz / 1000); return; }
