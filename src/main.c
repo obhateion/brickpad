@@ -736,7 +736,7 @@ static int frz_render(int s) {           // 1 = pad s now plays its recordings
         song = keep;
         for (int x = 0; x < NSLOT; x++) { song.t[x].on = 0; song.t[x].queued = -1; }
         for (int i = 0; i < NINS; i++) { int kp = song.mbx[s][i][5]; const FxSlot *f = &song.mix.pad[s].ins[i];   // a keyed compressor hears its key pad while it is recorded
-            if (f->type == FX_COMP && f->on && kp > 0 && kp <= NSLOT && kp - 1 != s) song.t[kp - 1].on = (int8_t)pat_used(cur_pat(kp - 1)); }
+            if (fx_keyed(f->type) && f->on && kp > 0 && kp <= NSLOT && kp - 1 != s) song.t[kp - 1].on = (int8_t)pat_used(cur_pat(kp - 1)); }
         song.t[s].on = 1; song.t[s].cur = (int8_t)q; song.t[s].mute = 0; song.metro = 0; memset(song.fol[s], 0, sizeof song.fol[s]);   // this pattern, round and round
         engine_stop_all(); for (int i = 0; i < 200; i++) engine_render(z, 128);   // what rang before dies away
         engine_transport(1); engine_capture(s, tmp, need);
@@ -3030,7 +3030,7 @@ static void mbx_clear(const FxSlot *f) {   // a new type in an insert: MULTIBAND
 static int8_t *fx_side(int c, int r, int *lo, int *hi) {   // the right half of an insert's row, if it has one (Song.mbx)
     if (fx_unit >= NSLOT) return NULL; int ty = song.mix.pad[fx_unit].ins[c].type;
     if (ty == FX_MULTI && r >= 2 && r < 2 + MB_N) { *lo = -24; *hi = 24; return &song.mbx[fx_unit][c][r - 2]; }   // MULTIBAND gains
-    if (ty == FX_COMP && r == 2) { *lo = 0; *hi = NSLOT; return &song.mbx[fx_unit][c][5]; }                     // COMPRESSOR KEY: 0 itself, n = pad n (sidechain)
+    if (fx_keyed(ty) && r == 2) { *lo = 0; *hi = NSLOT; return &song.mbx[fx_unit][c][5]; }                     // COMPRESSOR KEY: 0 itself, n = pad n (sidechain); RING SOURCE: 0 its oscillator
     return NULL;
 }
 static int fx_multi_row(int c, int r) { int lo, hi; return fx_side(c, r, &lo, &hi) != NULL; }

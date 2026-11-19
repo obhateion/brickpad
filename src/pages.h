@@ -95,6 +95,7 @@ static void fx2_card(int x, int y, int w, int h, const FxSlot *f, FxCard cd, int
     else if (cd.row == 1) { lb = "ON"; snprintf(v, sizeof v, "%s", f->on ? "ON" : "OFF"); val = f->on; }
     else if (cd.side) { int8_t *g = fx_side(fx2_slot, cd.row, &lo, &hi); val = *g;
         if (f->type == FX_COMP) { lb = "KEY"; if (val) snprintf(v, sizeof v, "PAD %d", val); else snprintf(v, sizeof v, "SELF"); }
+        else if (f->type == FX_RING) { lb = "SOURCE"; if (val) snprintf(v, sizeof v, "PAD %d", val); else snprintf(v, sizeof v, "OSC"); }   // 2026-11-19 (user): any sound modulates
         else { lb = mb_name[cd.row - 2]; snprintf(v, sizeof v, "%+d DB", val); } }
     else { int k = cd.row - 2; lb = fx_pname[f->type][k]; val = f->p[k]; fx_range(f->type, k, &lo, &hi); fx_pstr(f->type, k, val, v); }
     if (on) { rframe(x, y, w, h, 8, 4, ec, C_CELL); ui_focus(lb, v, hi - lo > 3 ? (val - lo) * 100 / (hi - lo) : -1, ec); } else rrect(x, y, w, h, 8, C_CELL);

@@ -111,6 +111,7 @@ static inline void ms_range(int k, int *lo, int *hi) { *lo = 0; *hi = k == MS_CO
 // MODULATION (2026-11-19, user: "chorus, flanger, phaser as one effect, as in Ableton"): the three stay their own types
 // (saved projects, LFO targets and the sound do not change), but they are one stop in the list of effects and its
 // MODE switches between them. RATE, DEPTH, FEEDBACK and MIX go along; the 3rd and 5th knobs mean another thing in each.
+static inline int fx_keyed(int t) { return t == FX_COMP || t == FX_RING; }   // another pad's sound in (Song.mbx[.][.][5]): COMP KEY, RING SOURCE
 static inline int fx_is_mod(int t) { return t == FX_CHORUS || t == FX_FLANGER || t == FX_PHASER; }
 static const char *const mod_mode_name[3] = {"CHORUS", "FLANGER", "PHASER"};
 static inline void fx_mod_mode(FxSlot *f, int m) {       // m 0 CHORUS 1 FLANGER 2 PHASER

@@ -998,7 +998,7 @@ static void callback(void *u, Uint8 *stream, int len) {
     int solo_any = 0, budget = FX_BUDGET;
     {   // sidechain: copies of the key pads' sound, before any strip changes it
         unsigned need = 0;
-        for (int s = 0; s < NSLOT; s++) for (int i = 0; i < NINS; i++) { int kp = song.mbx[s][i][5]; const FxSlot *fs = &song.mix.pad[s].ins[i]; if (fs->type == FX_COMP && fs->on && kp > 0 && kp <= NSLOT) need |= 1u << (kp - 1); }
+        for (int s = 0; s < NSLOT; s++) for (int i = 0; i < NINS; i++) { int kp = song.mbx[s][i][5]; const FxSlot *fs = &song.mix.pad[s].ins[i]; if (fx_keyed(fs->type) && fs->on && kp > 0 && kp <= NSLOT) need |= 1u << (kp - 1); }
         for (int s = 0; s < NSLOT; s++) if (need >> s & 1) { if (bus_live[s]) memcpy(keyb[s], bus[s], sizeof(float) * 2 * n); else memset(keyb[s], 0, sizeof(float) * 2 * n);
             if (frz_snd[s]) for (int k = 0; k < 2 * n; k++) keyb[s][k] += frz_out[s][k]; }   // a frozen key pad: its recording is the key
     }
@@ -1029,7 +1029,7 @@ static void callback(void *u, Uint8 *stream, int len) {
         float *b = bus[s];
         if (!idle) {                           // (a frozen pad's inserts run only for what is played by hand on top)
         for (int i = 0; i < NINS; i++) fx_key[i] = NULL;
-        for (int i = 0; i < NINS; i++) { int kp = song.mbx[s][i][5]; if (pm->ins[i].type == FX_COMP && kp > 0 && kp <= NSLOT && kp - 1 != s) fx_key[i] = keyb[kp - 1]; }   // a compressor listening to another pad (sidechain)
+        for (int i = 0; i < NINS; i++) { int kp = song.mbx[s][i][5]; if (fx_keyed(pm->ins[i].type) && kp > 0 && kp <= NSLOT && kp - 1 != s) fx_key[i] = keyb[kp - 1]; }   // a compressor listening to another pad (sidechain), a ring modulated by one
         if (spr_on) spring_run(&spr[s], b, n, has_mod[s] ? m_gx[s][GX_SPRING] : song.gx[s][GX_SPRING]);
         for (int i = 0; i < NINS; i++) { fx_keybuf = fx_key[i]; fx_insert_ex(&fxs[s][i], has_mod[s] ? &m_ins[s][i] : &pm->ins[i], song.mbx[s][i], fx_live[s][i], b, n, tempo); fx_keybuf = NULL; }
         { float chk = 0; for (int k = 0; k < 2 * n; k += 16) chk += b[k];

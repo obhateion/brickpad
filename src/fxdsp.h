@@ -235,7 +235,8 @@ static void fx_insert_ex(FxState *st, const FxSlot *f, const int8_t *mbx, int on
         case FX_RING: {
             float w = c0 * (lfo_inc && c1 ? exp2f(c1 * fx_lfo_sin(st->lfo)) : 1), cw = cosf(w), sw = sinf(w);
             float nc = st->rc * cw - st->rs * sw, ns = st->rc * sw + st->rs * cw; st->rc = nc; st->rs = ns;
-            wl = dl * st->rc; wr = dr * st->rc; break; }
+            if (fx_keybuf) { float m = 0.5f * (fx_keybuf[2 * k] + fx_keybuf[2 * k + 1]) * 2; wl = dl * m; wr = dr * m; }   // SOURCE: another pad's sound is the carrier
+            else { wl = dl * st->rc; wr = dr * st->rc; } break; }
         }
         st->lfo += lfo_inc ? lfo_inc : (ty == FX_TAPE ? 0.5 / SR : 0); if (st->lfo >= 1) st->lfo -= 1;
         wl = dl + (wl - dl) * mix; wr = dr + (wr - dr) * mix;

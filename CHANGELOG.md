@@ -7,6 +7,7 @@
 - PATTERN list: a RANDOM card. EQUALIZER insert (shelves, a bell, low and high cut).
 - MIDI (PROJECT > MIDI): the USB port (remembered by name, found again when plugged in), CLOCK OUT (Start, Stop, 24 a
   beat), notes in as KEYS (the open pad at their pitch) or PADS (36-47 = pads 1-12) with velocity, a channel or ALL.
+- RING MOD SOURCE (right of FREQ): OSC or any pad; that pad's sound is the carrier (mute stops it, volume 0 keeps it).
 - FILTER: 12 modes (LOW, HIGH, BAND, NOTCH, LOW 24, HIGH 24, BAND 24, PEAK, COMB, VOWEL, DJ, LADDER); the old four keep their numbers.
 - REVERB and DELAY as pad inserts (the returns' DSP: SIZE DECAY DAMP PREDELAY LOW CUT MIX / TIME FEEDBACK TONE PING-PONG LOW CUT MIX); up to 4 of each at once, more stay dry.
 - The count (and so the MIDI clock and the metronome) stops as soon as no clip plays or waits; the next clip starts the bar at the press. Not with CLOCK IN.
