@@ -44,8 +44,14 @@ static void fx2_picture(int x, int y, int w, int h, const FxSlot *f, Col c) {   
         case FX_FILTER: {                   // its MODE (2026-11-15, user: the curve stayed low-pass): LP, HP, BP, NOTCH
             // the state-variable response at w = 2^((t - fc) * 10) octaves around the cutoff, Q from RESO as fxdsp.h; 0 dB at 0.35, 12 dB per unit
             float fc = 0.15f + p1 * 0.7f, k = 2 - 2 * (f->p[2] / 100.f) * 0.98f, w = exp2f((t - fc) * 10), w2 = w * w;
-            float den = (1 - w2) * (1 - w2) + k * k * w2, m = f->p[0] & 3, num = m == 1 ? w2 * w2 : m == 2 ? k * k * w2 : m == 3 ? (1 - w2) * (1 - w2) : 1;
-            float db = 10 * log10f(num / den + 1e-9f); v = 0.35f + db / 48; if (v > 0.95f) v = 0.95f; if (v < -0.9f) v = -0.9f; break; }
+            int md = f->p[0] % FILT_N, m = md == FILT_LP24 || md == FILT_LADDER ? 0 : md == FILT_HP24 ? 1 : md == FILT_BP24 ? 2 : md < 4 ? md : 0;
+            if (md == FILT_DJ) { float dj = (f->p[1] - 50) / 50.f; m = dj < 0 ? 0 : 1; fc = dj < 0 ? 0.95f + dj * 0.85f : 0.05f + dj * 0.85f; if (fabsf(dj) < 0.02f) fc = -5; w = exp2f((t - fc) * 10); w2 = w * w; }
+            float den = (1 - w2) * (1 - w2) + k * k * w2, num = m == 1 ? w2 * w2 : m == 2 ? k * k * w2 : m == 3 ? (1 - w2) * (1 - w2) : 1;
+            float db = 10 * log10f(num / den + 1e-9f); if (md >= FILT_LP24 && md <= FILT_BP24) db *= 2; if (md == FILT_LADDER) db = db * 2 - 3;
+            if (md == FILT_PEAK) db = 20 * log10f(1 + 3 * k * w / sqrtf(den));   // 1 + 3 x the unity band-pass
+            if (md == FILT_COMB) db = 9 * cosf((t - fc) * 6.2832f * 6) * (0.4f + (f->p[2] / 100.f) * 0.6f);
+            if (md == FILT_VOWEL) { float c0 = 0.12f + p1 * 0.1f, c1 = 0.4f + p1 * 0.1f, c2 = 0.62f; db = -24 + 30 * (expf(-powf((t - c0) * 30, 2)) + 0.7f * expf(-powf((t - c1) * 30, 2)) + 0.45f * expf(-powf((t - c2) * 30, 2))); }
+            v = 0.35f + db / 48; if (v > 0.95f) v = 0.95f; if (v < -0.9f) v = -0.9f; break; }
         case FX_RING: v = sinf(t * 6.2832f * 3) * sinf(t * 6.2832f * (3 + p0 * 12)); break;
         case FX_EQ: { static float ec[5][5]; static int en; if (i == 0) en = eq_coefs(f->p, ec, 48000);   // the real response, 20 Hz .. 20 kHz, +-18 dB
             v = eq_mag_db(ec, en, 20 * exp2f(t * 9.97f), 48000) / 18; if (v > 0.95f) v = 0.95f; if (v < -0.95f) v = -0.95f; break; }

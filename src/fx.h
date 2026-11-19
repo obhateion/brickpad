@@ -43,7 +43,8 @@ static const int8_t fx_weight[FX_N] = {0, 4, 4, 10, 9, 9, 7, 3, 12, 9, 5, 22, 8,
 #define NDIV 12
 static const float div_beats[NDIV] = {0.125f, 1 / 6.f, 0.25f, 1 / 3.f, 0.375f, 0.5f, 2 / 3.f, 0.75f, 1, 1.5f, 2, 4};
 static const char *const div_label[NDIV] = {"1/32", "1/16T", "1/16", "1/8T", "1/16D", "1/8", "1/4T", "1/8D", "1/4", "1/4D", "1/2", "1/1"};
-static const char *const dist_mode[4] = {"SOFT", "HARD", "FOLD", "ASYM"}, *const filt_mode[4] = {"LOW", "HIGH", "BAND", "NOTCH"};
+static const char *const dist_mode[4] = {"SOFT", "HARD", "FOLD", "ASYM"}, *const filt_mode[12] = {"LOW", "HIGH", "BAND", "NOTCH", "LOW 24", "HIGH 24", "BAND 24", "PEAK", "COMB", "VOWEL", "DJ", "LADDER"};
+enum { FILT_LP24 = 4, FILT_HP24, FILT_BP24, FILT_PEAK, FILT_COMB, FILT_VOWEL, FILT_DJ, FILT_LADDER, FILT_N };   // FILTER MODE after the four 12 dB ones
 static const char *const pan_shape[3] = {"SINE", "TRI", "SQUARE"};
 // MULTIBAND: crossovers and times from the knobs (the UI shows them, the DSP uses them)
 static inline float mb_xlow(int v) { return 40.f * exp2f(v / 100.f * 5); }     // 40 .. 1280 Hz (23: 88 Hz)
@@ -56,7 +57,8 @@ static const char *const mb_name[MB_N] = {"IN", "LOW", "MID", "HIGH", "OUT"};
 static inline float mb_lin(int db) { return db ? powf(10, db / 20.f) : 1.f; }
 static inline void fx_range(int type, int k, int *lo, int *hi) {
     *lo = 0; *hi = 100;
-    if ((type == FX_DIST || type == FX_FILTER) && k == 0) *hi = 3;
+    if (type == FX_DIST && k == 0) *hi = 3;
+    if (type == FX_FILTER && k == 0) *hi = FILT_N - 1;
     if (type == FX_PHASER && k == 4) *hi = 2;
     if (type == FX_FILTER && k == 4) *hi = NDIV;          // 0 = LFO off, else a division
     if (type == FX_AUTOPAN && k == 0) *hi = NDIV - 1;

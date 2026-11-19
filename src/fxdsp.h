@@ -135,17 +135,53 @@ static void fx_insert_ex(FxState *st, const FxSlot *f, const int8_t *mbx, int on
                 for (int i = 0; i < (int)c3; i++) { float y = a * x + st->ap[c][i]; st->ap[c][i] = x - a * y; x = y; }
                 st->last[c] = x; if (c) wr = x; else wl = x;
             } break; }
-        case FX_FILTER: {
-            float fc = c0 * (lfo_inc ? exp2f(c3 * fx_lfo_sin(st->lfo)) : 1); if (fc > SR * 0.45f) fc = SR * 0.45f;
-            if ((k & 15) == 0 || k == 0) { float g = tanf((float)M_PI * fc / SR); st->z[0][3] = g; if (k == 0) st->view[0] = fc; }
-            float g = st->z[0][3], a1 = 1 / (1 + g * (g + c1)), a2 = g * a1, a3 = g * a2;
+        case FX_FILTER: {   // 2026-11-19 (user: "many filter types, as in Ableton"): 0-3 the 12 dB ones (saved numbers), then FILT_*
+            int md = p[0] % FILT_N; float dj = md == FILT_DJ ? (p[1] - 50) / 50.f : 0;   // DJ: left of the middle a low-pass closes, right a high-pass opens
+            float fc = (md == FILT_DJ ? (dj < 0 ? 20000 * exp2f(dj * 8.4f) : 20 * exp2f(dj * 9)) : c0) * (lfo_inc ? exp2f(c3 * fx_lfo_sin(st->lfo)) : 1);
+            if (fc > SR * 0.45f) fc = SR * 0.45f; if (fc < 16) fc = 16;
+            if ((k & 15) == 0 || k == 0) { float g = tanf((float)M_PI * fc / SR); st->z[0][3] = g; if (k == 0) st->view[0] = fc;
+                if (md == FILT_VOWEL) {           // three formants, A E I O U across CUTOFF
+                    static const float fm[5][3] = {{800, 1150, 2900}, {400, 1600, 2700}, {350, 2300, 3000}, {450, 800, 2830}, {325, 700, 2530}};
+                    float pos = (p[1] / 100.f) * 4 * (lfo_inc ? exp2f(c3 * 0.25f * fx_lfo_sin(st->lfo)) : 1); if (pos > 4) pos = 4; int v0 = (int)pos; if (v0 > 3) v0 = 3; float fr = pos - v0;
+                    for (int q = 0; q < 3; q++) st->mbe[q] = tanf((float)M_PI * (fm[v0][q] + (fm[v0 + 1][q] - fm[v0][q]) * fr) / SR); }
+                if (md == FILT_LADDER) st->mbg[0] = 1 - expf(-2 * (float)M_PI * fc / SR); }
+            float g = st->z[0][3], q1 = md == FILT_DJ ? 1.41f - (1.41f - c1) * fabsf(dj) : c1, a1 = 1 / (1 + g * (g + q1)), a2 = g * a1, a3 = g * a2;
             for (int c = 0; c < 2; c++) {
-                float x = c2 > 1.01f ? fx_tanh((c ? dr : dl) * c2) / fx_tanh(c2) : (c ? dr : dl);
-                float *z = st->z[c]; float v3 = x - z[1], v1 = a1 * z[0] + a2 * v3, v2 = z[1] + a2 * z[0] + a3 * v3;
-                z[0] = 2 * v1 - z[0]; z[1] = 2 * v2 - z[1];
-                float lp = v2, bp = v1, hp = x - c1 * v1 - v2, y = p[0] == 1 ? hp : p[0] == 2 ? bp : p[0] == 3 ? lp + hp : lp;
+                float x = c2 > 1.01f ? fx_tanh((c ? dr : dl) * c2) / fx_tanh(c2) : (c ? dr : dl), y;
+                if (md == FILT_COMB) {            // a comb at the cutoff's pitch, Q the feedback
+                    float d = SR / fc; if (d > FXD - 2) d = FXD - 2; if (d < 1) d = 1;
+                    float r = fx_read(st->dl[c], (float)st->wp - d + FXD), fb = (2 - q1) / 2 * 0.95f;
+                    y = x + r * fb; st->dl[c][st->wp] = fx_tanh(y); y *= 1 - fb * 0.5f;
+                } else if (md == FILT_VOWEL) {    // band-passes at the formants, in parallel
+                    y = 0; static const float fg[3] = {1, 0.6f, 0.35f};
+                    for (int q = 0; q < 3; q++) { float lp, hp, gg = st->mbe[q], *z = st->mb[c][3 + q], b1 = 1 / (1 + gg * (gg + 0.12f)), v3 = x - z[1], v1 = b1 * z[0] + gg * b1 * v3;
+                        fx_svf(z, gg, 0.12f, x, &lp, &hp); y += v1 * fg[q] * 0.5f; }
+                } else if (md == FILT_LADDER) {   // four one-poles with the resonance around them, soft at the input
+                    float *z = st->mb[c][1], gg = st->mbg[0], res = (2 - q1) * 2;
+                    float u = fx_tanh(x - res * z[3]); z[0] += gg * (u - z[0]); z[1] += gg * (z[0] - z[1]); z[2] += gg * (z[1] - z[2]); z[3] += gg * (z[2] - z[3]);
+                    y = z[3] * (1 + res * 0.25f);
+                } else {
+                    float *z = st->z[c], v3 = x - z[1], v1 = a1 * z[0] + a2 * v3, v2 = z[1] + a2 * z[0] + a3 * v3;
+                    z[0] = 2 * v1 - z[0]; z[1] = 2 * v2 - z[1];
+                    float lp = v2, bp = v1, hp = x - q1 * v1 - v2;
+                    switch (md) {
+                    case 1: case FILT_HP24: y = hp; break;
+                    case 2: case FILT_BP24: y = bp; break;
+                    case 3: y = lp + hp; break;
+                    case FILT_PEAK: y = x + 3 * q1 * bp; break;   // +12 dB at the cutoff, Q its width
+                    case FILT_DJ: y = fabsf(dj) < 0.02f ? x : dj < 0 ? lp : hp; break;
+                    default: y = lp;
+                    }
+                    if (md == FILT_LP24 || md == FILT_HP24 || md == FILT_BP24) {   // the second 12 dB stage, the same cutoff
+                        float *w = st->mb[c][0], u3 = y - w[1], u1 = a1 * w[0] + a2 * u3, u2 = w[1] + a2 * w[0] + a3 * u3;
+                        w[0] = 2 * u1 - w[0]; w[1] = 2 * u2 - w[1];
+                        y = md == FILT_LP24 ? u2 : md == FILT_BP24 ? u1 : y - q1 * u1 - u2; }
+                    if (md == FILT_DJ && fabsf(dj) < 0.1f) y = x + (y - x) * fabsf(dj) * 10;   // no click passing the middle
+                }
                 if (c) wr = y; else wl = y;
-            } break; }
+            }
+            if (md == FILT_COMB) st->wp = (st->wp + 1) & (FXD - 1);
+            break; }
         case FX_CRUSH: {
             if (--st->cnt <= 0) { st->hold[0] = floorf(dl * c0 + 0.5f) / c0; st->hold[1] = floorf(dr * c0 + 0.5f) / c0;
                 st->cnt = (int)(c1 * (1 + c2 * 0.5f * fx_rand(&st->rng)) + 0.5f); if (st->cnt < 1) st->cnt = 1; }
