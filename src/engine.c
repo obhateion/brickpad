@@ -155,7 +155,7 @@ static void lfo_run(int n, double tempo) {
         else { float thr = powf(10.f, (dx[DX_THRESH] - 100) * 0.03f), pk = dk_pk[src - 1]; srcs |= 1u << (src - 1);   // 0..100 = -60..0 dB; armed again under half of it
             if (pk >= thr && dk_arm[s]) { dk_ph[s] = 0; dk_arm[s] = 0; } else if (pk < thr * 0.5f) dk_arm[s] = 1; }
         float tg = 1;
-        if (dk_ph[s] >= 0 && dk_ph[s] < len) { float x = dk_ph[s] / len * 15; int i = (int)x; float c = cv[i] + (cv[i < 15 ? i + 1 : 15] - cv[i]) * (x - i);
+        if (dk_ph[s] >= 0 && dk_ph[s] < len) { float x = dk_ph[s] / len * 15; int i = (int)x; float c = init && dx[DX_SPARE] == DK_PTS ? dk_pts_eval(cv, dk_ph[s] / len) : cv[i] + (cv[i < 15 ? i + 1 : 15] - cv[i]) * (x - i);
             tg = 1 - pd->spare[DK_AMT] / 100.f * (1 - c / 100.f); dk_view[s] = dk_ph[s] / len; }
         else { dk_view[s] = -1; if (mode != DM_GRID) dk_ph[s] = -1; }
         int sm = init ? dx[DX_SMOOTH] : 0;

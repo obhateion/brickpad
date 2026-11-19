@@ -7,6 +7,7 @@
 - PATTERN list: a RANDOM card. EQUALIZER insert (shelves, a bell, low and high cut).
 - MIDI (PROJECT > MIDI): the USB port (remembered by name, found again when plugged in), CLOCK OUT (Start, Stop, 24 a
   beat), notes in as KEYS (the open pad at their pitch) or PADS (36-47 = pads 1-12) with velocity, a channel or ALL.
+- DUCK curve as up to 8 points (as ShaperBox): <> chooses, EDIT+^v level, EDIT+<> move, X a new point, X+^v the bend to the next, OPT+EDIT deletes; the pad's sound drawn under the curve as it passes. Presets stay tables until a point is touched.
 - STEPS: SHIFT+L1/R1 on the NOTE lane changes the grid (the clip's DIVISION 1/32..1/1) on the spot.
 - RING MOD SOURCE (right of FREQ): OSC or any pad; that pad's sound is the carrier (mute stops it, volume 0 keeps it).
 - FILTER: 12 modes (LOW, HIGH, BAND, NOTCH, LOW 24, HIGH 24, BAND 24, PEAK, COMB, VOWEL, DJ, LADDER); the old four keep their numbers.

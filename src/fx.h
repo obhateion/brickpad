@@ -4,6 +4,7 @@
 // Every parameter is a byte, 0..100 unless its range says otherwise. Runs in the audio callback: no allocation.
 #pragma once
 #include "bp.h"
+#include <string.h>
 
 static const char *const fx_name[FX_N] = {"NONE", "COMPRESSOR", "DISTORTION", "CHORUS", "FLANGER", "PHASER", "FILTER", "BITCRUSHER", "TAPE", "AUTOPAN", "RING MOD", "MULTIBAND", "EQUALIZER", "REVERB", "DELAY"};
 static const char *const fx_short[FX_N] = {"---", "CMP", "DST", "CHO", "FLG", "PHS", "FLT", "BIT", "TAP", "PAN", "RNG", "MLT", "EQ", "REV", "DLY"};
@@ -111,6 +112,33 @@ static inline void ms_range(int k, int *lo, int *hi) { *lo = 0; *hi = k == MS_CO
 // MODULATION (2026-11-19, user: "chorus, flanger, phaser as one effect, as in Ableton"): the three stay their own types
 // (saved projects, LFO targets and the sound do not change), but they are one stop in the list of effects and its
 // MODE switches between them. RATE, DEPTH, FEEDBACK and MIX go along; the 3rd and 5th knobs mean another thing in each.
+// DUCK points (2026-11-19, user: "up to 8 points, the curve between two bendable, as in ShaperBox"): with
+// dkx[DX_SPARE] == 1 the 16 bytes of dkc hold 8 points of 2 bytes instead of 16 levels (no new Song field): bit 15 the
+// point is used, x 5 bits (0..31 along the length), the level 6 bits (0..63 = 0..100 %), the bend 4 bits (8 = straight)
+// of the curve from this point to the next. Used points come first, in x order (the editor keeps them so).
+#define DK_NPT 8
+#define DK_PTS 1                          // dkx[DX_SPARE]: the curve is points
+typedef struct { int used, x, y, bend; } DkPt;
+static inline DkPt dk_pt_get(const uint8_t *cv, int i) { unsigned v = cv[2 * i] | cv[2 * i + 1] << 8; DkPt p = {(int)(v >> 15 & 1), (int)(v >> 10 & 31), (int)(v >> 4 & 63), (int)(v & 15) - 8}; return p; }
+static inline void dk_pt_put(uint8_t *cv, int i, DkPt p) {
+    unsigned v = (p.used ? 1u : 0) << 15 | (unsigned)(p.x & 31) << 10 | (unsigned)(p.y & 63) << 4 | (unsigned)((p.bend + 8) & 15);
+    cv[2 * i] = (uint8_t)(v & 255); cv[2 * i + 1] = (uint8_t)(v >> 8); }
+static inline int dk_npts(const uint8_t *cv) { int n = 0; while (n < DK_NPT && dk_pt_get(cv, n).used) n++; return n; }
+static inline float dk_bend(float t, int b) { return b ? powf(t, exp2f(b * 0.5f)) : t; }   // + slow then fast, - fast then slow
+static inline float dk_pts_eval(const uint8_t *cv, float x) {   // x 0..1 along the length -> the level 0..100
+    int n = dk_npts(cv); if (!n) return 100; float px = x * 31; DkPt a = dk_pt_get(cv, 0);
+    if (px <= a.x) return a.y * 100 / 63.f;
+    for (int i = 1; i < n; i++) { DkPt b = dk_pt_get(cv, i);
+        if (px <= b.x) { float t = b.x > a.x ? (px - a.x) / (b.x - a.x) : 1; return (a.y + (b.y - a.y) * dk_bend(t, a.bend)) * 100 / 63.f; }
+        a = b; }
+    return a.y * 100 / 63.f;
+}
+static inline void dk_table_to_pts(const uint8_t *tab, uint8_t *out) {   // a 16-level curve as 8 points
+    static const int px[DK_NPT] = {0, 4, 9, 13, 18, 22, 27, 31}; uint8_t o[16];
+    for (int i = 0; i < DK_NPT; i++) { float f = px[i] / 31.f * 15; int j = (int)f; float c = tab[j] + (tab[j < 15 ? j + 1 : 15] - tab[j]) * (f - j);
+        DkPt p = {1, px[i], (int)(c * 63 / 100 + 0.5f), 0}; dk_pt_put(o, i, p); }
+    memcpy(out, o, 16);
+}
 static inline int fx_keyed(int t) { return t == FX_COMP || t == FX_RING; }   // another pad's sound in (Song.mbx[.][.][5]): COMP KEY, RING SOURCE
 static inline int fx_is_mod(int t) { return t == FX_CHORUS || t == FX_FLANGER || t == FX_PHASER; }
 static const char *const mod_mode_name[3] = {"CHORUS", "FLANGER", "PHASER"};

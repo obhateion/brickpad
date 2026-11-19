@@ -3071,6 +3071,11 @@ static void duck_init(int s) {            // the window's values for a pad that 
     memset(dx, 0, 8); dx[DX_MODE] = DM_NOTE; dx[DX_LEN] = 2; dx[DX_GRID] = 2; dx[DX_THRESH] = 40; dx[DX_SHAPE] = 0; dx[DX_MARK] = DX_INIT;
     memcpy(song.dkc[s], dk_shape[0], 16);
 }
+static void dk_make_pts(int s) {          // the first change of the curve turns it into points (dkx[DX_SPARE] = DK_PTS)
+    int8_t *dx = song.dkx[s]; if (dx[DX_SPARE] == DK_PTS) return;
+    dk_table_to_pts(song.dkc[s], song.dkc[s]); dx[DX_SPARE] = DK_PTS; dx[DX_SHAPE] = DK_USER;
+}
+static const uint8_t *dk_view_pts(int s) { static uint8_t t[16]; if (song.dkx[s][DX_SPARE] == DK_PTS) return song.dkc[s]; dk_table_to_pts(song.dkc[s], t); return t; }
 static void duck_open(int s) { ducking = 1; sel = s; dk_row = 1; dk_col = DF_MODE; dk_pt = 0; duck_init(s); }
 static void duck_field(int f, int d, int big) {   // EDIT+arrows on a field
     PadMix *pm = &song.mix.pad[sel]; int8_t *dx = song.dkx[sel];
@@ -3081,12 +3086,22 @@ static void duck_field(int f, int d, int big) {   // EDIT+arrows on a field
     case DF_LEN: dx[DX_LEN] = (int8_t)clampi(dx[DX_LEN] + d, 0, DK_NLEN - 1); break;
     case DF_RATE: if (dx[DX_MODE] == DM_GRID) dx[DX_GRID] = (int8_t)clampi(dx[DX_GRID] + d, 0, DK_NLEN - 1); else if (dx[DX_MODE] == DM_AUDIO) dx[DX_THRESH] = (int8_t)clampi(dx[DX_THRESH] + d * (big ? 10 : 1), 0, 100); break;
     case DF_SMOOTH: dx[DX_SMOOTH] = (int8_t)clampi(dx[DX_SMOOTH] + d * (big ? 10 : 1), 0, 100); break;
-    case DF_SHAPE: { int v = dx[DX_SHAPE] == DK_USER ? (d > 0 ? 0 : DK_NSHAPE - 1) : (dx[DX_SHAPE] + d + DK_NSHAPE) % DK_NSHAPE; dx[DX_SHAPE] = (int8_t)v; memcpy(song.dkc[sel], dk_shape[v], 16); break; }
+    case DF_SHAPE: { int v = dx[DX_SHAPE] == DK_USER ? (d > 0 ? 0 : DK_NSHAPE - 1) : (dx[DX_SHAPE] + d + DK_NSHAPE) % DK_NSHAPE; dx[DX_SHAPE] = (int8_t)v; memcpy(song.dkc[sel], dk_shape[v], 16); dx[DX_SPARE] = 0; break; }
     }
 }
 static void duck_key(int k, int down) {
-    static int combo;                        // EDIT was used with another button: its release is no tap
-    if (!down) { if (k == K_EDIT && !combo && dk_row == 1) { edit_begin(); duck_field(dk_col, 1, 0); } return; }   // a tap on a field: its next value
+    static int combo, xcombo;                // EDIT (X) was used with another button: its release is no tap
+    if (!down) { if (k == K_EDIT && !combo && dk_row == 1) { edit_begin(); duck_field(dk_col, 1, 0); }   // a tap on a field: its next value
+        if (k == K_X && !xcombo && dk_row == 0) {   // X: a new point after this one, half way to the next
+            uint8_t *c = song.dkc[sel]; dk_make_pts(sel); int n = dk_npts(c);
+            if (n >= DK_NPT) { toast("8 POINTS: THE MOST"); return; }
+            DkPt a = dk_pt_get(c, dk_pt), b = dk_pt < n - 1 ? dk_pt_get(c, dk_pt + 1) : (DkPt){1, 31, a.y, 0};
+            if (b.x - a.x < 2) { toast("NO ROOM: MOVE A POINT"); return; }
+            edit_begin(); DkPt m = {1, (a.x + b.x) / 2, (int)(dk_pts_eval(c, (a.x + b.x) / 2 / 31.f) * 63 / 100 + 0.5f), 0};
+            for (int i = n; i > dk_pt + 1; i--) dk_pt_put(c, i, dk_pt_get(c, i - 1));
+            dk_pt_put(c, dk_pt + 1, m); dk_pt++; }
+        return; }
+    if (k == K_X) { xcombo = 0; return; }
     used[k] = 1;
     if (k == K_EDIT && !held[K_OPT]) { combo = 0; return; }
     if (held[K_EDIT] || k == K_EDIT) combo = 1;
@@ -3094,10 +3109,14 @@ static void duck_key(int k, int down) {
     if (k == K_OPT && !held[K_EDIT]) { listen(sel); return; }
     if (k == K_Y || k == K_MENU) { leave_screen(); ducking = 0; return; }
     PadMix *pm = &song.mix.pad[sel]; int8_t *dx = song.dkx[sel]; uint8_t *cv = song.dkc[sel];
+    { int n = dk_npts(dk_view_pts(sel)); if (dk_pt >= n) dk_pt = n ? n - 1 : 0; }   // another pad may have fewer points
     int arrow = k == K_UP || k == K_DOWN || k == K_LEFT || k == K_RIGHT;
     if ((k == K_EDIT && held[K_OPT]) || (k == K_OPT && held[K_EDIT])) {      // OPT+EDIT: the point back up, the field's default
         edit_begin();
-        if (dk_row == 0) { cv[dk_pt] = 100; dx[DX_SHAPE] = DK_USER; }
+        if (dk_row == 0) { dk_make_pts(sel); int n = dk_npts(cv);   // the point goes (two stay)
+            if (n <= 2) { toast("TWO POINTS AT LEAST"); return; }
+            for (int i = dk_pt; i < n - 1; i++) dk_pt_put(cv, i, dk_pt_get(cv, i + 1));
+            dk_pt_put(cv, n - 1, (DkPt){0, 0, 0, 0}); if (dk_pt >= n - 1) dk_pt = n - 2; }
         else switch (dk_col) { case DF_MODE: dx[DX_MODE] = DM_NOTE; break; case DF_SRC: pm->spare[DK_SRC] = 0; break; case DF_AMT: pm->spare[DK_AMT] = 0; break; case DF_LEN: dx[DX_LEN] = 2; break;
             case DF_RATE: dx[DX_GRID] = 2; dx[DX_THRESH] = 40; break; case DF_SMOOTH: dx[DX_SMOOTH] = 0; break; case DF_SHAPE: dx[DX_SHAPE] = 0; memcpy(cv, dk_shape[0], 16); break; }
         return;
@@ -3106,17 +3125,22 @@ static void duck_key(int k, int down) {
     if (arrow && held[K_EDIT]) {
         edit_begin(); int d = k == K_RIGHT || k == K_UP ? 1 : -1;
         if (dk_row == 1) { duck_field(dk_col, d, k == K_UP || k == K_DOWN); return; }
-        if (k == K_UP || k == K_DOWN) cv[dk_pt] = (uint8_t)clampi(cv[dk_pt] + d * 5, 0, 100);
-        else { int v = cv[dk_pt]; dk_pt = clampi(dk_pt + d, 0, 15); cv[dk_pt] = (uint8_t)v; }   // drawn sideways: the next point takes this level
-        dx[DX_SHAPE] = DK_USER; return;
+        dk_make_pts(sel); int n = dk_npts(cv); DkPt p = dk_pt_get(cv, dk_pt);
+        if (k == K_UP || k == K_DOWN) p.y = clampi(p.y + d * 2, 0, 63);   // the level
+        else { int lo = dk_pt > 0 ? dk_pt_get(cv, dk_pt - 1).x : 0, hi = dk_pt < n - 1 ? dk_pt_get(cv, dk_pt + 1).x : 31; p.x = clampi(p.x + d, lo, hi); }   // along, between its neighbours
+        dk_pt_put(cv, dk_pt, p); return;
     }
+    if (arrow && held[K_X] && dk_row == 0 && (k == K_UP || k == K_DOWN)) {   // X+^v: the bend of the curve to the next point
+        xcombo = 1; edit_begin(); dk_make_pts(sel); DkPt p = dk_pt_get(cv, dk_pt);
+        if (dk_pt >= dk_npts(cv) - 1) { toast("THE LAST POINT HAS NO CURVE AFTER IT"); return; }
+        p.bend = clampi(p.bend + (k == K_UP ? 1 : -1), -7, 7); dk_pt_put(cv, dk_pt, p); return; }
     if (!arrow) return;
     if (dk_row == 1) {                   // UI v2 (A20): the fields as cards in two columns
         if (k == K_LEFT) { if (dk_col & 1) dk_col--; } else if (k == K_RIGHT) { if (!(dk_col & 1) && dk_col + 1 < DF_N) dk_col++; }
         else if (k == K_DOWN) { if (dk_col + 2 < DF_N) dk_col += 2; } else if (dk_col >= 2) dk_col -= 2; else dk_row = 0;
         return; }
     if (k == K_UP) dk_row = 0; else if (k == K_DOWN) dk_row = 1;
-    else if (dk_row == 0) dk_pt = clampi(dk_pt + (k == K_RIGHT ? 1 : -1), 0, 15);
+    else if (dk_row == 0) { int n = dk_npts(dk_view_pts(sel)); dk_pt = clampi(dk_pt + (k == K_RIGHT ? 1 : -1), 0, n > 0 ? n - 1 : 0); }
     else dk_col = (dk_col + (k == K_RIGHT ? 1 : DF_N - 1)) % DF_N;
 }
 static void mix_arrow(int k) {           // EDIT+arrows on the mixer

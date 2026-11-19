@@ -405,12 +405,27 @@ static void draw_duck2(void) {
     int mode = dx[DX_MODE] % DM_N, amt = pm->spare[DK_AMT], src = pm->spare[DK_SRC], onn = mode == DM_GRID ? amt > 0 : src > 0;
     Col ec = C_CAT(PC_MIX); enum { PX = 26, PY = 80, PW = 971, PH = 280 };
     if (dk_row == 0) rframe(PX, PY, PW, PH, 8, 4, ec, C_CELL); else rrect(PX, PY, PW, PH, 8, C_CELL);
-    for (int i = 0; i < 16; i++) { int bw = (PW - 28) / 16, x = PX + 14 + i * bw, h = (PH - 28) * cv[i] / 100, on = dk_row == 0 && i == dk_pt;
-        int rh = (PH - 28) * (100 - amt * (100 - cv[i]) / 100) / 100;   // what the level really does, with the depth
-        rect(x, PY + PH - 14 - h, bw - 6, h > 1 ? h : 1, on ? C_WHITE : onn ? ec : C_DIM, 1);
-        rect(x, PY + PH - 14 - rh, bw - 6, 3, mix(C_WHITE, ec, 120), 1); }
-    { float g = 1, v = engine_duck_view(sel, &g); if (v >= 0) rect(PX + 14 + (int)((PW - 28) * v), PY + 6, 2, PH - 12, C_WHITE, 1); }
-    if (dk_row == 0) { char nn[16], vv[8]; snprintf(nn, sizeof nn, "POINT %d", dk_pt + 1); snprintf(vv, sizeof vv, "%d%%", cv[dk_pt]); ui_focus(nn, vv, cv[dk_pt], ec); }
+    // 2026-11-19 (user, as ShaperBox): the pad's sound under the curve as it passes, the curve through up to 8 points,
+    // hollow ones and the chosen one filled, a dot half way along each stretch for its bend (orange when bent)
+    (void)cv; const uint8_t *pt = dk_view_pts(sel); int npt = dk_npts(pt), ix = PX + 14, iy = PY + 14, iw = PW - 28, ih = PH - 28;
+    enum { WB = 120 }; static float wh[NSLOT][WB];
+    { float g = 1, v = engine_duck_view(sel, &g); mx_meters();
+      for (int i = 0; i < WB; i++) wh[sel][i] *= 0.997f;
+      if (v >= 0) { int bi = clampi((int)(v * WB), 0, WB - 1); float l = sqrtf(mx_show[sel]); wh[sel][bi] = wh[sel][bi] * 0.5f + l * 0.5f; }
+      for (int i = 0; i < WB; i++) { int hh = (int)(ih * 0.9f * (wh[sel][i] > 1 ? 1 : wh[sel][i])); if (hh > 1) rect(ix + i * iw / WB, iy + ih - hh, iw / WB - 1, hh, mix(C_CELL, ec, 70), 1); }
+      if (v >= 0) rect(ix + (int)(iw * v), PY + 6, 2, PH - 12, C_WHITE, 1); }
+    { int lx = 0, ly = 0, rx = 0, ry = 0;
+      for (int i = 0; i <= 96; i++) { float L = dk_pts_eval(pt, i / 96.f), R = 100 - amt * (100 - L) / 100;
+          int x = ix + iw * i / 96, y = iy + ih - (int)(ih * L / 100), yr = iy + ih - (int)(ih * R / 100);
+          if (i) { if (amt < 100) line(rx, ry, x, yr, 1, mix(C_WHITE, ec, 120)); line(lx, ly, x, y, 3, onn ? ec : C_DIM); }   // the curve; what the level really does, with the depth
+          lx = x; ly = y; rx = x; ry = yr; } }
+    for (int i = 0; i + 1 < npt; i++) { DkPt a = dk_pt_get(pt, i), b2 = dk_pt_get(pt, i + 1); if (b2.x <= a.x) continue;
+        float mx = (a.x + b2.x) / 2.f / 31; int cx = ix + (int)(iw * mx), cy = iy + ih - (int)(ih * dk_pts_eval(pt, mx) / 100);
+        disc2(cx, cy, held[K_X] && dk_row == 0 && i == dk_pt ? 7 : 5, a.bend ? C_ORANGE : C_GREY); }
+    for (int i = 0; i < npt; i++) { DkPt q = dk_pt_get(pt, i); int cx = ix + iw * q.x / 31, cy = iy + ih - ih * q.y / 63, on = dk_row == 0 && i == dk_pt;
+        if (on) disc2(cx, cy, 12, C_WHITE); else { disc2(cx, cy, 10, onn ? ec : C_DIM); disc2(cx, cy, 6, C_CELL); } }
+    if (dk_row == 0 && npt) { char nn[16], vv[24]; DkPt q = dk_pt_get(pt, clampi(dk_pt, 0, npt - 1)); snprintf(nn, sizeof nn, "POINT %d/%d", dk_pt + 1, npt);
+        snprintf(vv, sizeof vv, q.bend && dk_pt < npt - 1 ? "%d%%  BEND %+d" : "%d%%", q.y * 100 / 63, q.bend); ui_focus(nn, vv, q.y * 100 / 63, ec); }
     static const char *const fn2[DF_N] = {"TRIGGER", "SOURCE", "DEPTH", "LENGTH", "", "SMOOTH", "SHAPE"};
     int first = dk_row == 1 ? dk_col / 2 / 2 * 2 : 0;
     for (int c = first * 2; c < DF_N && c < first * 2 + 4; c++) { char v[24]; int x = c & 1 ? 518 : 32, y = PY + PH + 16 + (c / 2 - first) * 170, on = dk_row == 1 && dk_col == c, use = c != DF_SRC || mode != DM_GRID;
@@ -425,7 +440,7 @@ static void draw_duck2(void) {
         ftext(x + 453 - ftext_w(FT_XB, v), y + 10, FT_XB, use ? C_WHITE : C_DIM, v);
         if (c == DF_AMT || c == DF_LEN) { int f = c == DF_AMT ? amt : (dx[DX_LEN] % DK_NLEN) * 100 / (DK_NLEN - 1); rect(x + 20, y + 130, 433, 8, C_LINE, 1); rect(x + 20, y + 130, 433 * f / 100, 8, ec, 1); } }
     ui_cards_more(1004, PY + PH + 16, 332, first, (DF_N + 1) / 2);
-    draw_footer(dk_row == 0 ? "EDIT+^v LEVEL  EDIT+<> DRAW  Y BACK  OPT+EDIT POINT UP  L1/R1 PAD" : "EDIT SHAPE  Y BACK  EDIT+ARROWS VALUE  OPT+EDIT DEFAULT  L1/R1 PAD");
+    draw_footer(dk_row == 0 ? "EDIT+ARROWS LEVEL/MOVE  X NEW POINT, X+^v BEND  OPT+EDIT DELETE  <> POINT  Y BACK  L1/R1 PAD" : "EDIT SHAPE  Y BACK  EDIT+ARROWS VALUE  OPT+EDIT DEFAULT  L1/R1 PAD");
     return;
 }
 
