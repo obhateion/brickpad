@@ -4416,11 +4416,16 @@ static void draw_fmenu(void) {
 // ---------- EXPORT WAV (2026-11-09) ----------
 // The window: BARS, CLIPS (the ones on, or all with notes), TAIL, EXPORT. Rendering pauses the audio device and runs
 // callback() from the UI thread, a slice per frame, into exports/NAME.wav (48 kHz, 16 bit, stereo).
-static const int ex_bars_v[7] = {1, 2, 4, 8, 16, 32, 64}, ex_tail_v[3] = {0, 2, 4};
-enum { EX_BARS, EX_FROM, EX_CLIPS, EX_TAIL, EX_STEMS, EX_GO, EX_ROWS };
+static const int ex_bars_v[7] = {1, 2, 4, 8, 16, 32, 64}, ex_tail_v[4] = {0, 2, 4, 8};
+// 2026-11-19 (user: "an export menu with settings, as in Ableton"): WHAT (the mix, a file per pad, both, the open pad),
+// SCENES (all in turn or the open one), AS LOOP (the tail folded onto the start), NORMALIZE (-0.3 dB peak), FORMAT
+// (16 / 24 bit, 32 float), MONO. The render goes to a float file (exports/.render), the WAV is written from it at the end.
+enum { EX_BARS, EX_FROM, EX_CLIPS, EX_TAIL, EX_STEMS, EX_SCN, EX_LOOP, EX_NORM, EX_FMT, EX_MONO, EX_GO, EX_ROWS };
 static int ex_row, ex_bars = 3, ex_from = 1, ex_all, ex_tail = 1, ex_stems, ex_run, ex_pad; static long ex_done, ex_total, ex_body, ex_skip; static FILE *ex_f;
+static int ex_what, ex_scnall = 1, ex_loop, ex_norm, ex_fmt, ex_mono, ex_mixed;   // WHAT 0 MIX 1 PADS 2 MIX+PADS 3 THIS PAD; ex_mixed: the mix of MIX+PADS is done
 static char ex_path[160]; static int8_t ex_on[NSLOT], ex_solo[NSLOT]; static float ex_peak;
 static int ex_scn, ex_k, ex_home, ex_all0; static long ex_seg;   // 2026-11-15 (user): ONE MIX of a project with scenes = every scene in turn, BARS each
+#define EX_TMP "exports/.render"
 static void ex_scene(int n) {            // the device is paused: the scene comes in on the next rendered step
     float z[256]; scene_go(n); scn_play = 0; engine_scene_force(); if (!engine_playing()) engine_render(z, 128); scene_poll(); }
 static void export_open(void) {
@@ -4429,21 +4434,24 @@ static void export_open(void) {
     ex_all = !any;                        // nothing on: every clip with notes
 }
 static void wav_header(FILE *f, long frames) {
-    uint32_t data = (uint32_t)(frames * 4), riff = 36 + data, sr = SR, br = SR * 4, n16 = 16; uint16_t pcm = 1, ch = 2, ba = 4, bits = 16;
-    fwrite("RIFF", 1, 4, f); fwrite(&riff, 4, 1, f); fwrite("WAVEfmt ", 1, 8, f); fwrite(&n16, 4, 1, f); fwrite(&pcm, 2, 1, f); fwrite(&ch, 2, 1, f);
+    uint16_t ch = ex_mono ? 1 : 2, bits = ex_fmt == 2 ? 32 : ex_fmt == 1 ? 24 : 16, fmt = ex_fmt == 2 ? 3 : 1, ba = (uint16_t)(ch * bits / 8);
+    uint32_t data = (uint32_t)(frames * ba), riff = 36 + data, sr = SR, br = SR * ba, n16 = 16;
+    fwrite("RIFF", 1, 4, f); fwrite(&riff, 4, 1, f); fwrite("WAVEfmt ", 1, 8, f); fwrite(&n16, 4, 1, f); fwrite(&fmt, 2, 1, f); fwrite(&ch, 2, 1, f);
     fwrite(&sr, 4, 1, f); fwrite(&br, 4, 1, f); fwrite(&ba, 2, 1, f); fwrite(&bits, 2, 1, f); fwrite("data", 1, 4, f); fwrite(&data, 4, 1, f);
 }
+static int ex_pads(void) { return ex_what == 1 || ex_what == 3 || (ex_what == 2 && ex_mixed); }   // this pass writes pads, not the mix
 static int ex_used(int s) { return ex_all ? has_sound(s) && (pat_used(cur_pat(s)) || roll_any(cur_pat(s))) : ex_on[s]; }
-static int ex_pass(void) {               // one file: the mix, or (STEMS) pad ex_pad alone; 0 when there is no more to do
-    if (ex_stems) { while (ex_pad < NSLOT && !ex_used(ex_pad)) ex_pad++; if (ex_pad >= NSLOT) return 0; }
+static int ex_pass(void) {               // one file: the mix, or pad ex_pad alone; 0 when there is no more to do
+    ex_stems = ex_pads();
+    if (ex_stems) { if (ex_what == 3) { if (ex_pad > sel) return 0; ex_pad = sel; } else while (ex_pad < NSLOT && !ex_used(ex_pad)) ex_pad++; if (ex_pad >= NSLOT) return 0; }
     const char *nm = prj_cur[0] ? prj_cur : "UNTITLED"; char base[96];
     if (ex_stems) snprintf(base, sizeof base, "%s PAD%02d", nm, ex_pad + 1); else snprintf(base, sizeof base, "%s", nm);
     snprintf(ex_path, sizeof ex_path, "exports/%s.wav", base);
     for (int i = 2; i < 100 && !access(ex_path, F_OK); i++) snprintf(ex_path, sizeof ex_path, "exports/%s %d.wav", base, i);
-    ex_f = fopen(ex_path, "wb"); if (!ex_f) { toast("COULD NOT WRITE exports/"); return 0; }
-    wav_header(ex_f, 0);
-    for (int s = 0; s < NSLOT; s++) { song.t[s].on = (int8_t)ex_used(s); song.t[s].queued = -1; song.mix.pad[s].solo = (uint8_t)(ex_stems && s == ex_pad); }
+    ex_f = fopen(EX_TMP, "w+b"); if (!ex_f) { toast("COULD NOT WRITE exports/"); return 0; }
+    for (int s = 0; s < NSLOT; s++) { song.t[s].on = (int8_t)(ex_used(s) || (ex_what == 3 && s == sel && has_sound(s))); song.t[s].queued = -1; song.mix.pad[s].solo = (uint8_t)(ex_stems && s == ex_pad); }
     engine_stop_all(); { float z[256]; for (int i = 0; i < 8; i++) engine_render(z, 128); }
+    if (ex_scn && scn_cur) ex_scene(0);
     engine_transport(1);
     double bar_s = (song.beats > 0 ? song.beats : 4) * 60.0 / song.tempo;
     ex_skip = (long)(bar_s * (ex_from - 1) * SR + 0.5);   // FROM BAR: the bars before it are played, not written
@@ -4457,23 +4465,49 @@ static void export_start(void) {
     rec = 0; combo_t = 0; rec_wait = 0;
     if (engine_playing() || engine_counting() >= 0) transport_toggle();
     for (int s = 0; s < NSLOT; s++) { ex_on[s] = song.t[s].on; ex_solo[s] = (int8_t)song.mix.pad[s].solo; }
-    engine_pause(1); ex_pad = 0;
-    scene_poll(); ex_scn = !ex_stems && scn_n > 1; ex_home = scn_cur; ex_all0 = ex_all;
+    engine_pause(1); ex_pad = 0; ex_mixed = 0;
+    scene_poll(); ex_scn = ex_scnall && ex_what != 3 && scn_n > 1; ex_home = scn_cur; ex_all0 = ex_all;
     if (ex_scn) { if (scn_cur) ex_scene(0); ex_all = 1; }
     if (ex_pass()) ex_run = 1; else { if (ex_scn) { ex_all = ex_all0; if (scn_cur != ex_home) ex_scene(ex_home); ex_scn = 0; } engine_pause(0); toast(ex_stems ? "NO PAD TO EXPORT" : "COULD NOT EXPORT"); }
 }
+static int ex_write(void) {              // the float render -> the WAV as asked: loop fold, mono, normalize, format
+    long T = ex_done > ex_body ? ex_done - ex_body : 0, out = ex_loop ? (ex_done < ex_body ? ex_done : ex_body) : ex_done;
+    float *tail = NULL; if (ex_loop && T) { tail = malloc((size_t)T * 8); if (!tail) return 0; fseek(ex_f, ex_body * 8, SEEK_SET); if (fread(tail, 8, (size_t)T, ex_f) != (size_t)T) { free(tail); return 0; } }
+    FILE *o = fopen(ex_path, "wb"); if (!o) { free(tail); return 0; }
+    wav_header(o, out); float peak = 0, g = 1; static float fb[2 * 4096]; static uint8_t ob[4 * 2 * 4096];
+    for (int pass = ex_norm ? 0 : 1; pass < 2; pass++) {
+        fseek(ex_f, 0, SEEK_SET);
+        for (long at = 0; at < out; ) {
+            int n = out - at > 4096 ? 4096 : (int)(out - at); if (fread(fb, 8, (size_t)n, ex_f) != (size_t)n) { fclose(o); free(tail); return 0; }
+            for (int i = 0; i < n; i++) { long f = at + i;
+                if (tail) for (long w = f; w < T; w += out) { fb[2 * i] += tail[2 * w]; fb[2 * i + 1] += tail[2 * w + 1]; }   // AS LOOP: what rang past the end, over the start
+                if (ex_mono) fb[2 * i] = fb[2 * i + 1] = (fb[2 * i] + fb[2 * i + 1]) * 0.5f; }
+            if (!pass) { for (int i = 0; i < 2 * n; i++) if (fabsf(fb[i]) > peak) peak = fabsf(fb[i]); at += n; continue; }
+            int ch = ex_mono ? 1 : 2, k = 0;
+            for (int i = 0; i < n; i++) for (int c = 0; c < ch; c++) { float v = fb[2 * i + c] * g;
+                if (ex_fmt == 2) { memcpy(ob + k, &v, 4); k += 4; continue; }
+                v = v > 1 ? 1 : v < -1 ? -1 : v;
+                if (ex_fmt == 1) { int32_t x = (int32_t)lrintf(v * 8388607); ob[k++] = (uint8_t)x; ob[k++] = (uint8_t)(x >> 8); ob[k++] = (uint8_t)(x >> 16); }
+                else { int16_t x = (int16_t)lrintf(v * 32767); memcpy(ob + k, &x, 2); k += 2; } }
+            if (fwrite(ob, 1, (size_t)k, o) != (size_t)k) { fclose(o); free(tail); return 0; }
+            at += n; }
+        if (!pass) g = peak > 1e-6f ? 0.966f / peak : 1;   // -0.3 dB
+    }
+    free(tail); return !fclose(o);
+}
 static void export_finish(int keep) {
     engine_transport(0); { float z[256]; engine_render(z, 128); } engine_stop_all();
-    if (ex_f) { if (keep) { fseek(ex_f, 0, SEEK_SET); wav_header(ex_f, ex_done); } fclose(ex_f); ex_f = NULL; if (!keep) unlink(ex_path); sync(); }
-    if (keep && ex_stems) { ex_pad++; if (ex_pass()) return; }   // STEMS: the next pad
+    if (ex_f) { if (keep && !ex_write()) { toast("COULD NOT WRITE THE WAV"); keep = 0; } fclose(ex_f); ex_f = NULL; unlink(EX_TMP); if (!keep) unlink(ex_path); sync(); }
+    if (keep && ex_what == 2 && !ex_mixed) { ex_mixed = 1; ex_pad = 0; if (ex_pass()) return; }   // MIX + PADS: now the pads
+    else if (keep && ex_stems && ex_what != 3) { ex_pad++; if (ex_pass()) return; }   // the next pad
     if (ex_scn) { ex_all = ex_all0; if (scn_cur != ex_home) ex_scene(ex_home); ex_scn = 0; }   // back in the scene that was open
     for (int s = 0; s < NSLOT; s++) { song.t[s].on = ex_on[s]; song.mix.pad[s].solo = (uint8_t)ex_solo[s]; }
     engine_pause(0); ex_run = 0;
-    if (keep) { char b[200]; snprintf(b, sizeof b, ex_stems ? "STEMS IN exports/" : "EXPORTED %s", ex_path); toast(b); exporting = 0; } else toast("EXPORT CANCELLED");
+    if (keep) { char b[200]; snprintf(b, sizeof b, ex_what == 1 || ex_what == 2 ? "FILES IN exports/" : "EXPORTED %s", ex_path); toast(b); exporting = 0; } else toast("EXPORT CANCELLED");
 }
 static void export_tick(void) {          // a slice of the render per frame: about a second of audio
     if (!ex_run) return;
-    static float buf[2 * 128]; static int16_t pcm[2 * 128];
+    static float buf[2 * 128];
     for (int n = 0; n < 375; n++) {
         if (ex_skip > 0) { engine_render(buf, 128); ex_skip -= 128; continue; }   // before FROM BAR
         if (ex_done >= ex_total) break;
@@ -4481,8 +4515,8 @@ static void export_tick(void) {          // a slice of the render per frame: abo
         else if (ex_scn && ex_k + 1 < scn_n && ex_done + 256 >= ex_seg * (ex_k + 1)) { ex_k++; scene_go(ex_k); scn_play = 0; engine_scene_force(); }   // the next scene on the bar
         engine_render(buf, 128); if (ex_scn) scene_poll();
         int fr = ex_total - ex_done < 128 ? (int)(ex_total - ex_done) : 128;
-        for (int i = 0; i < 2 * fr; i++) { float v = buf[i]; if (fabsf(v) > ex_peak) ex_peak = fabsf(v); v = v > 1 ? 1 : v < -1 ? -1 : v; pcm[i] = (int16_t)lrintf(v * 32767); }
-        if (fwrite(pcm, 4, fr, ex_f) != (size_t)fr) { toast("DISK FULL?"); export_finish(0); return; }
+        for (int i = 0; i < 2 * fr; i++) if (fabsf(buf[i]) > ex_peak) ex_peak = fabsf(buf[i]);
+        if (fwrite(buf, 8, fr, ex_f) != (size_t)fr) { toast("DISK FULL?"); export_finish(0); return; }
         ex_done += fr;
     }
     if (ex_skip <= 0 && ex_done >= ex_total) export_finish(1);
@@ -4493,8 +4527,12 @@ static void export_key(int k, int down) {
     if (k == K_Y || k == K_OPT) { exporting = 0; return; }
     if (k == K_UP) ex_row = (ex_row + EX_ROWS - 1) % EX_ROWS; else if (k == K_DOWN) ex_row = (ex_row + 1) % EX_ROWS;
     else if (k == K_LEFT || k == K_RIGHT) { int d = k == K_RIGHT ? 1 : -1; if (held[K_EDIT]) used[K_EDIT] = 1;
-        if (ex_row == EX_BARS) ex_bars = clampi(ex_bars + d, 0, 6); else if (ex_row == EX_FROM) ex_from = clampi(ex_from + d, 1, 128);
-        else if (ex_row == EX_CLIPS) ex_all = !ex_all; else if (ex_row == EX_TAIL) ex_tail = clampi(ex_tail + d, 0, 2); else if (ex_row == EX_STEMS) ex_stems = !ex_stems; }
+        switch (ex_row) {
+        case EX_BARS: ex_bars = clampi(ex_bars + d, 0, 6); break; case EX_FROM: ex_from = clampi(ex_from + d, 1, 128); break;
+        case EX_CLIPS: ex_all = !ex_all; break; case EX_TAIL: ex_tail = clampi(ex_tail + d, 0, 3); break;
+        case EX_STEMS: ex_what = (ex_what + d + 4) % 4; break; case EX_SCN: ex_scnall = !ex_scnall; break;
+        case EX_LOOP: ex_loop = !ex_loop; break; case EX_NORM: ex_norm = !ex_norm; break;
+        case EX_FMT: ex_fmt = (ex_fmt + d + 3) % 3; break; case EX_MONO: ex_mono = !ex_mono; break; } }
 }
 #include "windows.h"
 static void lcd_mask(void) {             // a dark gap after every 3 px, both ways, as on the DMG screen: one texture, made once

@@ -1066,8 +1066,9 @@ static void callback(void *u, Uint8 *stream, int len) {
         click.delay -= n;
         if (click.t >= 2400) click.f = 0;
     }
+#define OUT_BOOST 10.f   // +20 dB on the whole output, before the compressor and limiter
     {   // master: VOL (ramped), compressor, limiter, then the soft clip as a last safety
-        float tg = song.master / 100.f; if (master_g < 0) master_g = tg;
+        float tg = song.master / 100.f * OUT_BOOST; if (master_g < 0) master_g = tg;   // 2026-11-19 (user: "0 is very quiet"): +20 dB
         float dg = (tg - master_g) / n;
         for (int k = 0; k < n; k++) { float g = master_g + dg * (k + 1); o[2 * k] *= g; o[2 * k + 1] *= g; }
         master_g = tg;

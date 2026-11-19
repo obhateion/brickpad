@@ -17,22 +17,31 @@ static void w_btn(int x, int y, int w, int h, const char *t, int on, Col c, int 
 static void w_box(int x, int y, int w, int h, Col c) { ui_shade(200); rframe(x, y, w, h, 12, 3, c, C_CELL); }   // a question over the screen
 static void w_center(int cx, int y, int f, Col c, const char *s) { ftext(cx - ftext_w(f, s) / 2, y, f, c, s); }
 
-static void draw_export2(void) {
-    Col ec = th_cur[TC_SMP]; char b[96]; double bar_s = (song.beats > 0 ? song.beats : 4) * 60.0 / song.tempo, sec = bar_s * ex_bars_v[ex_bars] * (!ex_stems && scn_n > 1 ? scn_n : 1) + ex_tail_v[ex_tail];
-    static const char *const rn[5] = {"BARS", "FROM BAR", "CLIPS", "TAIL", "FILES"};
-    for (int r = 0; r < 5; r++) {
-        if (r == EX_BARS) snprintf(b, sizeof b, "%d", ex_bars_v[ex_bars]); else if (r == EX_FROM) snprintf(b, sizeof b, "%d", ex_from);
-        else if (r == EX_CLIPS) snprintf(b, sizeof b, ex_all ? "ALL WITH NOTES" : "THE ONES PLAYING"); else if (r == EX_TAIL) snprintf(b, sizeof b, ex_tail_v[ex_tail] ? "%d S" : "NONE", ex_tail_v[ex_tail]);
-        else if (!ex_stems && scn_n > 1) snprintf(b, sizeof b, "ONE MIX \003 ALL %d SCENES", scn_n); else snprintf(b, sizeof b, ex_stems ? "ONE PER PAD" : "ONE MIX");
-        w_row(26, 80 + r * 82, 971, 72, rn[r], b, ex_row == r && !ex_run, ec); }
-    w_btn(26, 496, 971, 84, ex_run ? "RENDERING" : "EXPORT", ex_row == EX_GO || ex_run, ec, 0);
+static void draw_export2(void) {         // two columns of settings (2026-11-19: as Ableton's export), EXPORT under them
+    Col ec = th_cur[TC_SMP]; char b[96]; int sc = ex_scnall && ex_what != 3 && scn_n > 1;
+    double bar_s = (song.beats > 0 ? song.beats : 4) * 60.0 / song.tempo, sec = bar_s * ex_bars_v[ex_bars] * (sc ? scn_n : 1) + (ex_loop ? 0 : ex_tail_v[ex_tail]);
+    static const char *const rn[EX_GO] = {"BARS", "FROM BAR", "CLIPS", "TAIL", "WHAT", "SCENES", "AS LOOP", "NORMALIZE", "FORMAT", "CHANNELS"};
+    static const char *const what[4] = {"THE MIX", "A FILE PER PAD", "MIX + PADS", "THIS PAD"}, *const fmt[3] = {"16 BIT", "24 BIT", "32 FLOAT"};
+    for (int r = 0; r < EX_GO; r++) {
+        switch (r) {
+        case EX_BARS: snprintf(b, sizeof b, "%d", ex_bars_v[ex_bars]); break; case EX_FROM: snprintf(b, sizeof b, sc ? "1 (SCENES)" : "%d", ex_from); break;
+        case EX_CLIPS: snprintf(b, sizeof b, ex_all ? "ALL WITH NOTES" : "THE PLAYING"); break;
+        case EX_TAIL: snprintf(b, sizeof b, ex_tail_v[ex_tail] ? "%d S" : "NONE", ex_tail_v[ex_tail]); break;
+        case EX_STEMS: snprintf(b, sizeof b, ex_what == 3 ? "PAD %d" : "%s", ex_what == 3 ? sel + 1 : 0); if (ex_what != 3) snprintf(b, sizeof b, "%s", what[ex_what]); break;
+        case EX_SCN: snprintf(b, sizeof b, scn_n < 2 ? "ONE SCENE" : ex_scnall ? "ALL %d IN TURN" : "THE OPEN ONE", scn_n); break;
+        case EX_LOOP: snprintf(b, sizeof b, ex_loop ? "ON: TAIL ON THE START" : "OFF"); break;
+        case EX_NORM: snprintf(b, sizeof b, ex_norm ? "-0.3 DB PEAK" : "OFF"); break;
+        case EX_FMT: snprintf(b, sizeof b, "%s", fmt[ex_fmt]); break; default: snprintf(b, sizeof b, ex_mono ? "MONO" : "STEREO");
+        }
+        w_row(r < 5 ? 26 : 518, 76 + (r % 5) * 80, 479, 70, rn[r], b, ex_row == r && !ex_run, ec); }
+    w_btn(26, 482, 971, 84, ex_run ? "RENDERING" : "EXPORT", ex_row == EX_GO || ex_run, ec, 0);
     const char *nm = prj_cur[0] ? prj_cur : "UNTITLED";
-    snprintf(b, sizeof b, ex_stems ? "exports/%s PADnn.wav" : "exports/%s.wav", nm); ftext(26, 596, FT_S, C_DIM, ex_run ? ex_path : b);
-    snprintf(b, sizeof b, "%.1f s \003 %d BPM \003 48 kHz 16 bit", sec, song.tempo); ftext(997 - ftext_w(FT_S, b), 596, FT_S, C_DIM, b);
+    snprintf(b, sizeof b, ex_what == 1 || ex_what == 2 ? "exports/%s (PADnn).wav" : ex_what == 3 ? "exports/%s PADnn.wav" : "exports/%s.wav", nm); ftext(26, 584, FT_S, C_DIM, ex_run ? ex_path : b);
+    snprintf(b, sizeof b, "%.1f s \003 %d BPM \003 48 kHz %s", sec, song.tempo, fmt[ex_fmt]); ftext(997 - ftext_w(FT_S, b), 584, FT_S, C_DIM, b);
     if (ex_run) {
-        int pc = ex_total ? (int)(ex_done * 100 / ex_total) : 0; rect(26, 640, 971, 10, C_LINE, 1); rect(26, 640, 971 * pc / 100, 10, ec, 1);
+        int pc = ex_total ? (int)(ex_done * 100 / ex_total) : 0; rect(26, 630, 971, 10, C_LINE, 1); rect(26, 630, 971 * pc / 100, 10, ec, 1);
         if (ex_stems) snprintf(b, sizeof b, "pad %d \003 %d%% \003 peak %.2f", ex_pad + 1, pc, ex_peak); else snprintf(b, sizeof b, "%d%% \003 peak %.2f", pc, ex_peak);
-        ftext(26, 664, FT_M, ex_peak > 1 ? C_RED : C_DIM, b);
+        ftext(26, 654, FT_M, ex_peak > 1 && !ex_norm ? C_RED : C_DIM, b);
         draw_footer("Y CANCEL");
     } else draw_footer(ex_row == EX_GO ? "EDIT EXPORT  ^v ROW  Y BACK" : "<> CHANGE  ^v ROW  Y BACK");
 }
