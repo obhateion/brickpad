@@ -2,7 +2,7 @@
 // CHORDS (2026-11-19, user: "a chord palette, as onemotion's chord player, a third way next to STEPS and PIANO ROLL").
 // The pad's key and scale give seven chords (I..VII), as triads, sevenths and sus4. The clip is cut into slots of
 // LENGTH; EDIT puts the chosen chord in the slot and goes to the next. The chords are piano-roll notes, so the roll
-// edits them afterwards. L2 goes round STEPS > PIANO ROLL > CHORDS > STEPS.
+// edits them afterwards. The clip's MODE (PATTERN's first card, EDIT + arrows) chooses STEPS, PIANO ROLL or CHORDS.
 enum { CH_COLS = 7, CH_ROWS = 3, CH_TAG = 330 };
 static int ch_row, ch_col, ch_slot, ch_len = 2, ch_inv, ch_oct, ch_heard;
 static const int ch_len32[4] = {8, 16, 32, 64};
@@ -40,7 +40,7 @@ static void ch_clear_slot(Pattern *p, int slot) {
 }
 static void ch_put(int row, int col) {
     Pattern *p = cur_pat(sel); int n[4], c = ch_notes(row, col, n), L = ch_slot_ticks(), a = ch_slot * L;
-    push_undo(); edit_begin(); p->mode = 1;
+    push_undo(); edit_begin(); if (!p->mode) p->mode = 2;
     ch_clear_slot(p, ch_slot);
     for (int i = 0; i < c; i++) if (roll_add(p, a, L, n[i], 100) < 0) { toast("THE CLIP IS FULL OF NOTES"); break; }
     ch_slot = (ch_slot + 1) % ch_nslots(p);
@@ -68,8 +68,7 @@ static void chord_key(int k, int down) {
     if (k == K_EDIT) { combo = 0; if (held[K_OPT]) { push_undo(); edit_begin(); ch_clear_slot(p, ch_slot); toast("SLOT CLEARED"); combo = 1; } else ch_hear(ch_row, ch_col); return; }
     if (held[K_EDIT]) combo = 1;
     if (k == K_PLAY) { play_key(); return; }
-    if (k == K_Y) { chord_leave(); return; }
-    if (k == K_L2 && !held[K_SHIFT]) { chord_leave(); edit_begin(); p->mode = 0; srow = 1; toast("STEPS"); return; }   // round: back to STEPS
+    if (k == K_Y) { chord_leave(); if (ui_cat == PC_PATTERN) patmenu_open(); return; }   // back to PATTERN's list, as the roll
     if (k == K_OPT) { ch_hear(ch_row, ch_col); return; }
     if (k == K_X) { ch_len = (ch_len + 1) % 4; ch_slot = 0; return; }
     if (k == K_R2) { ch_inv = (ch_inv + 1) % 3; ch_hear(ch_row, ch_col); return; }
@@ -108,5 +107,5 @@ static void draw_chords(void) {
     char info[96]; snprintf(info, sizeof info, "LENGTH %s   INVERSION %d   OCTAVE %+d   %s", ch_len_name[ch_len], ch_inv, ch_oct, b);
     ftext(32, ty + th + 24, FT_M, C_GREY, info);
     { char nn[24], vv[32]; ch_name(ch_row, ch_col, vv, sizeof vv); snprintf(nn, sizeof nn, "SLOT %d/%d", ch_slot + 1, n); ui_focus(nn, vv, -1, ec); }
-    draw_footer("EDIT PUT  OPT HEAR  L1/R1 SLOT  X LENGTH  R2 INVERSION  EDIT+^v OCTAVE  OPT+EDIT CLEAR SLOT  L2 STEPS  Y BACK");
+    draw_footer("EDIT PUT  OPT HEAR  L1/R1 SLOT  X LENGTH  R2 INVERSION  EDIT+^v OCTAVE  OPT+EDIT CLEAR SLOT  Y BACK");
 }

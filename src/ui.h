@@ -318,10 +318,12 @@ static void draw_hub(void) {              // the cards of A03: stripe, name in t
 // PATTERN (UI v2): its pages as a list, STEPS (the roll when the pattern is one) and SELECT; RECORD comes with A04.
 static void patmenu_key(int k, int down) {
     if (!down) { if (k == K_EDIT && !used[K_EDIT]) { patmenu = 0;
-        if (pm_cur == 1) pat_open(); else if (pm_cur == 2) recpage = 1; else if (cur_pat(sel)->mode) roll_open(); else { srow = 1; scol = 0; lane = lane_first(); seq_clamp(); }
+        if (pm_cur == 1) pat_open(); else if (pm_cur == 2) recpage = 1; else if (cur_pat(sel)->mode == 2) chord_open(); else if (cur_pat(sel)->mode) roll_open(); else { srow = 1; scol = 0; lane = lane_first(); seq_clamp(); }
         if (pm_cur == 3) rnd_open(); } return; }   // RANDOM: its window over the steps (or the roll)   // STEPS open on the notes
     if (k == K_Y) { hub_open(); hub_cur = PC_PATTERN; return; }
     if (k == K_PLAY) { play_key(); return; }
+    if (pm_cur == 0 && held[K_EDIT] && (k == K_UP || k == K_DOWN || k == K_LEFT || k == K_RIGHT)) {   // EDIT + an arrow on the first card: the clip's MODE, round
+        used[K_EDIT] = 1; pat_mode_step(k == K_RIGHT || k == K_DOWN ? 1 : -1); return; }
     if ((k == K_EDIT && held[K_OPT]) || (k == K_OPT && held[K_EDIT])) { used[K_EDIT] = used[K_OPT] = 1;   // STEPS: this pattern, SELECT: all 16, RECORD: its settings
         if (pm_cur == 3) return; if (pm_cur == 2) cfm_prj(JS_REC); else { char b[32]; snprintf(b, sizeof b, "PATTERN P%d", song.t[sel].cur + 1); cfm_pad(sel, pm_cur ? PP_PAT : PP_STEPS, pm_cur ? "ALL 16 PATTERNS" : b); } return; }
     if (k == K_OPT) { act_listen(sel); return; }
@@ -335,14 +337,16 @@ static void draw_patmenu(void) {
         int y = Y0 + c * DY, on = c == pm_cur; Col cc = C_CAT(PC_PATTERN); char b[96];
         rrect(CX, y, CWD, CHT, 8, on ? mix(C_SELBG, C_DIM, 40) : C_CELL);
         rect(CX, y, 9, CHT, cc, 1);
-        ftext(CX + 38, y + 12, FT_LB, cc, c == 3 ? "RANDOM" : c == 2 ? "RECORD" : c ? "SELECT" : p->mode ? "ROLL" : "STEPS");
+        int ix = c ? 0 : 44; if (!c) icon(p->mode == 2 ? IC_M_CHORD : p->mode ? IC_M_PIANO : IC_M_STEP_SEQ, CX + 30, y + 16, cc);   // the clip's MODE: its icon, name and a small picture
+        ftext(CX + 38 + ix, y + 12, FT_LB, cc, c == 3 ? "RANDOM" : c == 2 ? "RECORD" : c ? "SELECT" : pat_mode_name[p->mode % 3]);
+        if (!c) { if (p->mode) draw_roll_mini(p, CX + CWD - 250, y + 14, 230, CHT - 28, -1, on); else for (int i = 0; i < 16; i++) rect(CX + CWD - 250 + i * 14, y + 40, 11, 24, i < p->len && p->trig[i] ? cc : C_LINE, 1); }
         if (c == 3) snprintf(b, sizeof b, "rhythm, notes or both \3 in the key and scale of %s", t->scale || t->key ? "the pad" : "the project");
         else if (c == 2) snprintf(b, sizeof b, "count-in %d \3 quantize %s \3 play it on KEYS or PADS (MENU)", song.count_in, quant_name[song.rec_quant % 5]);
         else if (c) snprintf(b, sizeof b, "P%02d of %d used \3 length \3 division \3 what plays after", t->cur + 1, used);
         else snprintf(b, sizeof b, "%d steps \3 %s", p->len, div_name[p->div % 6]);
         ftext(CX + 38, y + 56, FT_M, on ? C_WHITE : C_DIM, b);
     }
-    draw_footer("EDIT OPEN  F1/F2 PAD  Y BACK  OPT+EDIT CLEAR");
+    draw_footer(pm_cur == 0 ? "EDIT OPEN  EDIT+ARROWS MODE  Y BACK  F1/F2 PAD  OPT+EDIT CLEAR" : "EDIT OPEN  F1/F2 PAD  Y BACK  OPT+EDIT CLEAR");
 }
 
 // PATTERN > STEPS (mockup A05): the lanes as tabs (L1/R1), sixteen steps in two rows, the pages follow the cursor.
@@ -400,7 +404,7 @@ static void draw_steps2(void) {
     else snprintf(b, sizeof b, "step %d", cs + 1);
     ftext(W - 28 - ftext_w(FT_M, b), 660, FT_M, C_WHITE, b);
     draw_phones(850, 16);
-    draw_footer(lane == L_TRIG || lane == L_SLICE ? "EDIT NOTE  L1/R1 LANE  Y BACK  L2 PIANO ROLL  R2 HEAR  EDIT+ARROWS VALUE  OPT LISTEN  OPT+<> WALK AND LISTEN  X+<> PAD  OPT+EDIT DELETE  XX DOUBLE CLIP  SHIFT+X RANDOM"
+    draw_footer(lane == L_TRIG || lane == L_SLICE ? "EDIT NOTE  L1/R1 LANE  Y BACK  R2 HEAR  EDIT+ARROWS VALUE  OPT LISTEN  OPT+<> WALK AND LISTEN  X+<> PAD  OPT+EDIT DELETE  XX DOUBLE CLIP  SHIFT+X RANDOM"
                                                   : "EDIT+ARROWS VALUE  L1/R1 LANE  Y BACK  OPT LISTEN  X+<> PAD  OPT+EDIT DEFAULT  XX DOUBLE CLIP  SHIFT+X RANDOM");
 }
 

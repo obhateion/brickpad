@@ -461,7 +461,7 @@ static void song_sanitize(void) {
             Pattern *p = &t->pat[q];
             if (p->len < 1 || p->len > NSTEP) p->len = 16;
             if (p->div > 5) p->div = 1;
-            KEEP(p->mode, 0, 1); p->spare = 0;
+            KEEP(p->mode, 0, 2); p->spare = 0;
             for (int i = 0; i < NNOTE; i++) {
                 Note *n = &p->roll[i];
                 if (n->len && n->start >= NSTEP * 32 * RT) n->len = 0;
@@ -1860,7 +1860,7 @@ static void seq_tap(void) {
         if (!al->target) toast("CHOOSE A TARGET: UP TO THE HEADER");
         return;
     }
-    if (srow >= 1 && srow <= 2 && cur_pat(sel)->mode) { roll_open(); return; }
+    if (srow >= 1 && srow <= 2 && cur_pat(sel)->mode) { if (cur_pat(sel)->mode == 2) chord_open(); else roll_open(); return; }
     if (srow == 0 && scol == 2) { spage = last_page() ? (spage + 1) % (last_page() + 1) : 0; return; }   // EDIT on PAGE: the next one, round
     if (srow >= 1 && srow <= 2) {
         Pattern *p = cur_pat(sel); int st = cur_step();
@@ -2764,7 +2764,7 @@ static void prj_leave(void) {            // back where F1+F2 was pressed: the sa
     set_tab(prj_from.tab); ui_cat = prj_from.ui_cat; hub_cur = prj_from.hub_cur; hubbing = prj_from.hubbing; patmenu = prj_from.patmenu;
     modmenu = prj_from.modmenu; scening = prj_from.scening; recpage = prj_from.recpage; perform = prj_from.perform; srow = prj_from.srow;
     scol = prj_from.scol; lane = prj_from.lane; fx_unit = prj_from.fx_unit; fx_page = prj_from.fx_page; mcol = prj_from.mcol; mx_pg = prj_from.mx_pg;
-    if (prj_from.rolling && cur_pat(sel)->mode) roll_open();
+    if (prj_from.rolling && cur_pat(sel)->mode) { if (cur_pat(sel)->mode == 2) chord_open(); else roll_open(); }
     if (prj_from.ducking) duck_open(sel);
 }
 static void tab_project(void) {          // F1+F2: in and out of PROJECT (its only way in since 2026-11-14)
@@ -2913,11 +2913,14 @@ static void roll_open(void) {
     for (int i = 0; i < NNOTE; i++) if (p->roll[i].len) { rl_n = p->roll[i].note; break; }
     rl_n0 = clampi(rl_n - RL_ROWS / 2, 0, 128 - RL_ROWS); rolling = 1;
 }
-static void roll_mode(void) {            // MODE: STEPS <> ROLL. An empty roll takes the steps as notes; both are kept
-    Pattern *p = cur_pat(sel);
-    if (!p->mode && track_nslices(sel)) { toast("SLICED PAD: STEPS ONLY"); return; }
+// MODE: STEPS > PIANO ROLL > CHORDS, round (2026-11-20, user: chosen on PATTERN's first card with EDIT + the arrows).
+// The roll and the chords are the same notes (mode 2 plays as the roll); an empty roll takes the steps as notes; both are kept.
+static const char *const pat_mode_name[3] = {"STEPS", "PIANO ROLL", "CHORDS"};
+static void pat_mode_step(int d) {
+    Pattern *p = cur_pat(sel); int m = ((p->mode + d) % 3 + 3) % 3;
+    if (m && track_nslices(sel)) { toast("SLICED PAD: STEPS ONLY"); return; }
     edit_begin();
-    if (!p->mode && !roll_any(p)) {
+    if (!p->mode && m && !roll_any(p)) {
         int d = rl_d32[p->div % 6] * RT, base = roll_base(sel), acid = song.t[sel].type == 2;
         for (int st = 0; st < p->len; st++) if (p->trig[st]) {
             int n = p->note[st] == NOTE_NONE ? base : p->note[st], fl = acid && p->slice[st] >= 0 ? p->slice[st] : 0;
@@ -2926,8 +2929,9 @@ static void roll_mode(void) {            // MODE: STEPS <> ROLL. An empty roll t
             p->roll[k].prob = (uint8_t)p->prob[st]; if (fl & ACID_ACCENT) p->roll[k].flags |= NF_ACC;
         }
     }
-    p->mode = !p->mode; toast(p->mode ? "PIANO ROLL" : "STEPS");
+    p->mode = (uint8_t)m; toast(pat_mode_name[m]);
 }
+static void roll_mode(void) { pat_mode_step(1); }
 static int roll_in_scale(int n) {
     int sc = track_scale(sel), key = track_key(sel), pc = ((n - key) % 12 + 12) % 12;
     for (int d = 0; d < scale_len(sc); d++) if (deg_semis(sc, d) % 12 == pc) return 1;
@@ -2946,7 +2950,6 @@ static void roll_leave(void) {           // out of the editor: no note it starte
 static void rnd_open(void);
 static void roll_key(int k, int down) {
     Pattern *p = cur_pat(sel); int T = roll_ticks(p);
-    if (k == K_L2 && !held[K_SHIFT]) { if (down) { roll_leave(); chord_open(); } return; }   // 2026-11-19 (user): round STEPS > ROLL > CHORDS
     if (k == K_R2) { if (down && !held[K_SHIFT]) { hear_on = !hear_on; toast(hear_on ? "HEAR NOTES ON" : "HEAR NOTES OFF"); } return; }
     if (!down) {
         if (k == K_EDIT) {
@@ -3546,6 +3549,7 @@ static void listen_name(int s, char *b) {   // the listening note by name where 
     else snprintf(b, 8, n ? "%+d ST" : "0 ST", n);
 }
 static int asking, naming, exporting; static void ask_key(int k, int down); static void nm_key(int k, int down); static void export_key(int k, int down);
+static void draw_roll_mini(const Pattern *p, int x, int y, int w, int h, int st, int on);
 #include "ui.h"
 #include "sound.h"
 static void icon(int id, int x, int y, Col c); static int slot_icon(int i); static Col pad_icol(int s, Col dflt);   // pages.h: the pads' icons and meters, drawn further down
@@ -3692,7 +3696,6 @@ static void key_event(int k, int down) {
         char b[40], nn[8]; listen_name(sel, nn); snprintf(b, sizeof b, "LISTEN %s", nn); toast(b); return;
     }
     if (held[K_SHIFT] && k == K_L2) { act_undo(); return; }
-    if (k == K_L2 && !held[K_SHIFT] && tab == T_SEQ && srow >= 1 && srow <= 2 && !is_auto(lane)) { roll_mode(); if (cur_pat(sel)->mode) roll_open(); return; }   // STEPS <> PIANO ROLL on the fly
     if (k == K_R2 && !held[K_SHIFT] && tab == T_SEQ && srow >= 3 && !browsing && !slicing && !rolling) {   // MIDI LEARN on a SOUND card (2026-11-19)
         int pr = cur_par(), i = pr >= 0 ? mmap_find(sel, pr) : -1;
         if (mlearn_par >= 0) { mlearn_par = -1; toast("MIDI LEARN CANCELLED"); }
@@ -3950,7 +3953,7 @@ static void draw_roll(void) {
     else snprintf(b, sizeof b, "%s", nm);
     ftext(W - 28 - ftext_w(FT_S, b), 694, FT_S, C_WHITE, b);
     draw_phones(850, 16);
-    draw_footer(i >= 0 ? "EDIT DELETE  EDIT+ARROWS LENGTH/PITCH  Y BACK  L2 STEPS  R2 HEAR  X+ARROWS VEL/CHANCE  L1/R1 GRID  OPT+<> NEXT  SHIFT+X RANDOM"
+    draw_footer(i >= 0 ? "EDIT DELETE  EDIT+ARROWS LENGTH/PITCH  Y BACK  R2 HEAR  X+ARROWS VEL/CHANCE  L1/R1 GRID  OPT+<> NEXT  SHIFT+X RANDOM"
                        : "EDIT NOTE  L1/R1 GRID  Y BACK  OPT+<> NEXT  X+EDIT CHORD  SHIFT+ARROWS PAGE  SHIFT+X RANDOM");
 }
 #include "chords.h"
@@ -4035,7 +4038,7 @@ static void draw_pat(void) {
     snprintf(b, sizeof b, "P%02d", pt + 1); ftext(26, 254, FT_S, C_DIM, b);
     snprintf(v, sizeof v, "%d", p->len); sel_card(32, 290, 310, 120, "LENGTH", v, p->len * 100 / NSTEP, sl_r == 2 && sl_c == 0);
     sel_card(357, 290, 310, 120, "DIVISION", div_name[p->div % 6], p->div * 20, sl_r == 2 && sl_c == 1);
-    sel_card(682, 290, 310, 120, "MODE", p->mode ? "ROLL" : "STEPS", -1, sl_r == 2 && sl_c == 2);
+    sel_card(682, 290, 310, 120, "MODE", p->mode == 2 ? "CHORDS" : p->mode ? "ROLL" : "STEPS", -1, sl_r == 2 && sl_c == 2);
     snprintf(b, sizeof b, "AFTER P%02d", pt + 1); ftext(26, 428, FT_S, C_DIM, b);
     int rp = fo[FO_AFTER] ? fo[FO_AFTER] : 1, loop = fo[FO_A] == FA_NONE && (fo[FO_B] == FA_NONE || !fo[FO_BCH]);
     snprintf(v, sizeof v, "x%d", rp); sel_card(32, 462, 474, 116, "REPEAT", loop ? "ALWAYS" : v, loop ? -1 : (rp > 16 ? 16 : rp) * 100 / 16, sl_r == 3 && sl_c == 0);
