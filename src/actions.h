@@ -49,8 +49,13 @@ static void act_strip_paste(int s) {
     if (!have_strip) return;
     push_undo(); uint8_t solo = song.mix.pad[s].solo; song.mix.pad[s] = strip_board; memcpy(song.mbx[s], strip_mbx, sizeof strip_mbx); song.mix.pad[s].solo = solo; song.t[s].vol = strip_vol; song.t[s].pan = strip_pan; toast("STRIP PASTED");
 }
-static void act_pattern_copy(const Pattern *p) { clip_board = *p; have_clip = 1; toast("PATTERN COPIED"); }
-static void act_pattern_paste(Pattern *p) { if (have_clip) { push_undo(); *p = clip_board; toast("PATTERN PASTED"); } }
+static SubStep clip_sub[NSTEP]; static int clip_nsub;   // the copied pattern's SUB cells
+static void act_pattern_copy(const Pattern *p) { clip_board = *p; have_clip = 1; clip_nsub = 0; int s, q;
+    if (pat_owner(p, &s, &q)) for (int i = 0; i < NSUB && clip_nsub < NSTEP; i++) if (song.sub[i].slot == s + 1 && song.sub[i].pat == q) clip_sub[clip_nsub++] = song.sub[i];
+    toast("PATTERN COPIED"); }
+static void act_pattern_paste(Pattern *p) { if (have_clip) { push_undo(); *p = clip_board; int s, q;
+    if (pat_owner(p, &s, &q)) { sub_drop_pat(s, q); for (int i = 0; i < clip_nsub; i++) { SubStep *e = sub_get(s, q, clip_sub[i].step); if (e) { *e = clip_sub[i]; e->slot = (uint8_t)(s + 1); e->pat = (uint8_t)q; } } }
+    toast("PATTERN PASTED"); } }
 
 // clips and steps
 static void act_clip_double(int s) {          // the clip plays twice as long, the same notes twice, ready for a variation
@@ -73,7 +78,7 @@ static void act_clip_double(int s) {          // the clip plays twice as long, t
 }
 static void act_steps_clear(int s) {          // only the steps of the pattern on the pad: the sample stays
     edit_begin(); Track *t = &song.t[s]; Pattern *p = cur_pat(s);
-    int l = p->len, dv = p->div, md = p->mode; pattern_clear(p); p->len = l; p->div = dv; p->mode = md;
+    int l = p->len, dv = p->div, md = p->mode; pattern_clear(p); sub_drop_p(p, -1); p->len = l; p->div = dv; p->mode = md;
     char b[24]; snprintf(b, sizeof b, "P%d CLEARED", t->cur + 1); toast(b);
 }
 static void act_pattern_clear(int s, int pat) { edit_begin(); pattern_clear(&song.t[s].pat[pat]); toast("PATTERN CLEARED"); }

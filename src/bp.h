@@ -11,7 +11,7 @@
 #define NSTEP 128
 #define NPAT 16
 #define NOTE_NONE (-128)
-#define STATE_MAGIC 0xB2B2000F   // 0xB2B2000E = without pname/smx/dkx/dkc (2026-11-11),  0xB2B2000D = automation without bends, 0xB2B2000C = step notes as scale degrees, 0xB2B2000B = without lnote/gx/gp, 0xB2B2000A = without ACID DEEP, 0xB2B20009 = without automation, 0xB2B20008 = without LFOs, 0xB2B20007 = without follow actions, 0xB2B20006 = without the mixer (prefixes of this layout), 0xB2B20005 = without the piano roll
+#define STATE_MAGIC 0xB2B20010   // 0xB2B2000F = without the SUB cells (2026-11-20), 0xB2B2000E = without pname/smx/dkx/dkc (2026-11-11),  0xB2B2000D = automation without bends, 0xB2B2000C = step notes as scale degrees, 0xB2B2000B = without lnote/gx/gp, 0xB2B2000A = without ACID DEEP, 0xB2B20009 = without automation, 0xB2B20008 = without LFOs, 0xB2B20007 = without follow actions, 0xB2B20006 = without the mixer (prefixes of this layout), 0xB2B20005 = without the piano roll
 #define NNOTE 96                 // piano-roll notes per pattern
 #define RT 4                     // roll ticks per 1/32: note start and length are in 1/128 notes
 
@@ -35,6 +35,12 @@ typedef struct Sample {
 typedef struct { uint16_t start, len; uint8_t note, vel, prob, flags; } Note;
 #define NF_ACC 1                 // ACID accent
 #define NF_SKIP 0x80             // overdub: heard while recording, not played again this pass (the engine clears it)
+// SUB (2026-11-20, user's plan of 2026-11-13): a step's REP (1..8) cuts it into cells. A step whose cells are not all on
+// with the step's velocity and note has an entry here (a pool for the whole scene, found by pad, pattern and step):
+// off = the cells that are silent (bit k), vel 0 = the step's, note = semitones (a sliced pad: slices) over the step's.
+#define NSUB 512
+#define NCELL 8
+typedef struct { uint8_t slot, pat, step, off; int8_t vel[NCELL], note[NCELL]; } SubStep;   // slot 0 = a free entry, else pad + 1
 typedef struct {
     int8_t trig[NSTEP], note[NSTEP], vel[NSTEP], prob[NSTEP], rep[NSTEP], slice[NSTEP];  // note = scale degree; slice -1 = in order
     uint8_t len, div;            // len 1..NSTEP; div index 0..5 = 1/32 1/16 1/8 1/4 1/2 1/1
@@ -126,6 +132,7 @@ typedef struct {
     int8_t smx[NSLOT][8];           // SAMPLER DEEP: SX_* below, 0 everywhere = as before (appended 2026-11-11)
     int8_t dkx[NSLOT][8];           // DUCK window: DX_* below (appended 2026-11-11); DX_MARK != DX_INIT = the old duck (notes, a beat, the classic curve)
     uint8_t dkc[NSLOT][16];         // DUCK curve: the level at 16 points along the dip, 0 = fully ducked .. 100 = untouched
+    SubStep sub[NSUB];              // SUB: steps whose cells differ from "all on, as the step" (appended 2026-11-20)
 } Song;
 // SAMPLER DEEP: fades of a sampler voice, 0..100 -> v * v / 5 ms (0, 0.2 ms .. 2 s).
 // FADE IN at the start; FADE OUT before the end of what plays (the sample, END, a slice, a cut note);

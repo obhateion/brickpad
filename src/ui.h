@@ -133,7 +133,7 @@ static void ui2_footer(const char *h) {  // at most three key chips: the key in 
 }
 
 static int ui_window(void) {             // a window over the screens: no popup, the path names it
-    return exporting || naming || browsing || slicing || rolling || chording || randing || picking || presetting || theming || iconing || ducking;
+    return exporting || naming || browsing || slicing || rolling || chording || subbing || randing || picking || presetting || theming || iconing || ducking;
 }
 static void ui_path(char *b, int n) {    // NEON > INSTRUMENT > 06 GRAND > DEEP
     int l = snprintf(b, n, "%s", prj_cur[0] ? prj_cur : "UNTITLED");
@@ -146,7 +146,7 @@ static void ui_path(char *b, int n) {    // NEON > INSTRUMENT > 06 GRAND > DEEP
     if (pad >= 0) UI_ADD("%02d %.14s", pad + 1, slot_name(pad) ? slot_name(pad) : "EMPTY");
     else if (tab == T_FX) UI_ADD("%s", fx_unit == NSLOT ? "RETURN A" : fx_unit == NSLOT + 1 ? "RETURN B" : "MASTER");
     if (exporting) UI_ADD("EXPORT"); else if (naming) UI_ADD("NAME"); else if (browsing) UI_ADD("%s", bmode ? "FILES" : "SOUND > FILE");
-    else if (slicing) UI_ADD("SOUND > SLICES > EDIT"); else if (chording) UI_ADD("PATTERN > CHORDS"); else if (rolling) UI_ADD("PATTERN > ROLL"); else if (randing) UI_ADD("RANDOM");
+    else if (slicing) UI_ADD("SOUND > SLICES > EDIT"); else if (subbing) UI_ADD("PATTERN > SUB"); else if (chording) UI_ADD("PATTERN > CHORDS"); else if (rolling) UI_ADD("PATTERN > ROLL"); else if (randing) UI_ADD("RANDOM");
     else if (picking) UI_ADD("ENGINE"); else if (presetting) UI_ADD("SOUND > PRESETS"); else if (theming) UI_ADD("THEME");
     else if (iconing) UI_ADD("LOOK"); else if (ducking) UI_ADD("MOD > DUCK");
     else if (recpage) UI_ADD("PATTERN > RECORD");

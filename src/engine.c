@@ -704,6 +704,10 @@ static void stop_voices_on_edge(int slot, int offset) {
     }
 }
 
+static const SubStep *sub_lookup(int s, int q, int st) {   // the step's SUB cells, NULL: all on, as the step
+    for (int i = 0; i < NSUB; i++) { const SubStep *e = &song.sub[i]; if (e->slot == s + 1 && e->pat == q && e->step == st) return e; }
+    return NULL;
+}
 static void tick(uint32_t i, double off, double f32) {
     uint32_t bar = (song.beats > 0 ? song.beats : 4) * 8; (void)bar;
     uint32_t q = (uint32_t)engine_quant32(); int edge = !q || i % q == 0;   // a launch quantum starts here
@@ -759,7 +763,12 @@ static void tick(uint32_t i, double off, double f32) {
             if (acid_flags & ACID_SLIDE) synth_gate = (int)(d * f32 * 1.15);
             sl = -1;
         }
-        for (int k = 0; k < r; k++) trig_chain(s, p->vel[st] / 127.f, semis, sl, (int)(o + k * d * f32 / r));
+        const SubStep *ss = sub_lookup(s, t->cur, st); int nsl = nslices_of(s, smp[s]);
+        for (int k = 0; k < r; k++) {     // SUB: each cell on or off, its own velocity and note (2026-11-20)
+            if (ss && k < NCELL && (ss->off >> k & 1)) continue;
+            int v = ss && k < NCELL && ss->vel[k] > 0 ? ss->vel[k] : p->vel[st], dn = ss && k < NCELL ? ss->note[k] : 0;
+            int slk = sl >= 0 && dn ? ((sl + dn) % nsl + nsl) % nsl : sl;
+            trig_chain(s, v / 127.f, semis + (sl < 0 ? dn : 0), slk, (int)(o + k * d * f32 / r)); }
         synth_gate = -1; acid_flags = -1;
     }
     frz_seq = -1;

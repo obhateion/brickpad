@@ -8,7 +8,7 @@
 #include "cloud.h"
 #include "fx.h"
 #include "presets.h"
-_Static_assert(sizeof(Song) == 301612 + NSLOT * NPAT * 6 + NSLOT * NLFO * 8 + NSLOT * NPAT * NAUTO * (2 + NSTEP) + NSLOT * 16 + NSLOT * (1 + 32 + 16) + NSLOT * NPAT * NAUTO * NSTEP + NSLOT * NINS * 6 + NSLOT * 16 + NSLOT * 8 + NSLOT * 8 + NSLOT * 16, "Song changed size: bump STATE_MAGIC and convert the previous format in load_state");
+_Static_assert(sizeof(Song) == 301612 + NSLOT * NPAT * 6 + NSLOT * NLFO * 8 + NSLOT * NPAT * NAUTO * (2 + NSTEP) + NSLOT * 16 + NSLOT * (1 + 32 + 16) + NSLOT * NPAT * NAUTO * NSTEP + NSLOT * NINS * 6 + NSLOT * 16 + NSLOT * 8 + NSLOT * 8 + NSLOT * 16 + NSUB * 20, "Song changed size: bump STATE_MAGIC and convert the previous format in load_state");
 static int len_lo(void) { return 1; }      // MIN/MAX LENGTH are gone (2026-11-09): a clip may be 1..NSTEP steps
 static int len_hi(void) { return NSTEP; }
 #include <SDL2/SDL.h>
@@ -346,6 +346,24 @@ static void undo(void) {
     sync_samples(); toast("UNDO");
 }
 static Pattern *cur_pat(int s) { return &song.t[s].pat[song.t[s].cur]; }
+// ---- SUB cells (2026-11-20): the pool in Song.sub (bp.h). An entry exists only while a cell differs from the step.
+static int pat_owner(const Pattern *p, int *s, int *q) {   // which pad and pattern of this scene p is
+    for (int a = 0; a < NSLOT; a++) { ptrdiff_t k = p - song.t[a].pat; if (k >= 0 && k < NPAT) { *s = a; *q = (int)k; return 1; } }
+    return 0;
+}
+static SubStep *sub_find(int s, int q, int st) {
+    for (int i = 0; i < NSUB; i++) { SubStep *e = &song.sub[i]; if (e->slot == s + 1 && e->pat == q && e->step == st) return e; }
+    return NULL;
+}
+static SubStep *sub_get(int s, int q, int st) {   // its entry, a new one if none (NULL: the pool is full)
+    SubStep *e = sub_find(s, q, st); if (e) return e;
+    for (int i = 0; i < NSUB; i++) if (!song.sub[i].slot) { e = &song.sub[i]; memset(e, 0, sizeof *e); e->slot = (uint8_t)(s + 1); e->pat = (uint8_t)q; e->step = (uint8_t)st; return e; }
+    return NULL;
+}
+static void sub_tidy(SubStep *e) { if (!e->off) { for (int k = 0; k < NCELL; k++) if (e->vel[k] || e->note[k]) return; e->slot = 0; } }   // all as the step: no entry
+static void sub_drop(int s, int q, int st) { SubStep *e = sub_find(s, q, st); if (e) e->slot = 0; }
+static void sub_drop_pat(int s, int q) { for (int i = 0; i < NSUB; i++) if (song.sub[i].slot == s + 1 && song.sub[i].pat == q) song.sub[i].slot = 0; }
+static void sub_drop_p(const Pattern *p, int st) { int s, q; if (pat_owner(p, &s, &q)) { if (st < 0) sub_drop_pat(s, q); else sub_drop(s, q, st); } }   // st -1: the whole pattern
 static int pat_used(const Pattern *p) {
     if (p->mode) { for (int i = 0; i < NNOTE; i++) if (p->roll[i].len) return 1; return 0; }
     for (int i = 0; i < NSTEP; i++) if (p->trig[i]) return 1;
@@ -413,7 +431,7 @@ static void song_sanitize(void) {
         for (int c = 0; c < NCABLE; c++) if (song.gp[s][c][0] >= JO_N || song.gp[s][c][1] >= JI_N) song.gp[s][c][0] = song.gp[s][c][1] = 0;
         KEEP(song.lnote[s], -48, 48);
         for (int k = 0; k < AX_N; k++) { int lo, hi; ax_range(k, &lo, &hi); KEEP(song.ax[s][k], lo, hi); }
-        if (s == 0) mix_sanitize(&song.mix);
+        if (s == 0) { mix_sanitize(&song.mix); for (int i = 0; i < NSUB; i++) { SubStep *e = &song.sub[i]; if (e->slot > NSLOT || e->pat >= NPAT || e->step >= NSTEP) e->slot = 0; } }
         for (int q = 0; q < NPAT; q++) { uint8_t *fo = song.fol[s][q]; if (fo[FO_AFTER] > 64) fo[FO_AFTER] = 64; if (fo[FO_A] >= FA_N) fo[FO_A] = 0; if (fo[FO_B] >= FA_N) fo[FO_B] = 0;
             if (fo[FO_BCH] > 100) fo[FO_BCH] = 100; if (fo[FO_JUMP] >= NPAT) fo[FO_JUMP] = 0; fo[FO_SPARE] = 0; }
         for (int j = 0; j < NLFO; j++) { Lfo *L = &song.lfo[s][j];
@@ -451,24 +469,26 @@ static void song_sanitize(void) {
                 if (n->len) { KEEP(n->note, 0, 127); KEEP(n->vel, 1, 127); KEEP(n->prob, 0, 100); n->flags &= NF_ACC; }   // an empty slot is left as it is (it made a saved project differ after each load)
             }
             for (int i = 0; i < NSTEP; i++) {
-                KEEP(p->trig[i], 0, 1); KEEP(p->vel[i], 0, 127); KEEP(p->prob[i], 0, 100); KEEP(p->rep[i], 1, 4); KEEP(p->slice[i], -1, 127);
+                KEEP(p->trig[i], 0, 1); KEEP(p->vel[i], 0, 127); KEEP(p->prob[i], 0, 100); KEEP(p->rep[i], 1, NCELL); KEEP(p->slice[i], -1, 127);
             }
         }
     }
 }
+static size_t file_song_sz = sizeof(Song);   // the size of one scene in the file load_from read last (0F: without SUB)
 static void load_from(const char *path) {   // state.bin or a project file
     song_defaults();
     FILE *f = fopen(path, "rb");
     static Song tmp; memset(&tmp, 0, sizeof tmp);    // zero: fields a shorter file does not have
     size_t got = f ? fread(&tmp, 1, sizeof tmp, f) : 0;
+    file_song_sz = tmp.magic == 0xB2B2000F ? offsetof(Song, sub) : sizeof(Song);   // where a project file's scenes begin
     {   // a file from before the mixer (6) or before follow actions (7): the same layout, shorter; the rest starts at zero
-        size_t end = tmp.magic == 0xB2B20006 ? offsetof(Song, mix) : tmp.magic == 0xB2B20007 ? offsetof(Song, fol) : tmp.magic == 0xB2B20008 ? offsetof(Song, lfo) : tmp.magic == 0xB2B20009 ? offsetof(Song, aut) : tmp.magic == 0xB2B2000A ? offsetof(Song, ax) : tmp.magic == 0xB2B2000B ? offsetof(Song, lnote) : tmp.magic == 0xB2B2000C ? offsetof(Song, acurve) : tmp.magic == 0xB2B2000D ? offsetof(Song, acurve) : tmp.magic == 0xB2B2000E ? offsetof(Song, pname) : 0;   // 0E: before pad names, SAMPLER DEEP and the DUCK window (only appended)
-        if (end && got >= offsetof(Song, t) && got <= end) { notes_deg = tmp.magic <= 0xB2B2000C;   // files before 0x0D have degrees in their steps
+        size_t end = tmp.magic == 0xB2B20006 ? offsetof(Song, mix) : tmp.magic == 0xB2B20007 ? offsetof(Song, fol) : tmp.magic == 0xB2B20008 ? offsetof(Song, lfo) : tmp.magic == 0xB2B20009 ? offsetof(Song, aut) : tmp.magic == 0xB2B2000A ? offsetof(Song, ax) : tmp.magic == 0xB2B2000B ? offsetof(Song, lnote) : tmp.magic == 0xB2B2000C ? offsetof(Song, acurve) : tmp.magic == 0xB2B2000D ? offsetof(Song, acurve) : tmp.magic == 0xB2B2000E ? offsetof(Song, pname) : tmp.magic == 0xB2B2000F ? offsetof(Song, sub) : 0;   // 0E: before pad names, SAMPLER DEEP and the DUCK window (only appended)
+        if (end && got >= offsetof(Song, t) && (got <= end || tmp.magic == 0xB2B2000F)) {   // (a 0F project file goes on with its scenes after the song) notes_deg = tmp.magic <= 0xB2B2000C;   // files before 0x0D have degrees in their steps
             memset((char *)&tmp + end, 0, sizeof tmp - end);
-            if (tmp.magic != 0xB2B2000E)     // (a 0E file has its bends; it only lacks what was appended, and stays where it is)
+            if (tmp.magic < 0xB2B2000E)     // (a 0E file has its bends; it only lacks what was appended, and stays where it is)
             for (int s2 = 0; s2 < NSLOT; s2++) for (int q = 0; q < NPAT; q++) for (int a = 0; a < NAUTO; a++)   // bends: JUMP lanes hold, GLIDE lanes are straight
                 memset(tmp.acurve[s2][q][a], tmp.aut[s2][q][a].smooth ? 0 : 100, NSTEP);
-            if (f) { fclose(f); f = NULL; } if (tmp.magic != 0xB2B2000E) { char vp[600]; snprintf(vp, sizeof vp, "%s.v%d", path, (int)(tmp.magic & 0xff)); rename(path, vp); } if (0) rename(STATE, tmp.magic == 0xB2B20006 ? STATE ".v6" : tmp.magic == 0xB2B20007 ? STATE ".v7" : tmp.magic == 0xB2B20008 ? STATE ".v8" : tmp.magic == 0xB2B20009 ? STATE ".v9" : tmp.magic == 0xB2B2000A ? STATE ".v10" : tmp.magic == 0xB2B2000B ? STATE ".v11" : tmp.magic == 0xB2B2000C ? STATE ".v12" : STATE ".v13");
+            if (f) { fclose(f); f = NULL; } if (tmp.magic < 0xB2B2000E) { char vp[600]; snprintf(vp, sizeof vp, "%s.v%d", path, (int)(tmp.magic & 0xff)); rename(path, vp); } if (0) rename(STATE, tmp.magic == 0xB2B20006 ? STATE ".v6" : tmp.magic == 0xB2B20007 ? STATE ".v7" : tmp.magic == 0xB2B20008 ? STATE ".v8" : tmp.magic == 0xB2B20009 ? STATE ".v9" : tmp.magic == 0xB2B2000A ? STATE ".v10" : tmp.magic == 0xB2B2000B ? STATE ".v11" : tmp.magic == 0xB2B2000C ? STATE ".v12" : STATE ".v13");
             if (end <= offsetof(Song, aut)) for (int s2 = 0; s2 < NSLOT; s2++) for (int q = 0; q < NPAT; q++) for (int a = 0; a < NAUTO; a++) { tmp.aut[s2][q][a].target = tmp.aut[s2][q][a].smooth = 0; memset(tmp.aut[s2][q][a].v, AUTO_EMPTY, NSTEP); }   // empty lanes
             tmp.magic = STATE_MAGIC; got = sizeof tmp;   // whole now: mix_sanitize gives the mixer's defaults (mark 0)
         }
@@ -1127,7 +1147,7 @@ static void neighbour_file(int pad, int dir) {
 
 // ---------- SEQ+INST ----------
 enum { L_TRIG, L_NOTE, L_VEL, L_PROB, L_REP, L_SLICE, L_ACC, L_SLD, L_A1, L_A2, L_A3, L_A4, L_N };
-static const char *lane_name[L_N] = {"NOTE", "NOT", "VEL", "PRB", "REP", "SLC", "ACC", "SLD", "A1", "A2", "A3", "A4"};   // short: PAGE, MODE and the lanes share the row
+static const char *lane_name[L_N] = {"NOTE", "NOT", "VEL", "PRB", "SUB", "SLC", "ACC", "SLD", "A1", "A2", "A3", "A4"};   // short: PAGE, MODE and the lanes share the row
 static int is_synth(int s);
 static int lane_list(int *l) {           // the lanes this pad has: a sampler slices, a synth does not, ACID has ACCENT and SLIDE
     static const int smp_l[] = {L_TRIG, L_VEL, L_PROB, L_REP, L_SLICE}, gb_l[] = {L_TRIG, L_VEL, L_PROB, L_REP},   // TRIG holds the note too (2026-11-09)
@@ -1191,6 +1211,7 @@ static int cur_step(void) { return spage * 32 + (srow - 1) * 16 + scol; }
 static void set_step(int st) { spage = st / 32; srow = 1 + (st % 32) / 16; scol = st % 16; }
 static int last_page(void) { int l = song.t[sel].pat[song.t[sel].cur].len; return (l > 0 ? l - 1 : 0) / 32; }
 static int last_page(void);
+static int subbing; static void sub_open(int st); static void sub_key(int k, int down); static void draw_sub(void);   // SUB cells (sub.h)
 static int chording; static void chord_open(void); static void chord_key(int k, int down); static void draw_chords(void); static void chord_leave(void);   // CHORDS (chords.h)
 static int rolling; static const int rl_d32[6];   // the piano roll (below, before key_event)
 static int picking; static void pick_open(void); static void pick_close(void); static void draw_pick(void); static void pick_key(int k, int down);
@@ -1636,7 +1657,7 @@ static void step_adjust(int st, int d, int big) {
         p->slice[st] = nv == aut ? -1 : nv; break; }                           // back on its own number: automatic again
     case L_VEL: p->vel[st] = clampi(p->vel[st] + d * (big ? 16 : 1), 1, 127); break;
     case L_PROB: p->prob[st] = clampi(p->prob[st] + d * (big ? 10 : 1), 0, 100); break;
-    case L_REP: p->rep[st] = clampi(p->rep[st] + d, 1, 4); break;
+    case L_REP: p->rep[st] = clampi(p->rep[st] + d, 1, NCELL); break;
     case L_ACC: case L_SLD: { int bit = lane == L_ACC ? ACID_ACCENT : ACID_SLIDE, f = p->slice[st] < 0 ? 0 : p->slice[st];
         f = d > 0 ? f | bit : f & ~bit; p->slice[st] = (int8_t)(f ? f : -1); break; }   // RIGHT/UP sets, LEFT/DOWN clears
     }
@@ -1749,7 +1770,7 @@ static void seq_delete(void) {
     if (srow < 0) return;
     Pattern *p = cur_pat(sel); edit_begin();
     if (srow == 0 && scol == 4 && is_auto(lane)) { char b[32]; cur_aut()->target = 0; snprintf(b, sizeof b, "%s UNLINKED", lane_name[lane]); toast(b); return; }   // 2026-11-12, user: the points stay
-    if (srow == 0) { int l = p->len, dv = p->div, md = p->mode; pattern_clear(p); p->len = l; p->div = dv; p->mode = md; toast("CLIP CLEARED"); }
+    if (srow == 0) { int l = p->len, dv = p->div, md = p->mode; pattern_clear(p); sub_drop_p(p, -1); p->len = l; p->div = dv; p->mode = md; toast("CLIP CLEARED"); }
     else if (p->mode) { for (int i = 0; i < NNOTE; i++) roll_del(p, i); toast("ROLL CLEARED"); }
     else if (srow <= 2 && is_auto(lane)) cur_aut()->v[cur_step()] = AUTO_EMPTY;
     else if (srow <= 2 && lane != L_TRIG) { char b[32]; snprintf(b, sizeof b, "ERASE ON THE %s LANE", lane_nm(L_TRIG)); toast(b); }
@@ -1851,6 +1872,7 @@ static void seq_tap(void) {
             p->slice[st] = (int8_t)(f ? f : -1); return;   // it sounded when B went down
         }
         if (edit_put) { edit_put = 0; return; }   // put when EDIT went down: the release leaves it on
+        if (p->trig[st] && lane == L_REP) { sub_open(st); return; }   // SUB: EDIT dives into the step's cells
         if (p->trig[st] && lane != L_TRIG) { char b[32]; snprintf(b, sizeof b, "ERASE ON THE %s LANE", lane_nm(L_TRIG)); toast(b); return; }   // 2026-11-12, user
         if (!p->trig[st]) step_seed(p, st);
         p->trig[st] = !p->trig[st];
@@ -2067,7 +2089,7 @@ static void scene_save(void) {            // only what changed: every scene has 
     int any = scn_hdr; for (int i = 0; i < scn_n; i++) any |= scn_dirty[i] && i != scn_cur;
     if (!any) return;
     FILE *f = fopen(SCN_FILE, "r+b"); if (!f) f = fopen(SCN_FILE, "w+b"); if (!f) return;
-    ScnHead h = {SCN_MAGIC, scn_n, scn_cur, 0}; int ok = fwrite(&h, sizeof h, 1, f) == 1;
+    ScnHead h = {SCN_MAGIC, scn_n, scn_cur, (int32_t)sizeof(Song)}; int ok = fwrite(&h, sizeof h, 1, f) == 1;
     for (int i = 0; i < scn_n && ok; i++) if (scn_dirty[i] && i != scn_cur && scn[i])
         ok = !fseek(f, (long)sizeof h + (long)i * (long)sizeof(Song), SEEK_SET) && fwrite(scn[i], sizeof(Song), 1, f) == 1;
     if (fflush(f) || fsync(fileno(f))) ok = 0; fclose(f);
@@ -2079,10 +2101,12 @@ static void scenes_read(const char *path, long off) {   // after the playing sce
     ScnHead h;
     if (fseek(f, off, SEEK_SET) || fread(&h, sizeof h, 1, f) != 1 || h.magic != SCN_MAGIC || h.n < 1 || h.n > NSCENE || h.cur < 0 || h.cur >= h.n) { fclose(f); return; }
     free(scn[0]); scn[0] = NULL; int n = 0;
+    long one = h.spare > 0 ? h.spare : (long)offsetof(Song, sub);   // spare: the size of a scene; 0 = written before SUB (0F)
+    if (one > (long)sizeof(Song)) { fclose(f); return; }
     for (; n < h.n; n++) {
         if (!(scn[n] = calloc(1, sizeof(Song)))) break;
         if (n == h.cur) continue;
-        if (fseek(f, off + (long)sizeof h + (long)n * (long)sizeof(Song), SEEK_SET) || fread(scn[n], sizeof(Song), 1, f) != 1 || scn[n]->magic != song.magic) {
+        if (fseek(f, off + (long)sizeof h + (long)n * one, SEEK_SET) || fread(scn[n], (size_t)one, 1, f) != 1 || (scn[n]->magic == 0xB2B2000F && one < (long)sizeof(Song) && (scn[n]->magic = STATE_MAGIC, 0)) || scn[n]->magic != song.magic) {
             if (n > h.cur) { free(scn[n]); scn[n] = NULL; } else { h.cur = n; n++; }   // a cut file: the scenes before it stay
             break; }
         scene_carry(scn[n], &song); scn_rest(scn[n]);
@@ -2090,7 +2114,7 @@ static void scenes_read(const char *path, long off) {   // after the playing sce
     fclose(f);
     if (n < 1) { scn[0] = calloc(1, sizeof(Song)); n = 1; h.cur = 0; }
     scn_n = n; scn_cur = h.cur < n ? h.cur : n - 1; scn_hdr = 1;
-    if (off) memset(scn_dirty, 1, sizeof scn_dirty);     // a project's scenes become the working copy's
+    if (off || one != (long)sizeof(Song)) memset(scn_dirty, 1, sizeof scn_dirty);     // a project's scenes become the working copy's; an old file is written again whole
     for (int i = 0; i < scn_n; i++) if (mem_avail_mb() > 200) scn_preload(i);
     logmsg("scenes: %d, open %d", scn_n, scn_cur + 1);
 }
@@ -2653,7 +2677,7 @@ static void saver_pause(int on) {
 }
 
 // ---------- key dispatch ----------
-static void step_reset(Pattern *p, int st) { p->note[st] = NOTE_NONE; p->vel[st] = 100; p->prob[st] = 100; p->rep[st] = 1; p->slice[st] = -1; }
+static void step_reset(Pattern *p, int st) { p->note[st] = NOTE_NONE; p->vel[st] = 100; p->prob[st] = 100; p->rep[st] = 1; p->slice[st] = -1; sub_drop_p(p, st); }
 static void step_seed(Pattern *p, int st) {   // an empty step about to be put: every lane starts from its last value on this pad
     step_reset(p, st);
     if (last_note[sel]) p->note[st] = (int8_t)(last_note[sel] - 1);
@@ -2679,7 +2703,7 @@ static void step_listen(int st) {        // only this step's slice, with its not
     flash[sel] = SDL_GetTicks();
     rec_hit(sel, sl, note);
 }
-static void set_tab(int t) { leave_screen(); if (browsing) browse_close(); slicing = 0; roll_leave(); randing = 0; learning = 0; learn_lfo = -1; pt_pick = 0; if (picking) pick_close(); if (presetting) preset_close(1); theming = 0; iconing = 0; ducking = 0; if (chording) chord_leave(); perform = 0; tab = t; hubbing = 0; patmenu = 0; modmenu = 0; scening = 0; recpage = 0; if (t == T_GRID || t == T_PRJ) ui_cat = -1; }
+static void set_tab(int t) { leave_screen(); if (browsing) browse_close(); slicing = 0; roll_leave(); randing = 0; learning = 0; learn_lfo = -1; pt_pick = 0; if (picking) pick_close(); if (presetting) preset_close(1); theming = 0; iconing = 0; ducking = 0; subbing = 0; if (chording) chord_leave(); perform = 0; tab = t; hubbing = 0; patmenu = 0; modmenu = 0; scening = 0; recpage = 0; if (t == T_GRID || t == T_PRJ) ui_cat = -1; }
 // KEYS: the pad gets its own tonality, the project's stays. Coming back to the project's value means following the project again.
 static void pad_tonality(int k) {
     Track *t = &song.t[sel]; char b[48];
@@ -3626,6 +3650,7 @@ static void key_event(int k, int down) {
     }
     if (slicing) { slice_key(k, down); return; }
     if (randing) { rnd_key(k, down); return; }   // before ROLL: RANDOM opens over a roll pattern too
+    if (subbing) { sub_key(k, down); return; }
     if (chording) { chord_key(k, down); return; }
     if (rolling) { roll_key(k, down); return; }
     if (picking) { pick_key(k, down); return; }
@@ -3929,6 +3954,7 @@ static void draw_roll(void) {
                        : "EDIT NOTE  L1/R1 GRID  Y BACK  OPT+<> NEXT  X+EDIT CHORD  SHIFT+ARROWS PAGE  SHIFT+X RANDOM");
 }
 #include "chords.h"
+#include "sub.h"
 static void slice_card(int x, int y, int w, const char *lb, const char *v, Col ec, int on) {   // UI v2: a name and a value, as on the SOUND cards
     if (on) rframe(x, y, w, 96, 8, 4, ec, C_CELL); else rrect(x, y, w, 96, 8, C_CELL);
     ftext(x + 20, y + 12, FT_M, C_DIM, lb); ftext(x + w - 20 - ftext_w(FT_XB, v), y + 10, FT_XB, C_WHITE, v);
@@ -4184,7 +4210,7 @@ static void prj_save(const char *name) {
     size_t one = sizeof(Song), sz = one + (scn_n > 1 ? sizeof(ScnHead) + (size_t)scn_n * one : 0); char *buf = malloc(sz);   // the playing scene, then all of them
     if (!buf) { toast("COULD NOT SAVE"); return; }
     memcpy(buf, &song, one);
-    if (scn_n > 1) { ScnHead h = {SCN_MAGIC, scn_n, scn_cur, 0}; memcpy(buf + one, &h, sizeof h);
+    if (scn_n > 1) { ScnHead h = {SCN_MAGIC, scn_n, scn_cur, (int32_t)sizeof(Song)}; memcpy(buf + one, &h, sizeof h);
         for (int i = 0; i < scn_n; i++) memcpy(buf + one + sizeof h + (size_t)i * one, i == scn_cur || !scn[i] ? &song : scn[i], one); }
     int ok = write_whole(p, buf, sz); free(buf);
     if (!ok) { toast("COULD NOT SAVE"); return; }
@@ -4195,7 +4221,7 @@ static void prj_load(const char *path) {
     rec = 0; combo_t = 0;
     if (engine_playing() || engine_counting() >= 0) transport_toggle();
     engine_stop_all(); cap_n = 0; spage = 0; undo_n = undo_top = 0;   // undo does not cross projects
-    load_from(path); scenes_read(path, (long)sizeof(Song)); save_state();
+    load_from(path); scenes_read(path, (long)file_song_sz); save_state();
     const char *b = strrchr(path, '/'); b = b ? b + 1 : path; int l = (int)strlen(b); if (l > 4) l -= 4; if (l > 31) l = 31;
     snprintf(prj_cur, sizeof prj_cur, "%.*s", l, b); prj_cfg_write(); prj_mark_saved();
     if (browsing) browse_close();
@@ -4610,6 +4636,7 @@ static void draw(void) {
     else if (browsing) { if (bmode) draw_prjbrowse2(); else draw_browse2(); }
     else if (slicing) draw_slice();
     else if (randing) draw_rnd2();
+    else if (subbing) draw_sub();
     else if (chording) draw_chords();
     else if (rolling) draw_roll();
     else if (picking) draw_pick();
