@@ -68,31 +68,46 @@ static void ui2_strip_big(void) {        // BIG (2026-11-14, mockup strip3): twe
 // The quick bar (v3, 2026-11-20, user: "as Ableton's top bar"): buttons for what a live set toggles. At the top (in the header
 // row) or at the bottom (instead of the footer hints), PROJECT > SETTINGS > QUICK BAR. The arrow past the edge of a page
 // reaches it, <> choose, EDIT presses, the arrow back or OPTION leaves. << and >> nudge the tempo while EDIT is held.
-enum { QB_MET, QB_VIB, QB_MON, QB_CAP, QB_SLOW, QB_FAST, QB_PADS, QB_KEYS, QB_N };
-static const char *const qb_name[QB_N] = {"MET", "VIB", "MON", "CAP", "<<", ">>", "PADS", "KEYS"};
+// Icons, not letters (user 2026-11-20); the focused button's name is in the hint. Metronome vibration went back to
+// PROJECT > METRONOME only (user 2026-11-20).
+enum { QB_MET, QB_MON, QB_CAP, QB_SLOW, QB_FAST, QB_PADS, QB_KEYS, QB_N };
+static const char *const qb_name[QB_N] = {"METRONOME", "HEAR NOTES", "CAPTURE", "TEMPO DOWN", "TEMPO UP", "PADS", "KEYS"};
+static const int16_t qb_icon[QB_N] = {IC_M_METRONOME, IC_PHONES, IC_TAPE, IC_M_BACK, IC_M_FWD, IC_M_PAD_GRID, IC_M_PIANO};
 static int qb_focus, qb_cur;
 static int sec_on(void) { return ui_secs && in_pad() && !ui_over() && !picking; }
 static int strips_here(void) { return in_pad() && !ui_over() && !picking && !perform && (sec_on() || strip_on()); }
 static void capture(void); static void metro_save(void);
 static int qb_lit(int i) {
-    switch (i) { case QB_MET: return metro.snd; case QB_VIB: return metro.vib; case QB_MON: return hear_on;
+    switch (i) { case QB_MET: return metro.snd; case QB_MON: return hear_on;
     case QB_SLOW: return tempo_mul < 0.9995f; case QB_FAST: return tempo_mul > 1.0005f; case QB_PADS: return perform == 1; case QB_KEYS: return perform == 2; }
     return 0;
 }
-static int qbar_w(void) { int w = 0; for (int i = 0; i < QB_N; i++) w += ftext_w(FT_S, qb_name[i]) + 22 + 6; return w - 6; }
+enum { QB_IC = 24, QB_W = QB_IC + 16 };    // icon size, button width
+static int qbar_w(void) { return QB_N * (QB_W + 6) - 6; }
+static void icon_fit(int id, int x, int y, int sz, Col c) {   // a 16x16 icon at any size (pixel edges rounded)
+    SDL_Rect d[160]; int n = 0;
+    for (int r = 0; r < 16; r++) for (int a = 0; a < 16;) {
+        if (icon_tab[id].px[r][a] != 'X') { a++; continue; }
+        int e = a; while (e < 16 && icon_tab[id].px[r][e] == 'X') e++;
+        int y0 = y + r * sz / 16, y1 = y + (r + 1) * sz / 16, x0 = x + a * sz / 16, x1 = x + e * sz / 16;
+        if (n < 160) d[n++] = (SDL_Rect){x0, y0, x1 - x0, y1 - y0};
+        a = e;
+    }
+    SDL_SetRenderDrawColor(R, c.r, c.g, c.b, 255); SDL_RenderFillRects(R, d, n);
+}
 static void qbar_draw(int x, int y, int h) {
+    int sz = h - 8 < QB_IC ? h - 8 : QB_IC;
     for (int i = 0; i < QB_N; i++) {
-        int w = ftext_w(FT_S, qb_name[i]) + 22, lit = qb_lit(i), cur = qb_focus && i == qb_cur;
-        if (cur) rframe(x - 3, y - 3, w + 6, h + 6, 8, 2, C_WHITE, C_BG);
-        rrect(x, y, w, h, 6, lit ? C_ORANGE : C_SELBG);
-        ftext(x + 11, y + (h - fv2[FT_S].h) / 2, FT_S, lit ? C_BG : cur ? C_WHITE : C_DIM, qb_name[i]);
-        x += w + 6;
+        int lit = qb_lit(i), cur = qb_focus && i == qb_cur;
+        if (cur) rframe(x - 3, y - 3, QB_W + 6, h + 6, 8, 2, C_WHITE, C_BG);
+        rrect(x, y, QB_W, h, 6, lit ? C_ORANGE : C_SELBG);
+        icon_fit(qb_icon[i], x + (QB_W - sz) / 2, y + (h - sz) / 2, sz, lit ? C_BG : cur ? C_WHITE : C_DIM);
+        x += QB_W + 6;
     }
 }
 static void qb_press(int i) {
     switch (i) {
     case QB_MET: metro.snd = !metro.snd; metro_save(); toast(metro.snd ? "METRONOME SOUND ON" : "METRONOME SOUND OFF"); break;
-    case QB_VIB: metro.vib = !metro.vib; metro_save(); toast(metro.vib ? "METRONOME VIBRATION ON" : "METRONOME VIBRATION OFF"); break;
     case QB_MON: hear_on = !hear_on; toast(hear_on ? "HEAR NOTES ON" : "HEAR NOTES OFF"); break;
     case QB_CAP: capture(); break;
     case QB_SLOW: case QB_FAST: if (midi_clk_in) toast("CLOCK IN: THE TEMPO COMES FROM MIDI"); else tempo_mul = i == QB_SLOW ? 0.94f : 1.06f; break;
@@ -203,8 +218,8 @@ static void ui2_footer(const char *h) {  // at most three key chips: the key in 
     rect(0, V2_FOOT, W, H - V2_FOOT, C_CELL, 1);
     int x = 18, y = V2_FOOT + 10, left = 3, lim = ui2_metro();
     if (msg_t && SDL_GetTicks() - msg_t < 1500) { int w = ftext_w(FT_MB, msg) + 24; rrect(x, y, w, 32, 6, C_ORANGE); ftext(x + 12, y + 4, FT_MB, C_BG, msg); return; }
-    if (ui_qbar) { qbar_draw(x, y, 32); return; }   // the quick bar at the bottom: no hints
-    if (qb_focus) h = "EDIT PRESS  <> BUTTON  OPTION BACK";
+    if (ui_qbar) { qbar_draw(x, y, 32); if (qb_focus) ftext(x + qbar_w() + 20, y + 4, FT_MB, C_WHITE, qb_name[qb_cur]); return; }   // at the bottom: no hints
+    char qh[80]; if (qb_focus) { snprintf(qh, sizeof qh, "EDIT %s  <> BUTTON  OPTION BACK", qb_name[qb_cur]); h = qh; }
     else if (strip_focus == 1) h = sec_cur == HUB_LOOK ? "EDIT OPEN  <> SECTION  OPTION BACK" : sec_cur == PC_SOUND ? "EDIT(HOLD) ENGINE  <> SECTION  OPTION BACK" : "<> SECTION  ^ UP  OPTION BACK";
     else if (strip_focus == 2) h = "<> PAD  v SECTIONS  OPTION BACK";
     else if (tab_focus) h = "<> PAGE  ^ UP  OPTION BACK";
