@@ -586,13 +586,13 @@ static const char *const ab_rows[AB_N][19] = {
     {"PLAY play / stop", "Y back", "EDIT open, do it", "EDIT+ARROWS change the value (held: shown big)", "OPT listen to the pad", "OPT+EDIT delete, or the default value",
      "F1/F2 the next pad (on HOME: the next screen)", "F1+F2 PROJECT, again: back where you were", "F1+F2-3S the simple view (hold)", "SHIFT+ARROW inside a pad: straight to a category",
      "SHIFT+L2 undo", "SHIFT+OPT copy", "SHIFT+EDIT paste", "MENU pads to play, again: keys, again: back", "MENU+PLAY record, twice: capture what was played",
-     "MENU-3S quit BrickPad (hold)", "SHIFT+PLAY never: the system's own", "#BRICKPAD 1.2 BETA  (C) 2026 TIMOTHY GURTO (OBHATEION)"},
+     "MENU-3S quit BrickPad (hold)", "MENU+X metronome: off, sound, +vibration, vibration", "SHIFT+PLAY never: the system's own", "#BRICKPAD 1.2 BETA  (C) 2026 TIMOTHY GURTO (OBHATEION)"},
     {"EDIT open the pad (an empty one: choose its engine)", "X start / stop the clip of this pad", "PLAY all clips", "Y mute", "SHIFT+Y freeze the pad",
      "SHIFT+X name the pad", "SHIFT+DPAD select several pads", "OPT+EDIT clear the pad, or the selected ones (YES / NO)", "F1/F2 PADS, SCENES, MIXER", "#SCENES", "EDIT launch the scene (its own twelve pads)", "X a copy of it", "OPT+EDIT delete it (YES / NO)", "+ NEW SCENE: empty pads",
      "#UP TO 16 SCENES; TEMPO, KEY, MASTER, RETURNS ARE SHARED"},
     {"EDIT open the category or the page", "ARROWS choose", "Y back up: page, category, HOME", "F1/F2 the next pad, the same page",
      "SHIFT+UP PATTERN", "SHIFT+RIGHT SOUND", "SHIFT+DOWN FX", "SHIFT+LEFT MIX", "OPT+EDIT on a card or a list: clear it (YES / NO)", "#LOOK: THE ICON AND ITS COLOUR", "EDIT set", "L1/R1 the group of icons",
-     "DOWN from the last row: the colours", "#PAD MENU AS A TREE (PROJECT > INTERFACE)", "<> the level: HOME, pad, category, pages", "^v choose", "EDIT open it"},
+     "DOWN from the last row: the colours", "#PAD MENU AS A TREE (PROJECT > SETTINGS)", "<> the level: HOME, pad, category, pages", "^v choose", "EDIT open it"},
     {"EDIT a note on the step, or off", "EDIT+ARROWS the value of the step", "L1/R1 the lane: note, velocity, chance...", "OPT listen", "OPT+<> walk and listen",
      "X+<> the next pad", "OPT+EDIT delete the step, or its default", "XX (twice) double the clip", "SHIFT+X random", "SHIFT+L1/R1 the grid (NOTE lane)", "EDIT on SUB / PRB: the cells / the mode", "#PATTERN CARD: EDIT+ARROWS STEPS, PIANO ROLL, CHORDS", "#SELECT: THE 16 PATTERNS OF THE PAD",
      "EDIT choose the pattern", "OPT+EDIT clear it", "SHIFT+OPT copy", "SHIFT+EDIT paste", "EDIT+ARROWS on THEN: what plays after it"},
@@ -606,17 +606,17 @@ static const char *const ab_rows[AB_N][19] = {
      "OPT+EDIT clear", "#DUCK", "X a point, X+^v its bend", "EDIT+ARROWS level / move, L1/R1 the pad"},
     {"<> the pad", "EDIT+^v its level (EDIT+<> fine)", "Y mute", "X solo", "SHIFT+Y solo", "L1/R1 the drawer, FREEZE", "#THE DRAWER: RETURNS, MASTER, THE PAD'S EFFECTS",
      "EDIT on a pad: open, close (or R1, or past the last pad)", "<> reverb, delay, master", "^v level and two parameters", "EDIT+^v the value", "EDIT all the parameters of the unit",
-     "Y close it", "#FREEZE", "EDIT freeze the pad, or export", "#PROJECT > MIXER: STRIP EFFECTS, SCENE MIX SHARED / OWN"},
+     "Y close it", "#FREEZE", "EDIT freeze the pad, or export", "#PROJECT > OUTPUT: STRIP EFFECTS, SCENE MIX SHARED / OWN"},
     {"#PADS (MENU)", "BUTTONS the clip or the hit of a pad", "SHIFT+BUTTON the other of the two", "PLAY the pad's clip", "SHIFT+F1/F2 the scene",
      "#KEYS (MENU AGAIN)", "BUTTONS notes", "SHIFT+^v octave", "SHIFT+<> scale", "SHIFT+L1/R1 key", "MENU back", "#RECORD (PATTERN > RECORD)",
      "EDIT arm, stop", "MENU+PLAY arm from anywhere", "OPT a hit", "Y cancel the count",
-     "#COUNT-IN IS IN PROJECT > RECORD: OFF WAITS FOR THE FIRST NOTE"},
+     "#COUNT-IN IS IN PROJECT > PLAY / REC: OFF WAITS FOR THE FIRST NOTE"},
     {"^v the section, the setting", "> into the section", "< back to the sections", "EDIT+<> the value", "EDIT do it (TEMPO: tap it)", "Y back",
      "#A NAME", "EDIT type the letter", "PLAY ok", "OPT delete", "L1/R1 the place", "#PRESETS", "EDIT load", "L1/R1 factory / yours", "OPT listen", "OPT+EDIT delete",
      "#FILES", "X the menu: new folder, rename, cut, delete"},
     {"F1/F2 the screen: PLAY, NOTES, SOUND", "L1/R1 the pad (on PLAY: the scene)", "F1+F2-3S leave the simple view (hold)", "MENU-3S quit BrickPad (hold)",
      "#PLAY", "EDIT play the pad", "EDIT+^v volume", "Y quiet", "#NOTES", "EDIT a note", "EDIT+^v higher / lower", "#SOUND", "<> choose the knob", "^v turn it",
-     "SHIFT+X dice: a random sound", "#KID LOCK (PROJECT > INTERFACE): NOTHING IS ERASED"},
+     "SHIFT+X dice: a random sound", "#KID LOCK (PROJECT > SETTINGS): NOTHING IS ERASED"},
 };
 static void draw_about(void) {
     Col ec = th_cur[TC_SMP]; char b[16]; ab_pg = clampi(ab_pg, 0, AB_N - 1);
@@ -629,12 +629,12 @@ static void draw_about(void) {
 }
 static void prj_value(int i, char *b);
 static void draw_prj2(void) {
-    Col ec = th_cur[TC_SMP]; int r[6], n = prj_rows(jsec, r);
+    Col ec = th_cur[TC_SMP]; int r[JS_ROWS], n = prj_rows(jsec, r);
     { int ok = 0; for (int i = 0; i < n; i++) if (r[i] == jcur) ok = 1; if (!ok) jcur = r[0]; }
     for (int k = 0; k < JS_N; k++) { int y = 76 + k * 70, on = k == jsec;
         rrect(26, y, 249, 60, 8, on ? (jcol ? mix(C_SELBG, C_CELL, 128) : C_SELBG) : C_CELL);
         ftext(48, y + 16, FT_MB, on ? C_WHITE : C_DIM, prj_sec_name[k]); }
-    if (jsec == JS_ABOUT) { draw_about(); draw_footer(jcol ? "^v TOPIC  EDIT NEXT  Y BACK  < SECTIONS" : "EDIT ENTER  Y BACK  ^v SECTION"); return; }
+    if (jsec == JS_HELP) { draw_about(); draw_footer(jcol ? "^v TOPIC  EDIT NEXT  Y BACK  < SECTIONS" : "EDIT ENTER  Y BACK  ^v SECTION"); return; }
     int ch = 144, dy = 156, cj = 0; for (int j = 0; j < n; j++) if (r[j] == jcur) cj = j;
     int first = jcol ? cj / 4 * 4 : 0;   // four cards a page, as A24
     if (n > 4) { rect(1000, 82, 4, 4 * dy - 12, C_CELL, 1); rect(1000, 82 + (first / 4) * (4 * dy - 12) / ((n + 3) / 4), 4, (4 * dy - 12) / ((n + 3) / 4), C_DIM, 1); }

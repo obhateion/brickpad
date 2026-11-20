@@ -8,6 +8,7 @@
 #include <string.h>
 #include <pthread.h>
 #include <sched.h>
+#include <time.h>
 
 Song song;
 volatile float tempo_mul = 1.f;
@@ -82,7 +83,20 @@ static volatile uint32_t anchor_req[NSLOT];
 static volatile int count_left = -1;      // count-in: clicks to come, -1 off
 static double count_next;                 // frames to the next click, from the next buffer
 static double next32;
-static struct { int delay, t; float f, a; } click;
+static struct { int delay, t, tone; float f, a; } click;
+MetroCfg metro = {0, 0, 70, 0, 0, 0, 0};
+VibRing vib_ring;
+static int metro_live(void) { return !metro.when || metro.rec || count_left >= 0; }
+static void metro_hit(double off, int kind, int dev) {   // a click and / or a buzz, off frames into this buffer
+    if (dev && (metro.snd || (!metro.vib && count_left >= 0))) {   // the device only (no click in a freeze or an export); the count is heard unless it only buzzes
+        static const float fr[3][3] = {{1100.f, 1500.f, 2500.f}, {700.f, 900.f, 1300.f}, {1000.f, 1000.f, 2000.f}};
+        int tn = metro.tone % 3; click = (typeof(click)){(int)off, 0, tn, fr[tn][kind], (kind ? 0.35f : 0.2f) * metro.vol / 70.f}; }
+    if (metro.vib && dev) {
+        struct timespec ts; clock_gettime(CLOCK_MONOTONIC, &ts);
+        uint32_t k = vib_ring.n % 16; vib_ring.due[k] = ts.tv_sec * 1000000000LL + ts.tv_nsec + (int64_t)(off * 1e9 / SR); vib_ring.kind[k] = (int8_t)kind;
+        __atomic_store_n(&vib_ring.n, vib_ring.n + 1, __ATOMIC_RELEASE); }
+}
+static int tick_dev;                      // tick() runs for the device (1) or an export (0)
 static float peak_acc, load_avg;
 static float st_max, st_gap; static int st_over, st_n; static Uint64 st_last;
 // Mixer (2026-11-09): every pad's voices sum into its own bus; the strip then applies VOL and PAN (ramped over a
@@ -727,7 +741,7 @@ static void tick(uint32_t i, double off, double f32) {
         return;
     }
     if (sw_req && (edge || sw_force)) scene_swap(i);
-    if (song.metro && i % 8 == 0) click = (typeof(click)){(int)off, 0, i % bar ? 1500.f : 2500.f, 0.35f};
+    { int iv = 8 >> (metro.div % 3); if ((metro.snd || metro.vib) && metro_live() && i % iv == 0) metro_hit(off, i % bar == 0 ? 2 : i % 8 == 0 ? 1 : 0, tick_dev); }
     for (int s = 0; s < NSLOT; s++) {
         Track *t = &song.t[s];
         if (anchor_set[s]) { anchor[s] = anchor_req[s]; anchor_set[s] = 0; }
@@ -861,12 +875,13 @@ static void callback(void *u, Uint8 *stream, int len) {
         double beat = SR * 60.0 / tempo;
         while (count_next < n) {
             if (count_left == 0) { playing = 1; pos32 = 0; next32 = count_next; count_left = -1; break; }
-            click = (typeof(click)){(int)count_next, 0, 1500.f, 0.35f};
+            metro_hit(count_next, 1, u != NULL);   // the count-in
             count_left--; count_next += beat;
         }
         if (count_left >= 0) count_next -= n;
     }
     for (int s = 0; s < NSLOT; s++) frozen_stop_at[s] = -1;
+    tick_dev = u != NULL;
     if (playing) {
         double f32 = SR * 60.0 / tempo / 8;
         while (playing && next32 < n) { tick(pos32, next32, f32); pos32++; next32 += f32; }
@@ -1088,7 +1103,10 @@ static void callback(void *u, Uint8 *stream, int len) {
     pv_level();
     if (click.f) {
         for (int k = click.delay < 0 ? 0 : click.delay; k < n && click.t < 2400; k++, click.t++) {
-            float x = sinf(click.t * click.f * 2 * (float)M_PI / SR) * click.a * expf(-click.t / 300.f);
+            float ph = click.t * click.f * 2 * (float)M_PI / SR, x;   // CLICK a short sine, WOOD a hollow knock, BEEP a longer tone
+            if (click.tone == 1) x = (sinf(ph) + 0.5f * sinf(ph * 2.76f)) * click.a * expf(-click.t / 140.f);
+            else if (click.tone == 2) x = sinf(ph) * click.a * 0.8f * (click.t < 1900 ? 1.f : (2400 - click.t) / 500.f);
+            else x = sinf(ph) * click.a * expf(-click.t / 300.f);
             o[2 * k] += x; o[2 * k + 1] += x;
         }
         click.delay -= n;

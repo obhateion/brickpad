@@ -176,6 +176,15 @@ static inline float auto_value(const AutoLane *a, const int8_t *bend, int len, d
          // shared: UI writes, audio thread reads
 extern volatile float out_trim;    // gain after the limiter and the clip, to the device only (not the export)
 extern volatile float tempo_mul;   // temporary nudge (PROJECT L1/R1)
+// METRONOME (2026-11-20, user: sound and vibration apart, so it can be felt and not heard): metro.cfg beside the binary,
+// a device setting. snd/vib on, vol 0..100, tone CLICK/WOOD/BEEP, when 0 always / 1 only recording and its count,
+// div 0 = 1/4, 1 = 1/8, 2 = 1/16; rec: the UI says a take is armed or running (for when = 1).
+typedef struct { volatile int8_t snd, vib, vol, tone, when, div, rec; } MetroCfg;
+extern MetroCfg metro;
+// The beats to buzz: the audio thread writes when each is heard (CLOCK_MONOTONIC ns) and how strong (0 a subdivision,
+// 1 a beat, 2 the bar's first); the vibration thread in main.c reads them. A ring, n counts up.
+typedef struct { int64_t due[16]; int8_t kind[16]; volatile uint32_t n; } VibRing;
+extern VibRing vib_ring;
 
 // sample.c
 Sample *sample_load(const char *path);   // NULL on failure
@@ -270,7 +279,8 @@ int engine_frames(void);
 int engine_playing(void);
 int engine_step(int slot);                // last played step of the slot's clip, -1 none
 void engine_count(int beats);             // count-in clicks, then the transport starts from bar 1
-int engine_counting(void);                // beats still to come, -1 not counting
+int engine_counting(void);
+                // beats still to come, -1 not counting
 double engine_count_left(void);           // time to bar 1 in 1/32 notes
 double engine_posf(void);                 // transport position in 1/32 notes, with the fraction
 void engine_skip(int slot, int step);     // the sequencer passes over this step once

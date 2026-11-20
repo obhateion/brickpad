@@ -101,6 +101,7 @@ static void ui2_header(void) {           // NEON > PADS on the left, the transpo
 }
 // The metronome at the right of the footer (2026-11-19, user: "as it was before", 1.2's lights): the tempo now and a
 // light per beat of the bar, the one that plays lit, the bar's first in the accent. Returns where it starts.
+static int metro_live_ui(void) { return !metro.when || metro.rec; }
 static int ui2_metro(void) {
     char b[24]; float bpm = song.tempo * tempo_mul; int nb = song.beats > 0 ? song.beats : 4, pl = engine_playing();
     int beat = pl ? (int)(engine_pos32() / 8 % nb) : -1;
@@ -110,7 +111,9 @@ static int ui2_metro(void) {
     int bw = nb > 8 ? 120 / nb : 15, gap = 5, lx = tx - 16 - nb * (bw + gap);
     for (int i = 0; i < nb; i++) { Col c = i == beat ? (i == 0 ? C_ORANGE : C_PLAY) : C_LINE;
         rrect(lx + i * (bw + gap), y + 6, bw, 20, 3, c); }
-    if (song.metro) ftext(lx - 18 - ftext_w(FT_M, "M"), y + 4, FT_M, C_DIM, "M"), lx -= 18 + ftext_w(FT_M, "M");
+    if (metro.vib) { int vx = lx - 30; Col vc = beat >= 0 && metro_live_ui() ? C_PLAY : C_DIM;   // VIBRATION: a phone with its buzz marks
+        rframe(vx + 4, y + 4, 12, 24, 3, 2, vc, C_BG); rect(vx, y + 10, 2, 12, vc, 1); rect(vx + 18, y + 10, 2, 12, vc, 1); lx = vx; }
+    if (metro.snd) ftext(lx - 18 - ftext_w(FT_M, "M"), y + 4, FT_M, C_DIM, "M"), lx -= 18 + ftext_w(FT_M, "M");
     return lx - 16;
 }
 static void ui2_footer(const char *h) {  // at most three key chips: the key in the accent, what it does after it
@@ -325,7 +328,7 @@ static void patmenu_key(int k, int down) {
     if (pm_cur == 0 && held[K_EDIT] && (k == K_UP || k == K_DOWN || k == K_LEFT || k == K_RIGHT)) {   // EDIT + an arrow on the first card: the clip's MODE, round
         used[K_EDIT] = 1; pat_mode_step(k == K_RIGHT || k == K_DOWN ? 1 : -1); return; }
     if ((k == K_EDIT && held[K_OPT]) || (k == K_OPT && held[K_EDIT])) { used[K_EDIT] = used[K_OPT] = 1;   // STEPS: this pattern, SELECT: all 16, RECORD: its settings
-        if (pm_cur == 3) return; if (pm_cur == 2) cfm_prj(JS_REC); else { char b[32]; snprintf(b, sizeof b, "PATTERN P%d", song.t[sel].cur + 1); cfm_pad(sel, pm_cur ? PP_PAT : PP_STEPS, pm_cur ? "ALL 16 PATTERNS" : b); } return; }
+        if (pm_cur == 3) return; if (pm_cur == 2) cfm_prj(-1); else { char b[32]; snprintf(b, sizeof b, "PATTERN P%d", song.t[sel].cur + 1); cfm_pad(sel, pm_cur ? PP_PAT : PP_STEPS, pm_cur ? "ALL 16 PATTERNS" : b); } return; }
     if (k == K_OPT) { act_listen(sel); return; }
     if (k == K_UP || k == K_LEFT) pm_cur = (pm_cur + 3) % 4;
     if (k == K_DOWN || k == K_RIGHT) pm_cur = (pm_cur + 1) % 4;

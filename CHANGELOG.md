@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- METRONOME: its own PROJECT section. SOUND and VIBRATION apart (vibration alone is a silent metronome: the bar's first
+  buzzes longer), VOLUME, the SOUND OF IT (CLICK, WOOD, BEEP), WHEN (always or only recording and its count-in), EVERY
+  (1/4, 1/8, 1/16), VIBRATION TIMING (ms). MENU+X anywhere: OFF, SOUND, SOUND + VIBRATION, VIBRATION. A device setting
+  (metro.cfg); it never clicks into an export or a freeze. The footer shows M (sound) and a buzzing phone (vibration).
+- PROJECT regrouped by task: FILE, TEMPO, METRONOME, PLAY / REC, OUTPUT, MIDI, SETTINGS, HELP (was ABOUT).
+
 ## 1.2 Beta (2026-11-20)
 
 - CHORDS on a clip that has notes asks first: YES starts on an empty clip, NO puts the chords over the notes, Y stays.
