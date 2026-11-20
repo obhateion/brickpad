@@ -35,7 +35,7 @@ static const int8_t fx_def[FX_N][6] = {
 // (2.667 ms) per running instance. FX_BUDGET = 40 % of a buffer for inserts in all: both slots of all 12 pads fit with
 // any type but MULTIBAND (18 of those). The old weights were guesses, 3-5 times too careful (the cap of 24 units was
 // about 9 % of a buffer). Silent pads cost nothing; the real load is the DSP figure in the footer.
-static const int8_t fx_weight[FX_N] = {0, 4, 4, 10, 9, 9, 7, 3, 12, 9, 5, 22, 8, 30, 8};   // EQ: five biquads, guessed from FILTER; REVERB, DELAY guessed from the returns
+static const int8_t fx_weight[FX_N] = {0, 4, 4, 11, 10, 10, 9, 3, 12, 9, 5, 24, 8, 28, 10};   // measured again 2026-11-20 (12 filter modes, 4 REVERB / DELAY); EQ kept at 8: it measured 2 with flat bands
 #define FX_SPACES 4                       // REVERB and DELAY inserts that can run at once, each (their lines are big)
 #ifndef FX_BUDGET
 #define FX_BUDGET 400

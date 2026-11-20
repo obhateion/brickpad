@@ -1,9 +1,12 @@
 # Changelog
 
-## Unreleased
+## 1.2 Beta (2026-11-20)
 
+- CHORDS on a clip that has notes asks first: YES starts on an empty clip, NO puts the chords over the notes, Y stays.
+- Insert costs measured again on the Brick (tools/fxcost.c): REVERB 28, DELAY 10, FILTER 9, CHORUS 11, FLANGER and PHASER 10, MULTIBAND 24.
+- PROJECT > ABOUT: the version, the new keys (grid, SUB / PRB, the clip's MODE, DUCK points).
 - STEPS: EDIT puts the note as it goes down; held, the arrows change it. Drag-painting is gone.
-- Headphones (R2) in STEPS and the piano roll: hear the note being put, or not. L2 switches STEPS and PIANO ROLL.
+- Headphones (R2) in STEPS and the piano roll: hear the note being put, or not.
 - PATTERN list: a RANDOM card. EQUALIZER insert (shelves, a bell, low and high cut).
 - MIDI (PROJECT > MIDI): the USB port (remembered by name, found again when plugged in), CLOCK OUT (Start, Stop, 24 a
   beat), notes in as KEYS (the open pad at their pitch) or PADS (36-47 = pads 1-12) with velocity, a channel or ALL.

@@ -353,7 +353,7 @@ static void draw_patmenu(void) {
 static void slice_label(char *b, const Pattern *p, int i, int ns);   // main.c, below
 static const char *lane_full(int ln) {
     switch (ln) { case L_TRIG: return song.t[sel].type == 0 ? "PITCH" : "NOTE"; case L_VEL: return "VEL"; case L_PROB: return "CHANCE";
-                  case L_REP: return "REPEAT"; case L_SLICE: return "SLICE"; case L_ACC: return "ACC"; case L_SLD: return "SLIDE"; }
+                  case L_REP: return "SUB"; case L_SLICE: return "SLICE"; case L_ACC: return "ACC"; case L_SLD: return "SLIDE"; }
     return lane_name[ln];
 }
 static void step_value(const Pattern *p, int i, int ln, int nsl, char *b) {   // what a lit step shows on this lane
@@ -361,8 +361,9 @@ static void step_value(const Pattern *p, int i, int ln, int nsl, char *b) {   //
     case L_TRIG: if (nsl) slice_label(b, p, i, nsl); else note_str((uint8_t)(p->note[i] == NOTE_NONE ? clampi(roll_base(sel), 0, 127) : p->note[i]), b); break;
     case L_SLICE: slice_label(b, p, i, nsl); break;
     case L_VEL: snprintf(b, 8, "%d", p->vel[i]); break;
-    case L_PROB: snprintf(b, 8, "%d%%", p->prob[i]); break;
-    case L_REP: snprintf(b, 8, "x%d", p->rep[i]); break;
+    case L_PROB: { const JumpStep *j = jmp_find(sel, song.t[sel].cur, i); int m = j ? j->mode : 0;   // the PRB mode: S = SUB, J = JUMP
+        snprintf(b, 8, "%s%d%%", m == 1 ? "S" : m == 2 ? "J" : "", p->prob[i]); break; }
+    case L_REP: snprintf(b, 8, "%d", p->rep[i] < 1 ? 1 : p->rep[i]); break;   // SUB: the cells
     case L_ACC: case L_SLD: snprintf(b, 8, "%s", p->slice[i] >= 0 && (p->slice[i] & (ln == L_ACC ? ACID_ACCENT : ACID_SLIDE)) ? (ln == L_ACC ? "ACC" : "SLD") : "-"); break;
     default: b[0] = 0;
     }
@@ -392,6 +393,9 @@ static void draw_steps2(void) {
         snprintf(b, sizeof b, "%d", i + 1); ftext(x + 10, y + 6, FT_S, C_DIM, b);
         if (on) step_value(p, i, lane, nsl, b); else snprintf(b, sizeof b, "\3");
         ftext(x + 54 - ftext_w(FT_LB, b) / 2, y + 126 - fv2[FT_LB].h / 2, FT_LB, on ? ec : C_DIM, b);
+        if (on && lane == L_REP && p->rep[i] > 1) {   // SUB (2026-11-20): the cells under the number, the ones off dim
+            const SubStep *e = sub_find(sel, song.t[sel].cur, i); int nc = p->rep[i], cw = 92 / nc;
+            for (int k = 0; k < nc; k++) rect(x + 8 + k * cw, y + 180, cw - 3, 30, e && (e->off >> k & 1) ? C_LINE : ec, 1); }
         if (i == play) rect(x, y + 244, 108, 8, C_WHITE, 1);   // the step that plays
     }
     int pages = (p->len + 15) / 16;

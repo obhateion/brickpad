@@ -2595,7 +2595,8 @@ static void prj_reset_sec(int sc) {
     for (int i = 0; i < n; i++) prj_reset_row(r[i]);
     if (sc == JS_UI || sc == JS_MIX) ui_cfg_save();
 }
-enum { CF_PAD = 1, CF_SCENE, CF_PART, CF_PRJ };
+enum { CF_PAD = 1, CF_SCENE, CF_PART, CF_PRJ, CF_CHORD };
+static void pat_mode_set(int m, int clear);
 static int cfm, cfm_arg, cfm_part, cfm_cur; static char cfm_title[48], cfm_sub[64];
 static int sc_kill = -1;                 // the open scene to delete once another one plays
 static void cfm_open(int act, int arg, int part, const char *title, const char *sub) {
@@ -2630,6 +2631,7 @@ static void cfm_do(void) {
           snprintf(b, sizeof b, "%d PADS CLEARED", n); toast(b); }
         break;
     case CF_PART: pad_reset(cfm_arg, cfm_part); toast("CLEARED"); break;
+    case CF_CHORD: pat_mode_set(2, 1); break;   // YES: the notes go, the chords start on an empty clip
     case CF_PRJ: prj_reset_sec(cfm_arg); snprintf(b, sizeof b, "%s RESET", prj_sec_name[cfm_arg]); toast(b); break;
     case CF_SCENE:
         if (cfm_arg != scn_cur) { scene_del(cfm_arg); break; }
@@ -2645,7 +2647,7 @@ static void scene_kill_tick(void) {      // the open scene that was deleted: gon
     if (i != scn_cur) scene_del(i);
 }
 static void cfm_key(int k, int down) {
-    if (!down) { if (k == K_EDIT && !used[K_EDIT]) { if (cfm_cur == 0) cfm_do(); else cfm = 0; } return; }
+    if (!down) { if (k == K_EDIT && !used[K_EDIT]) { if (cfm_cur == 0) cfm_do(); else { if (cfm == CF_CHORD) pat_mode_set(2, 0); cfm = 0; } } return; }   // CHORDS, NO: over the notes
     if (k != K_EDIT) used[k] = 1;   // EDIT acts on its release
     if (k == K_LEFT || k == K_RIGHT || k == K_UP || k == K_DOWN) cfm_cur = !cfm_cur;
     else if (k == K_Y || k == K_OPT) cfm = 0;
@@ -2930,11 +2932,11 @@ static void roll_open(void) {
 // MODE: STEPS > PIANO ROLL > CHORDS, round (2026-11-20, user: chosen on PATTERN's first card with EDIT + the arrows).
 // The roll and the chords are the same notes (mode 2 plays as the roll); an empty roll takes the steps as notes; both are kept.
 static const char *const pat_mode_name[3] = {"STEPS", "PIANO ROLL", "CHORDS"};
-static void pat_mode_step(int d) {
-    Pattern *p = cur_pat(sel); int m = ((p->mode + d) % 3 + 3) % 3;
-    if (m && track_nslices(sel)) { toast("SLICED PAD: STEPS ONLY"); return; }
-    edit_begin();
-    if (!p->mode && m && !roll_any(p)) {
+// 2026-11-20 (user): a clip with notes asks first whether CHORDS start on an empty clip (YES) or over the notes (NO); Y stays.
+static void pat_mode_set(int m, int clear) {
+    Pattern *p = cur_pat(sel); edit_begin();
+    if (clear) for (int i = 0; i < NNOTE; i++) p->roll[i].len = 0;   // the roll's notes only: the steps stay for STEPS
+    else if (!p->mode && m && !roll_any(p)) {
         int d = rl_d32[p->div % 6] * RT, base = roll_base(sel), acid = song.t[sel].type == 2;
         for (int st = 0; st < p->len; st++) if (p->trig[st]) {
             int n = p->note[st] == NOTE_NONE ? base : p->note[st], fl = acid && p->slice[st] >= 0 ? p->slice[st] : 0;
@@ -2944,6 +2946,15 @@ static void pat_mode_step(int d) {
         }
     }
     p->mode = (uint8_t)m; toast(pat_mode_name[m]);
+}
+static void pat_mode_step(int d) {
+    Pattern *p = cur_pat(sel); int m = ((p->mode + d) % 3 + 3) % 3, steps = 0;
+    if (m && track_nslices(sel)) { toast("SLICED PAD: STEPS ONLY"); return; }
+    for (int st = 0; st < p->len; st++) steps |= p->trig[st];
+    if (m == 2 && (roll_any(p) || (!p->mode && steps))) {
+        char t[48]; snprintf(t, sizeof t, "CLEAR P%d FOR CHORDS?", song.t[sel].cur + 1);
+        cfm_open(CF_CHORD, sel, 0, t, "YES: an empty clip  \003  NO: chords over the notes"); return; }
+    pat_mode_set(m, 0);
 }
 static void roll_mode(void) { pat_mode_step(1); }
 static int roll_in_scale(int n) {
