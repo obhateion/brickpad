@@ -339,7 +339,7 @@ static void draw_patmenu(void) {
         rect(CX, y, 9, CHT, cc, 1);
         int ix = c ? 0 : 44; if (!c) icon(p->mode == 2 ? IC_M_CHORD : p->mode ? IC_M_PIANO : IC_M_STEP_SEQ, CX + 30, y + 16, cc);   // the clip's MODE: its icon, name and a small picture
         ftext(CX + 38 + ix, y + 12, FT_LB, cc, c == 3 ? "RANDOM" : c == 2 ? "RECORD" : c ? "SELECT" : pat_mode_name[p->mode % 3]);
-        if (!c) { if (p->mode) draw_roll_mini(p, CX + CWD - 250, y + 14, 230, CHT - 28, -1, on); else for (int i = 0; i < 16; i++) rect(CX + CWD - 250 + i * 14, y + 40, 11, 24, i < p->len && p->trig[i] ? cc : C_LINE, 1); }
+        if (!c) { if (p->mode == 2) draw_chord_mini(p, CX + CWD - 250, y + 14, 230, CHT - 28, on); else if (p->mode) draw_roll_mini(p, CX + CWD - 250, y + 14, 230, CHT - 28, -1, on); else for (int i = 0; i < 16; i++) rect(CX + CWD - 250 + i * 14, y + 40, 11, 24, i < p->len && p->trig[i] ? cc : C_LINE, 1); }
         if (c == 3) snprintf(b, sizeof b, "rhythm, notes or both \3 in the key and scale of %s", t->scale || t->key ? "the pad" : "the project");
         else if (c == 2) snprintf(b, sizeof b, "count-in %d \3 quantize %s \3 play it on KEYS or PADS (MENU)", song.count_in, quant_name[song.rec_quant % 5]);
         else if (c) snprintf(b, sizeof b, "P%02d of %d used \3 length \3 division \3 what plays after", t->cur + 1, used);

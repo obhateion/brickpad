@@ -54,6 +54,13 @@ static int ch_slot_match(const Pattern *p, int slot, int *row, int *col) {   // 
         if (m == pcs) { *row = r; *col = c; return 1; } }
     return -1;
 }
+static void draw_chord_mini(const Pattern *p, int x, int y, int w, int h, int on) {   // PATTERN's card: the clip's slots and their chords
+    int n = ch_nslots(p), sw = w / n; char b[16]; Col ec = C_CAT(PC_PATTERN);
+    for (int i = 0; i < n; i++) { int r, c, m = ch_slot_match(p, i, &r, &c), bx = x + i * sw;
+        rrect(bx + 1, y, sw - 2, h, 4, m > 0 ? mix(C_CELL, ec, on ? 110 : 70) : C_LINE);
+        if (m > 0) ch_name(r, c, b, sizeof b); else snprintf(b, sizeof b, "%s", m < 0 ? "NOTES" : "-");
+        int f = ftext_w(FT_M, b) < sw - 6 ? FT_M : FT_S; if (ftext_w(f, b) < sw - 4) ftext(bx + sw / 2 - ftext_w(f, b) / 2, y + h / 2 - fv2[f].h / 2, f, m > 0 ? C_WHITE : C_DIM, b); }
+}
 static void chord_open(void) { Pattern *p = cur_pat(sel); chording = 1; ch_slot = 0; ch_row = 0; ch_col = 0; if (ch_slot >= ch_nslots(p)) ch_slot = 0; toast("CHORDS"); }
 static void chord_leave(void) { ch_quiet(); chording = 0; }
 static void chord_key(int k, int down) {

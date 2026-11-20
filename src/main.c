@@ -3549,7 +3549,7 @@ static void listen_name(int s, char *b) {   // the listening note by name where 
     else snprintf(b, 8, n ? "%+d ST" : "0 ST", n);
 }
 static int asking, naming, exporting; static void ask_key(int k, int down); static void nm_key(int k, int down); static void export_key(int k, int down);
-static void draw_roll_mini(const Pattern *p, int x, int y, int w, int h, int st, int on);
+static void draw_roll_mini(const Pattern *p, int x, int y, int w, int h, int st, int on); static void draw_chord_mini(const Pattern *p, int x, int y, int w, int h, int on);
 #include "ui.h"
 #include "sound.h"
 static void icon(int id, int x, int y, Col c); static int slot_icon(int i); static Col pad_icol(int s, Col dflt);   // pages.h: the pads' icons and meters, drawn further down
