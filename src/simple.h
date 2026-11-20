@@ -36,8 +36,8 @@ static int simple_key(int k, int down) {  // 1 = the key is used up here; 0 = NO
         else if (!down) { if (sv_exit && ms_since(SDL_GetTicks(), sv_exit) >= 3000) { ui_simple = 0; ui_cfg_save(); set_tab(T_GRID); ui_cat = -1; }   // held long enough: out
                           sv_exit = 0; if (!used[k]) { sv_mode = (sv_mode + (k == K_F2 ? 1 : 2)) % 3; simple_sync(); } }
         return 1; }
-    if (k == K_MENU) { menu_down = down && !held[K_SHIFT] ? SDL_GetTicks() : 0; return 1; }   // held: the way out of BrickPad, nothing else here
-    if (k == K_PLAY) { if (down && !held[K_SHIFT]) play_key(); return 1; }
+    if (k == K_MENU) return 1;           // v3: nothing here (SHIFT+PLAY held quits, in key_event)
+    if (k == K_PLAY) { if (down) play_key(); return 1; }
     if (sv_mode && (k == K_L1 || k == K_R1)) { if (down) sv_pad(k == K_R1 ? 1 : -1); return 1; }   // NOTES, SOUND: the next pad with a sound
     if (!has_sound(sel) && sv_mode) return 1;
     if (sv_mode == 1) {

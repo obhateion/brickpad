@@ -8,37 +8,42 @@
 
 static void gb_ring(int cx, int cy, int r, int t, Col c);
 static const char *par_hint(int p);      // hints.h: what a parameter does, one sentence
-enum { GF_NONE, GF_WAVE, GF_SLICES, GF_OSC, GF_FILTER, GF_ENV, GF_CLOUD, GF_PATCH };
-typedef struct { const char *name; int8_t n, gfx; int16_t p[20]; } SndPage;
+enum { GF_NONE, GF_WAVE, GF_SLICES, GF_OSC, GF_FILTER, GF_ENV, GF_CLOUD, GF_PATCH, GF_ALL };
+// v3 (2026-11-20, user: "five pages of MORE is no way to jam"): pages by topic, at most ten knobs each, all on one screen;
+// MAIN shows the main curves side by side with the knobs that shape them. The engine is switched on the section strip
+// (EDIT held on SOUND), not from a page.
+typedef struct { const char *name; int8_t n, gfx; int16_t p[10]; } SndPage;
 static const SndPage snd_smp[] = {
-    {"SAMPLE", 6, GF_WAVE, {P_PITCH, P_ROOT, P_VOICE, P_DIR, P_START, P_END}},
+    {"SAMPLE", 7, GF_WAVE, {P_PITCH, P_ROOT, P_VOICE, P_DIR, P_START, P_END, P_FINE}},
     {"SLICES", 2, GF_SLICES, {P_SLICES, P_SLWAY}},   // A09: how many, and how
     {"WARP", 6, GF_WAVE, {P_WARP, P_BARS, P_BPM, P_NORM, P_GRAIN, P_FLUX}},
-    {"ENV", 3, GF_WAVE, {P_SX + SX_FIN, P_SX + SX_FOUT, P_SX + SX_XFADE}},
-    {"MORE...", 4, GF_NONE, {P_FINE, P_VOL, P_PAN, P_TYPE}},
+    {"AMP", 5, GF_WAVE, {P_SX + SX_FIN, P_SX + SX_FOUT, P_SX + SX_XFADE, P_VOL, P_PAN}},
 };
 static const SndPage snd_grd[] = {
-    {"OSC", 6, GF_OSC, {P_SY + SP_OSC1, P_SY + SP_OSC2, P_SY + SP_TUNE2, P_SY + SP_DETUNE, P_SY + SP_MIX, P_SY + SP_NOISE}},
+    {"MAIN", 10, GF_ALL, {P_SY + SP_OSC1, P_SY + SP_OSC2, P_SY + SP_DETUNE, P_SY + SP_MIX, P_SY + SP_CUTOFF, P_SY + SP_RESO, P_SY + SP_ENV,
+        P_SY + SP_ATTACK, P_SY + SP_DECAY, P_SY + SP_RELEASE}},
+    {"OSC", 9, GF_OSC, {P_SY + SP_OSC1, P_SY + SP_OSC2, P_GX + GX_O1OCT, P_GX + GX_O2OCT, P_SY + SP_TUNE2, P_SY + SP_DETUNE, P_SY + SP_MIX,
+        P_SY + SP_NOISE, P_GX + GX_SYNC}},
     {"FILTER", 5, GF_FILTER, {P_SY + SP_CUTOFF, P_SY + SP_RESO, P_SY + SP_ENV, P_GX + GX_HP, P_GX + GX_KBT}},
-    {"ENV", 6, GF_ENV, {P_SY + SP_ATTACK, P_SY + SP_DECAY, P_SY + SP_SUSTAIN, P_SY + SP_RELEASE, P_SY + SP_GLIDE, P_VOICE}},
+    {"ENV", 7, GF_ENV, {P_SY + SP_ATTACK, P_SY + SP_DECAY, P_SY + SP_SUSTAIN, P_SY + SP_RELEASE, P_SY + SP_GLIDE, P_VOICE, P_GX + GX_VCA}},
+    {"LFO", 6, GF_NONE, {P_GX + GX_LRATE, P_GX + GX_LSYNC, P_GX + GX_LWAVE, P_GX + GX_LPITCH, P_GX + GX_LCUT, P_GX + GX_LPWM}},
+    {"ARP", 5, GF_NONE, {P_GX + GX_ARP, P_GX + GX_AMODE, P_GX + GX_AOCT, P_GX + GX_ARATE, P_GX + GX_AGATE}},
     {"PATCH", 0, GF_PATCH, {0}},
-    {"MORE...", 20, GF_NONE, {P_PITCH, P_VOL, P_GX + GX_LRATE, P_GX + GX_LSYNC, P_GX + GX_LWAVE, P_GX + GX_LPITCH, P_GX + GX_LCUT, P_GX + GX_LPWM,
-        P_GX + GX_O1OCT, P_GX + GX_O2OCT, P_GX + GX_SYNC, P_GX + GX_VCA, P_GX + GX_SPRING, P_GX + GX_ARP, P_GX + GX_AMODE, P_GX + GX_AOCT,
-        P_GX + GX_ARATE, P_GX + GX_AGATE, P_GX + GX_ATTEN, P_TYPE}},
+    {"OUT", 4, GF_NONE, {P_PITCH, P_VOL, P_GX + GX_SPRING, P_GX + GX_ATTEN}},
 };
 static const SndPage snd_acd[] = {
-    {"OSC", 6, GF_OSC, {P_AC + AP_WAVE, P_AC + AP_TUNE, P_AX + AX_SUB, P_AX + AX_SUBOCT, P_AX + AX_SUBWAVE, P_AX + AX_PW}},
-    {"FILTER", 6, GF_FILTER, {P_AC + AP_CUTOFF, P_AC + AP_RESO, P_AC + AP_ENVMOD, P_AC + AP_DECAY, P_AC + AP_ACCENT, P_AX + AX_TRACK}},
-    {"DIST", 4, GF_NONE, {P_AC + AP_DTYPE, P_AC + AP_DRIVE, P_AC + AP_DTONE, P_AC + AP_DMIX}},
-    {"MORE...", 12, GF_NONE, {P_VOL, P_AX + AX_NOISE, P_AX + AX_VATK, P_AX + AX_VREL, P_AX + AX_SLIDE, P_AX + AX_RANGE, P_AX + AX_RESHP, P_AX + AX_BASS,
-        P_AX + AX_ACCATK, P_AX + AX_ACCDEC, P_AX + AX_CLIP, P_TYPE}},
+    {"MAIN", 10, GF_ALL, {P_AC + AP_WAVE, P_AC + AP_TUNE, P_AC + AP_CUTOFF, P_AC + AP_RESO, P_AC + AP_ENVMOD, P_AC + AP_DECAY, P_AC + AP_ACCENT,
+        P_AC + AP_DRIVE, P_AC + AP_DMIX, P_VOL}},
+    {"OSC", 7, GF_OSC, {P_AC + AP_WAVE, P_AC + AP_TUNE, P_AX + AX_SUB, P_AX + AX_SUBOCT, P_AX + AX_SUBWAVE, P_AX + AX_PW, P_AX + AX_NOISE}},
+    {"FILTER", 8, GF_FILTER, {P_AC + AP_CUTOFF, P_AC + AP_RESO, P_AC + AP_ENVMOD, P_AC + AP_DECAY, P_AC + AP_ACCENT, P_AX + AX_TRACK, P_AX + AX_RESHP, P_AX + AX_BASS}},
+    {"DIST", 5, GF_NONE, {P_AC + AP_DTYPE, P_AC + AP_DRIVE, P_AC + AP_DTONE, P_AC + AP_DMIX, P_AX + AX_CLIP}},
+    {"VOICE", 7, GF_NONE, {P_AX + AX_VATK, P_AX + AX_VREL, P_AX + AX_SLIDE, P_AX + AX_RANGE, P_AX + AX_ACCATK, P_AX + AX_ACCDEC, P_VOL}},
 };
 static const SndPage snd_cld[] = {
-    {"GRAINS", 4, GF_CLOUD, {P_CL + CP_POS, P_CL + CP_SPRAY, P_CL + CP_SIZE, P_CL + CP_DENSITY}},
-    {"TONE", 6, GF_CLOUD, {P_CX + CX_PITCH, P_CX + CX_FINE, P_CX + CX_TONE, P_CL + CP_SHIMMER, P_CX + CX_SHMODE, P_CX + CX_PITCHRND}},
-    {"ENV", 4, GF_CLOUD, {P_CX + CX_ATTACK, P_CX + CX_RELEASE, P_CL + CP_MOTION, P_CX + CX_FREEZE}},
-    {"MORE...", 11, GF_NONE, {P_VOL, P_NORM, P_CX + CX_SIZERND, P_CX + CX_WINDOW, P_CX + CX_REVERSE, P_CX + CX_SYNC, P_CX + CX_TIMERND, P_CX + CX_WIDTH,
-        P_CX + CX_SCAN, P_SAMPLE, P_TYPE}},
+    {"GRAINS", 8, GF_CLOUD, {P_CL + CP_POS, P_CL + CP_SPRAY, P_CL + CP_SIZE, P_CL + CP_DENSITY, P_CX + CX_SIZERND, P_CX + CX_WINDOW, P_CX + CX_TIMERND, P_CX + CX_REVERSE}},
+    {"TONE", 7, GF_CLOUD, {P_CX + CX_PITCH, P_CX + CX_FINE, P_CX + CX_TONE, P_CL + CP_SHIMMER, P_CX + CX_SHMODE, P_CX + CX_PITCHRND, P_CX + CX_WIDTH}},
+    {"ENV", 6, GF_CLOUD, {P_CX + CX_ATTACK, P_CX + CX_RELEASE, P_CL + CP_MOTION, P_CX + CX_FREEZE, P_CX + CX_SYNC, P_CX + CX_SCAN}},
+    {"OUT", 3, GF_NONE, {P_VOL, P_NORM, P_SAMPLE}},
 };
 static int sp_pg[4], sp_cur;             // the page of each engine, kept; the card under the cursor, -1 = the picture
 
@@ -86,7 +91,7 @@ static void sound_page_step(int d) {     // L1/R1
 static void snd_page_go(int i) {         // a page by its number (the tree)
     int n; snd_pages(song.t[sel].type, &n); sp_pg[song.t[sel].type & 3] = clampi(i, 0, n - 1); sp_cur = 0; pt_pick = 0; sound_sync();
 }
-static void sound_move(int k) {          // two columns of cards; UP from the first row: the picture
+static void sound_move(int k) {          // the knobs; UP from the first row: the picture
     const SndPage *pg = snd_page(); int l[20], c = snd_cards(pg, l);
     if (pg->gfx == GF_PATCH) {           // up and down a column; across: the row at the same height on the other side
         int in = sp_cur >= PT_NO, r = in ? sp_cur - PT_NO : sp_cur, nr = in ? PT_NI : PT_NO;
@@ -94,11 +99,11 @@ static void sound_move(int k) {          // two columns of cards; UP from the fi
         else if ((k == K_RIGHT && !in) || (k == K_LEFT && in)) { r = clampi((r * 2 + 1) * (in ? PT_NO : PT_NI) / (2 * nr), 0, (in ? PT_NO : PT_NI) - 1); in = !in; }
         sp_cur = in ? PT_NO + r : r; return;
     }
-    if (sp_cur < 0) { if (k == K_DOWN && c) sp_cur = 0; return; }
-    if (k == K_LEFT) { if (sp_cur & 1) sp_cur--; }
-    else if (k == K_RIGHT) { if (!(sp_cur & 1) && sp_cur + 1 < c) sp_cur++; }
-    else if (k == K_DOWN) { if (sp_cur + 2 < c) sp_cur += 2; else if ((sp_cur | 1) + 1 < c) sp_cur = c - 1; }
-    else if (sp_cur >= 2) sp_cur -= 2;
+    if (sp_cur < 0) { if (k == K_DOWN && c) sp_cur = 0; return; }   // v3: five knobs a row, two rows
+    if (k == K_LEFT) { if (sp_cur % 5) sp_cur--; }
+    else if (k == K_RIGHT) { if (sp_cur % 5 < 4 && sp_cur + 1 < c) sp_cur++; }
+    else if (k == K_DOWN) { if (sp_cur + 5 < c) sp_cur += 5; else if (sp_cur / 5 < (c - 1) / 5) sp_cur = c - 1; }
+    else if (sp_cur >= 5) sp_cur -= 5;
     else if (pg->gfx != GF_NONE) sp_cur = -1;
 }
 static int sound_edit_arrow(int k) {     // EDIT+arrows on the picture: the sampler's next file; nothing else changes there
@@ -189,6 +194,16 @@ static void snd_picture(const SndPage *pg, int x, int y, int w, int h, Col ec) {
         else snd_filter(x + 12, y + 8, w - 24, h - 16, t->sp[SP_CUTOFF], t->sp[SP_RESO], ec);
         break;
     case GF_ENV: snd_env(x + 16, y + 8, w - 32, h - 16, t->sp[SP_ATTACK], t->sp[SP_DECAY], t->sp[SP_SUSTAIN], t->sp[SP_RELEASE], ec); break;
+    case GF_ALL: {                        // v3 MAIN: the wave, the filter and the envelope side by side
+        int pw = (w - 48) / 3, ac = t->type == 2;
+        for (int i = 0; i < 3; i++) { int px = x + 12 + i * (pw + 12); rect(px, y + 10, pw, h - 20, C_BG, 1);
+            ftext(px + 10, y + 14, FT_S, C_DIM, i == 0 ? "OSC" : i == 1 ? "FILTER" : "ENV"); }
+        if (ac) snd_shape(x + 24, y + 40, pw - 24, h - 66, t->ap[AP_WAVE] ? 2 : 1, ec);
+        else { snd_shape(x + 24, y + 40, pw - 24, h - 66, t->sp[SP_OSC1] & 3, ec); snd_shape(x + 24, y + 40, pw - 24, h - 66, t->sp[SP_OSC2] & 3, mix(ec, C_BG, 140)); }
+        snd_filter(x + 24 + pw, y + 34, pw - 24, h - 50, ac ? t->ap[AP_CUTOFF] : t->sp[SP_CUTOFF], ac ? t->ap[AP_RESO] : t->sp[SP_RESO], ec);
+        if (ac) snd_env(x + 40 + 2 * pw, y + 34, pw - 32, h - 50, 0, t->ap[AP_DECAY], 0, t->ap[AP_DECAY] / 2, ec);
+        else snd_env(x + 40 + 2 * pw, y + 34, pw - 32, h - 50, t->sp[SP_ATTACK], t->sp[SP_DECAY], t->sp[SP_SUSTAIN], t->sp[SP_RELEASE], ec);
+        break; }
     }
 }
 static void snd_live(const SndPage *pg, int x, int y, int w, int h) {   // what sounds now, over the picture (1.2 had it on its panels)
@@ -217,20 +232,41 @@ static const char *snd_label(int p) {
     if (p == P_GX + GX_LRATE) return "LFO RATE"; if (p == P_GX + GX_LSYNC) return "LFO SYNC"; if (p == P_GX + GX_LWAVE) return "LFO WAVE";
     return par_name[p];
 }
-static void snd_card(int x, int y, int w, int h, int p, int on, Col ec) {
-    char v[96]; if (p == P_SAMPLE) snprintf(v, sizeof v, "OPEN"); else if (p == P_DIR) snprintf(v, sizeof v, "%s", song.t[sel].rev ? "\005" : "\004");   // A08: the way it plays, an arrow
+// v3 (2026-11-20, user: "round encoders like Serum"): a knob per parameter. The arc shows the value (from the middle for
+// what goes both ways), the outer ring what moves it: an LFO as the span it swings over, automation as a dot.
+static void knob_arc(int cx, int cy, int r, int t, float a0, float a1, Col c) {   // angles in degrees, 0 = right, clockwise
+    if (a1 < a0) { float s = a0; a0 = a1; a1 = s; }
+    for (float a = a0; a <= a1 + 0.01f; a += 3) disc2(cx + (int)(r * cosf(a * 0.0174533f)), cy + (int)(r * sinf(a * 0.0174533f)), t / 2, c);
+}
+static void snd_knob(int x, int y, int w, int h, int p, int on, Col ec) {
+    char v[96]; if (p == P_SAMPLE) snprintf(v, sizeof v, "OPEN"); else if (p == P_DIR) snprintf(v, sizeof v, "%s", song.t[sel].rev ? "\005" : "\004");
     else par_str(sel, p, v, sizeof v);
-    if (on) rframe(x, y, w, h, 8, 4, ec, C_CELL); else rrect(x, y, w, h, 8, C_CELL);
-    const char *lb = snd_label(p); ftext(x + 20, y + 12, FT_M, C_DIM, lb);
-    char tg[4][4]; int nt = snd_tags(p, tg), tx = x + 30 + ftext_w(FT_M, lb);   // A1 / L1 badges after the name: this card moves by itself
-    for (int i = 0; i < nt; i++) { Col bc = tg[i][0] == 'A' ? C_CAT(PC_MOD) : C_WHITE; rrect(tx, y + 12, 38, 24, 4, bc); ftext(tx + 19 - ftext_w(FT_S, tg[i]) / 2, y + 14, FT_S, C_BG, tg[i]); tx += 44; }
-    int room = w - 52 - ftext_w(FT_M, lb) - nt * 44, f = ftext_w(FT_XB, v) <= room ? FT_XB : ftext_w(FT_LB, v) <= room ? FT_LB : FT_M;
-    if (ftext_w(f, v) > room) v[room / fv2[f].w > 0 ? room / fv2[f].w : 0] = 0;
-    ftext(x + w - 20 - ftext_w(f, v), y + 10 + (fv2[FT_XB].h - fv2[f].h) / 2, f, C_WHITE, v);
-    if (on && h >= 140) { const char *hn = par_hint(p); if (hn && hn[0]) ftext_wrap(x + 20, y + 58, w - 40, 2, FT_S, mix(C_WHITE, C_CELL, 70), hn); }   // the card under the cursor says what it does
-    if (on) { int lo, hi, st, bg; par_limits(sel, p, &lo, &hi, &st, &bg); ui_focus(lb, v, par_is_number(p) && bg > 1 && hi > lo ? (par_get(sel, p) - lo) * 100 / (hi - lo) : -1, ec); }
-    if (par_is_number(p)) { int lo, hi, st, bg; par_limits(sel, p, &lo, &hi, &st, &bg);   // a bar for what is turned, none for what is chosen
-        if ((bg > 1 || p == P_SLICES) && hi > lo) { int by = y + h - 26; rect(x + 20, by, w - 40, 8, C_LINE, 1); rect(x + 20, by, (w - 40) * clampi(par_get(sel, p) - lo, 0, hi - lo) / (hi - lo), 8, ec, 1); } }
+    if (on) rframe(x, y, w, h, 8, 3, ec, C_CELL); else rrect(x, y, w, h, 8, C_CELL);
+    const char *lb = snd_label(p); char l2[16]; snprintf(l2, sizeof l2, "%.13s", lb);
+    ftext(x + (w - ftext_w(FT_S, l2)) / 2, y + 8, FT_S, on ? C_WHITE : C_DIM, l2);
+    int cx = x + w / 2, cy = y + 30 + (h - 70) / 2, r = (h - 70) / 2 - 8; if (r > 44) r = 44;
+    int lo = 0, hi = 1, st, bg; float f = 0; if (p != P_SAMPLE) { par_limits(sel, p, &lo, &hi, &st, &bg); if (hi > lo) f = (float)clampi(par_get(sel, p) - lo, 0, hi - lo) / (hi - lo); }
+    if (p == P_SAMPLE) { rrect(cx - r, cy - 18, 2 * r, 36, 8, C_SELBG); }
+    else {
+        float a = 135 + 270 * f, z = lo < 0 && hi > 0 ? 135 + 270.f * -lo / (hi - lo) : 135;
+        knob_arc(cx, cy, r, 6, 135, 405, C_LINE);
+        if (fabsf(a - z) > 1) knob_arc(cx, cy, r, 6, z, a, ec);
+        disc2(cx, cy, r - 12, mix(C_CELL, C_BG, 128));
+        line(cx + (int)((r - 26) * cosf(a * 0.0174533f) * 0.2f), cy + (int)((r - 26) * sinf(a * 0.0174533f) * 0.2f),
+             cx + (int)((r - 14) * cosf(a * 0.0174533f)), cy + (int)((r - 14) * sinf(a * 0.0174533f)), 4, C_WHITE);
+        int b = auto_bind_target(p);
+        if (b >= 0) {                     // what moves it
+            for (int j = 0; j < NLFO; j++) { const Lfo *lf = &song.lfo[sel][j]; if (lf->target != b || !lf->depth) continue;
+                float sw = 270.f * abs(lf->depth) / 100 / 2; knob_arc(cx, cy, r + 9, 3, a - sw < 135 ? 135 : a - sw, a + sw > 405 ? 405 : a + sw, C_WHITE); }
+            const AutoLane *al = song.aut[sel][song.t[sel].cur];
+            for (int k = 0; k < NAUTO; k++) if (al[k].target == b) { disc2(cx + (int)((r + 9) * cosf(a * 0.0174533f)), cy + (int)((r + 9) * sinf(a * 0.0174533f)), 6, C_CAT(PC_MOD)); break; }
+        }
+    }
+    int fw = ftext_w(FT_MB, v) <= w - 12 ? FT_MB : FT_S; if (ftext_w(fw, v) > w - 12) v[(w - 12) / fv2[fw].w] = 0;
+    ftext(cx - ftext_w(fw, v) / 2, p == P_SAMPLE ? cy - fv2[fw].h / 2 : y + h - 30, fw, C_WHITE, v);
+    char tg[4][4]; int nt = snd_tags(p, tg), tx = x + w - 6 - nt * 30;   // A1 / L1 badges in the corner
+    for (int i = 0; i < nt; i++) { Col bc = tg[i][0] == 'A' ? C_CAT(PC_MOD) : C_WHITE; rrect(tx + i * 30, y + h - 58, 26, 18, 4, bc); ftext(tx + i * 30 + 13 - ftext_w(FT_S, tg[i]) / 2, y + h - 58, FT_S, C_BG, tg[i]); }
+    if (on) ui_focus(lb, v, par_is_number(p) && hi > lo ? (int)(f * 100) : -1, ec);
 }
 static int pt_y(int j) { return j < 16 ? 150 + (j - 1) * 40 : 146 + (j - 17) * 37; }   // a jack's row
 static const char *pt_name(int j, char *b) {   // the label: the outputs without "OUT", as on A14
@@ -265,6 +301,7 @@ static void draw_patch2(Col ec) {
     draw_footer(pt_pick ? "EDIT ON AN INPUT PLUG  Y DROP THE CABLE" : cj >= 16 ? "EDIT TAKE ITS CABLE  OPT+EDIT PULL IT  L1/R1 PAGE  Y BACK"
                 : "EDIT CABLE  OPT+EDIT PULL ITS CABLES  L1/R1 PAGE  Y BACK");
 }
+static int pic_h(const SndPage *pg) { return pg->gfx != GF_NONE; }
 static void draw_sound2(void) {
     int n; const SndPage *pgs = snd_pages(song.t[sel].type, &n), *pg = snd_page(); int cur = (int)(pg - pgs);
     Col ec = C_ENG(song.t[sel].type); int l[20], c = snd_cards(pg, l);
@@ -277,15 +314,12 @@ static void draw_sound2(void) {
     if (pg->gfx == GF_PATCH) { draw_patch2(ec); return; }
     int y0 = 127;
     if (pg->gfx != GF_NONE) {            // the picture; the cursor on it: the file (the sampler, CLOUD) or the presets
-        if (sp_cur < 0) rframe(26, 127, 971, 243, 8, 4, ec, C_CELL); else rrect(26, 127, 971, 243, 8, C_CELL);
-        snd_picture(pg, 26, 127, 971, 243, ec); snd_live(pg, 26, 127, 971, 243);
-        y0 = 390;
+        if (sp_cur < 0) rframe(26, 127, 971, 210, 8, 4, ec, C_CELL); else rrect(26, 127, 971, 210, 8, C_CELL);
+        snd_picture(pg, 26, 127, 971, 210, ec); snd_live(pg, 26, 127, 971, 210);
+        y0 = 352;
     }
-    int rows = (c + 1) / 2, pic = pg->gfx != GF_NONE, h = pic ? (c <= 2 ? 300 : 148) : 270, dy = pic ? 162 : 286;   // four cards on screen, as the mockups (two: tall, A09)
-    int vis = 2, first = (sp_cur < 0 ? 0 : sp_cur / 2) / 2 * 2;   // the next four come by pages, not by rows
-    for (int i = first * 2; i < c && i < (first + vis) * 2; i++)
-        snd_card(i & 1 ? 518 : 32, y0 + (i / 2 - first) * dy, 473, h, l[i], i == sp_cur, ec);
-    ui_cards_more(1004, y0, vis * dy - 8, first, rows);   // more below: the next page
+    int kh = pic_h(pg) ? 158 : 200; if (!pic_h(pg)) y0 = 150;   // v3: every knob of the page at once, five a row
+    for (int i = 0; i < c; i++) snd_knob(32 + (i % 5) * 194, y0 + (i / 5) * (kh + 8), 186, kh, l[i], i == sp_cur, ec);
     if (learning) draw_footer("EDIT TAKE THIS PARAMETER  L1/R1 PAGE  Y CANCEL");
     else if (sp_cur < 0) draw_footer(pg->gfx == GF_SLICES ? "EDIT SLICE EDITOR  L1/R1 PAGE  Y BACK  EDIT+ARROWS SLICES  OPT LISTEN"
                               : is_synth(sel) && song.t[sel].type != 3 ? "EDIT PRESETS  L1/R1 PAGE  Y BACK  OPT LISTEN"

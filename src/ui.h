@@ -7,6 +7,9 @@
 enum { STRIP_HIDDEN, STRIP_THIN, STRIP_BIG };
 #define C_CAT(c) th_cur[TC_PAT + (c)]
 static const char *const cat_name[PC_N] = {"PATTERN", "SOUND", "FX", "MOD", "MIX"};
+enum { HUB_LOOK = PC_N, HUB_N };         // the cards of the hub: the five categories, then LOOK
+static int strip_focus, sec_cur;         // v3: the cursor on a strip: 1 the sections, 2 the pads; sec_cur the section under it
+static void pad_step(int d); static void cat_open(int c);
 static void draw_footer(const char *hint);
 static char ui_hint[256];                // this frame's whole footer hint
 
@@ -44,14 +47,14 @@ static void rframe(int x, int y, int w, int h, int r, int t, Col c, Col inside) 
     rrect(x, y, w, h, r, c); rrect(x + t, y + t, w - 2 * t, h - 2 * t, r > t ? r - t : 1, inside);
 }
 static int v2_fx(void); static int fx2_slot; static int scene_count(void); static int v2_mixer(void); static int mx_pg; static int v2_lfo(void); static int v2_auto(void); static void modmenu_open(void); static void ui_path(char *b, int n); static const char *snd_page_name(void); static void snd_page_count(char *b, int n);   // sound.h
-static int in_pad(void); static int ui_window(void);
+static int in_pad(void); static int ui_window(void); static int ui_over(void);
 static int scening_window(void) { return picking || exporting || naming || theming || iconing || browsing || tab == T_FX || tab == T_SEQ || tab == T_PAT; }   // a window over a HOME screen
 static int strip_on(void) { return ui_strip != STRIP_HIDDEN && in_pad() && !picking; }   // inside a pad: the pads under the path (L2)
 static void ui2_strip_big(void) {        // BIG (2026-11-14, mockup strip3): twelve tiles, number, name, engine, how far the clip has played
     for (int i = 0; i < NSLOT; i++) {
         int px = 12 + i * 84, pw = 78, y = 54, has = has_sound(i), on = song.t[i].on && engine_playing(); char b[8];
         Col c = has ? C_ENG(song.t[i].type) : C_LINE; if (song.t[i].mute) c = mix(c, C_BG, 170);
-        if (i == sel) rframe(px - 4, y - 4, pw + 8, 68, 7, 2, C_WHITE, C_BG);
+        if (i == sel) rframe(px - 4, y - 4, pw + 8, 68, 7, 2, strip_focus == 2 ? C_ORANGE : C_WHITE, C_BG);
         snprintf(b, sizeof b, "%02d", i + 1);
         if (!has) { rframe(px, y, pw, 60, 5, 1, C_LINE, C_BG); ftext(px + 8, y + 4, FT_S, C_LINE, b); continue; }
         rrect(px, y, pw, 60, 5, C_CELL); rect(px, y, 5, 60, c, 1);
@@ -61,6 +64,81 @@ static void ui2_strip_big(void) {        // BIG (2026-11-14, mockup strip3): twe
         if (on) { int len = cur_pat(i)->len, st = engine_step(i); if (len > 0 && st >= 0) rect(px + 12, y + 47, (pw - 20) * (st % len + 1) / len, 5, c, 1); }
     }
 }
+// The quick bar (v3, 2026-11-20, user: "as Ableton's top bar"): buttons for what a live set toggles. At the top (in the header
+// row) or at the bottom (instead of the footer hints), PROJECT > SETTINGS > QUICK BAR. The arrow past the edge of a page
+// reaches it, <> choose, EDIT presses, the arrow back or OPTION leaves. << and >> nudge the tempo while EDIT is held.
+enum { QB_MET, QB_VIB, QB_MON, QB_CAP, QB_SLOW, QB_FAST, QB_PADS, QB_KEYS, QB_N };
+static const char *const qb_name[QB_N] = {"MET", "VIB", "MON", "CAP", "<<", ">>", "PADS", "KEYS"};
+static int qb_focus, qb_cur;
+static int sec_on(void) { return ui_secs && in_pad() && !ui_over() && !picking; }
+static int strips_here(void) { return in_pad() && !ui_over() && !picking && !perform && (sec_on() || strip_on()); }
+static void capture(void); static void metro_save(void);
+static int qb_lit(int i) {
+    switch (i) { case QB_MET: return metro.snd; case QB_VIB: return metro.vib; case QB_MON: return hear_on;
+    case QB_SLOW: return tempo_mul < 0.9995f; case QB_FAST: return tempo_mul > 1.0005f; case QB_PADS: return perform == 1; case QB_KEYS: return perform == 2; }
+    return 0;
+}
+static int qbar_w(void) { int w = 0; for (int i = 0; i < QB_N; i++) w += ftext_w(FT_S, qb_name[i]) + 22 + 6; return w - 6; }
+static void qbar_draw(int x, int y, int h) {
+    for (int i = 0; i < QB_N; i++) {
+        int w = ftext_w(FT_S, qb_name[i]) + 22, lit = qb_lit(i), cur = qb_focus && i == qb_cur;
+        if (cur) rframe(x - 3, y - 3, w + 6, h + 6, 8, 2, C_WHITE, C_BG);
+        rrect(x, y, w, h, 6, lit ? C_ORANGE : C_SELBG);
+        ftext(x + 11, y + (h - fv2[FT_S].h) / 2, FT_S, lit ? C_BG : cur ? C_WHITE : C_DIM, qb_name[i]);
+        x += w + 6;
+    }
+}
+static void qb_press(int i) {
+    switch (i) {
+    case QB_MET: metro.snd = !metro.snd; metro_save(); toast(metro.snd ? "METRONOME SOUND ON" : "METRONOME SOUND OFF"); break;
+    case QB_VIB: metro.vib = !metro.vib; metro_save(); toast(metro.vib ? "METRONOME VIBRATION ON" : "METRONOME VIBRATION OFF"); break;
+    case QB_MON: hear_on = !hear_on; toast(hear_on ? "HEAR NOTES ON" : "HEAR NOTES OFF"); break;
+    case QB_CAP: capture(); break;
+    case QB_SLOW: case QB_FAST: if (midi_clk_in) toast("CLOCK IN: THE TEMPO COMES FROM MIDI"); else tempo_mul = i == QB_SLOW ? 0.94f : 1.06f; break;
+    case QB_PADS: case QB_KEYS: qb_focus = 0; set_tab(T_GRID); ui_cat = -1; perform = i == QB_PADS ? 1 : 2; toast(i == QB_PADS ? "PADS: SHIFT+OPTION LEAVES" : "KEYS: SHIFT+OPTION LEAVES"); break;
+    }
+}
+static int qbar_key(int k, int down) {    // the cursor on the bar: 1 = the key was the bar's
+    if (k == K_EDIT) { if (down) qb_press(qb_cur); else if (qb_cur == QB_SLOW || qb_cur == QB_FAST) tempo_mul = 1.f; return 1; }
+    if (k == K_PLAY || k == K_SHIFT || k == K_MENU || k == K_F1 || k == K_F2) return 0;
+    if (!down) return 1;
+    if (k == K_LEFT || k == K_RIGHT) { qb_cur = clampi(qb_cur + (k == K_RIGHT ? 1 : -1), 0, QB_N - 1); if (!held[K_EDIT]) tempo_mul = midi_clk_in ? tempo_mul : 1.f; }
+    else if (k == K_OPT || k == (ui_qbar ? K_UP : K_DOWN)) {   // back: down to the strips at the top, OPTION straight to the page
+        qb_focus = 0; if (!midi_clk_in) tempo_mul = 1.f;
+        if (k != K_OPT && !ui_qbar && strips_here()) { strip_focus = strip_on() ? 2 : 1; sec_cur = ui_cat >= 0 ? ui_cat : hub_cur; }
+    }
+    return 1;
+}
+static void icon_open(void); static void cat_step(int d); static void engine_pick(void);
+static int strip_key(int k, int down) {   // the cursor on a strip: <> the section or the pad (at once), ^ up a strip, v or OPTION down
+    if (k == K_PLAY || k == K_SHIFT || k == K_MENU || k == K_F1 || k == K_F2) return 0;
+    if (k == K_EDIT) {                   // LOOK: EDIT opens it; SOUND: EDIT held half a second switches the engine (v3, user)
+        static Uint32 at; if (down) { at = SDL_GetTicks() | 1; if (strip_focus == 1 && sec_cur == HUB_LOOK) { strip_focus = 0; icon_open(); } return 1; }
+        if (at && strip_focus == 1 && sec_cur == PC_SOUND && SDL_GetTicks() - at >= 500) { strip_focus = 0; engine_pick(); }
+        else if (at && strip_focus == 1 && sec_cur == PC_SOUND) toast("HOLD EDIT TO SWITCH THE ENGINE");
+        at = 0; return 1; }
+    if (!down) return 1;
+    if (k == K_LEFT || k == K_RIGHT) {
+        int d = k == K_RIGHT ? 1 : -1;
+        if (strip_focus == 2) pad_step(d);
+        else { sec_cur = clampi(sec_cur + d, 0, HUB_N - 1); if (sec_cur < PC_N) cat_open(sec_cur); }   // LOOK is a window: EDIT opens it
+    } else if (k == K_UP) {
+        if (strip_focus == 1 && strip_on()) strip_focus = 2;
+        else if (!ui_qbar) { strip_focus = 0; qb_focus = 1; }
+    } else if (k == K_DOWN || k == K_OPT) strip_focus = k == K_DOWN && strip_focus == 2 && sec_on() ? 1 : 0;
+    return 1;
+}
+static Col hub_col(int c);
+static void ui2_secs(int y) {            // v3: the pad's sections, the open one filled in its colour
+    enum { G = 6 }; int w = (W - 24 - G * (HUB_N - 1)) / HUB_N, open = ui_cat;
+    for (int c = 0; c < HUB_N; c++) {
+        int x = 12 + c * (w + G), on = c == open, cur = strip_focus == 1 && c == sec_cur; Col cc = hub_col(c);
+        const char *nm = c < PC_N ? cat_name[c] : "LOOK";
+        if (cur) rframe(x - 3, y - 3, w + 6, 34, 8, 2, C_WHITE, C_BG);
+        rrect(x, y, w, 28, 6, on ? cc : C_SELBG);
+        ftext(x + (w - ftext_w(FT_S, nm)) / 2, y + (28 - fv2[FT_S].h) / 2, FT_S, on ? C_BG : cur ? C_WHITE : mix(cc, C_DIM, 120), nm);
+    }
+}
 static void ui2_header(void) {           // NEON > PADS on the left, the transport and the tempo on the right
     int strip = strip_on(), hh = strip ? 48 : V2_HEAD;
     rect(0, 0, W, hh, C_CELL, 1);
@@ -68,15 +146,19 @@ static void ui2_header(void) {           // NEON > PADS on the left, the transpo
     else if (strip) for (int i = 0; i < NSLOT; i++) {   // 12 pads: the engine's colour, how far its clip has played, the open one framed
         int px = 22 + i * 82, pw = 72, on = song.t[i].on && engine_playing(), has = has_sound(i);
         Col c = has ? C_ENG(song.t[i].type) : C_LINE; if (song.t[i].mute) c = mix(c, C_BG, 170);
-        if (i == sel) rframe(px - 5, 50, pw + 10, 19, 5, 2, C_WHITE, C_CELL);
+        if (i == sel) rframe(px - 5, 50, pw + 10, 19, 5, 2, strip_focus == 2 ? C_ORANGE : C_WHITE, C_CELL);
         if (!has) { rframe(px, 53, pw, 13, 4, 1, C_LINE, C_BG); continue; }
         rect(px, 53, pw, 4, c, 1);
         if (on) { int len = cur_pat(i)->len, st = engine_step(i); if (len > 0 && st >= 0) rect(px, 61, pw * (st % len + 1) / len, 4, c, 1); }
         else if (pat_used(cur_pat(i))) rect(px, 61, pw / 4, 4, mix(c, C_BG, 150), 1);
     }
     char b[160]; ui_path(b, sizeof b);
-    int x = 20, y = (hh - fv2[FT_M].h) / 2;
-    for (const char *p = b; *p; ) {
+    int x = 20, y = (hh - fv2[FT_M].h) / 2; const char *p = b;
+    if (!ui_qbar) {                      // the bar at the top: right of the path, the path keeps its last parts that fit
+        int bw = qbar_w(), bx = W - 150 - bw, bh = hh - 16; qbar_draw(bx, (hh - bh) / 2, bh);
+        while (ftext_w(FT_MB, p) + 40 > bx - 20 && strstr(p, " > ")) p = strstr(p, " > ") + 3;
+    }
+    for (; *p; ) {
         const char *e = strstr(p, " > "); int n = e ? (int)(e - p) : (int)strlen(p); char w[64];
         snprintf(w, sizeof w, "%.*s", n, p);
         x += ftext(x, y, e ? FT_M : FT_MB, e ? C_DIM : C_WHITE, w);
@@ -120,14 +202,25 @@ static void ui2_footer(const char *h) {  // at most three key chips: the key in 
     rect(0, V2_FOOT, W, H - V2_FOOT, C_CELL, 1);
     int x = 18, y = V2_FOOT + 10, left = 3, lim = ui2_metro();
     if (msg_t && SDL_GetTicks() - msg_t < 1500) { int w = ftext_w(FT_MB, msg) + 24; rrect(x, y, w, 32, 6, C_ORANGE); ftext(x + 12, y + 4, FT_MB, C_BG, msg); return; }
+    if (ui_qbar) { qbar_draw(x, y, 32); return; }   // the quick bar at the bottom: no hints
+    if (qb_focus) h = "EDIT PRESS  <> BUTTON  OPTION BACK";
+    else if (strip_focus == 1) h = sec_cur == HUB_LOOK ? "EDIT OPEN  <> SECTION  OPTION BACK" : sec_cur == PC_SOUND ? "EDIT(HOLD) ENGINE  <> SECTION  OPTION BACK" : "<> SECTION  ^ UP  OPTION BACK";
+    else if (strip_focus == 2) h = "<> PAD  v SECTIONS  OPTION BACK";
     if (!hint_on) return;                // PROJECT > SYSTEM > FOOTER HINTS off: every key is in PROJECT > ABOUT
     while (*h && left--) {
         const char *e = strstr(h, "  "); int n = e ? (int)(e - h) : (int)strlen(h), k = (int)strcspn(h, " "); char b[64];
         if (k > n) k = n;
-        snprintf(b, sizeof b, "%.*s", k, h); int kw = ftext_w(FT_MB, b) + 24;
+        snprintf(b, sizeof b, "%.*s", k, h);
+        int gone = !strcmp(b, "X") || !strncmp(b, "X+", 2) || strstr(b, "+X") || strstr(b, "+Y") || !strncmp(b, "Y+", 2) || !strcmp(b, "MENU") || !strcmp(b, "R2");
+        if (gone) { left++; if (!e) break; h = e; while (*h == ' ') h++; continue; }   // v3: X, Y and MENU alone do nothing any more
+        const char *what = NULL;
+        if (!strcmp(b, "Y")) { snprintf(b, sizeof b, "MENU+^"); }   // Y's way back
+        else if (!strcmp(b, "OPT") || !strcmp(b, "OPTION")) what = "menu";
+        int kw = ftext_w(FT_MB, b) + 24;
         if (x + kw > lim) break;            // no hint under the metronome
         rrect(x, y, kw, 32, 6, C_SELBG); ftext(x + 12, y + 4, FT_MB, C_ORANGE, b); x += kw + 10;
         snprintf(b, sizeof b, "%.*s", n - k > 0 ? n - k - 1 : 0, h + k + (n > k));
+        if (what) snprintf(b, sizeof b, "%s", what);
         for (char *q = b; *q; q++) if (*q >= 'A' && *q <= 'Z') *q += 32;   // the mockups write what a key does in small letters
         x += ftext(x, y + 4, FT_M, mix(C_WHITE, C_DIM, 70), b) + 36;
         if (!e) break;
@@ -138,6 +231,7 @@ static void ui2_footer(const char *h) {  // at most three key chips: the key in 
 static int ui_window(void) {             // a window over the screens: no popup, the path names it
     return exporting || naming || browsing || slicing || rolling || chording || subbing || prbing || randing || picking || presetting || theming || iconing || ducking;
 }
+static int ui_over(void) { return ui_window() && !((rolling || chording) && !randing && !presetting && !naming && !exporting); }   // v3: a real popup; the roll and the chords are PATTERN's pages
 static void ui_path(char *b, int n) {    // NEON > INSTRUMENT > 06 GRAND > DEEP
     int l = snprintf(b, n, "%s", prj_cur[0] ? prj_cur : "UNTITLED");
 #define UI_ADD(...) (l += snprintf(b + l, l < n ? n - l : 0, " > " __VA_ARGS__))
@@ -190,10 +284,10 @@ static int ui_pair(int x, int y, const char *p, int n) {   // a key chip and wha
 // SHIFT used to show lives in PROJECT > ABOUT now (2026-11-14, user).
 static int jump_cat(int k) { return k == K_UP ? PC_PATTERN : k == K_RIGHT ? PC_SOUND : k == K_DOWN ? PC_FX : PC_MIX; }
 static int jump_hit = -1;                // the category the cross has just opened
-static int jump_ok(void) { return in_pad() && !ui_window() && !perform && !ui_simple; }
+static int jump_ok(void) { return in_pad() && !ui_over() && !perform && !ui_simple; }
 static void ui2_footer(const char *h);
 static void ui_cross(void) {
-    if (!held[K_SHIFT]) { jump_hit = -1; return; }
+    jump_hit = -1; return;               // v3: SHIFT+<> is the next pad now; the cross goes after the user's check
     if (!jump_ok() || !shift_t) return;
     if (jump_hit < 0 && (used[K_SHIFT] || ms_since(SDL_GetTicks(), shift_t) < 200)) return;
     enum { BW = 270, BH = 92, MX = 512, MY = 389 };
@@ -233,9 +327,9 @@ static void ui_empty(int x, int y, int w, int h, const char *what, const char *h
 }
 static int any_sound(void) { for (int s = 0; s < NSLOT; s++) if (has_sound(s)) return 1; return 0; }
 static void hold_ring(int el, Col c, const char *key, const char *what, const char *note);   // simple.h
-static void ui_quit_hold(void) {          // MENU held: how long until the app quits (3 s, main loop): the same ring as F1+F2, red
-    if (!menu_down) return; int d = (int)(SDL_GetTicks() - menu_down); if (d < 250) return;
-    hold_ring(d, C_RED, "MENU", "to quit BrickPad", "release MENU to stay");
+static void ui_quit_hold(void) {          // SHIFT+PLAY held: how long until the app quits (3 s, main loop): the same ring as F1+F2, red
+    if (!quit_down) return; int d = (int)(SDL_GetTicks() - quit_down); if (d < 250) return;
+    hold_ring(d, C_RED, "SHIFT+PLAY", "to quit BrickPad", "release to stay");
 }
 
 // The pad hub (UI v2): PATTERN SOUND FX MOD MIX of the selected pad. EDIT opens one, Y goes back up (category -> hub ->
@@ -261,12 +355,25 @@ static void pat_sync(void) {              // another pad on PATTERN's first page
     int m = cur_pat(sel)->mode;
     if (m) roll_open(); else if (rolling) roll_leave();
 }
-static void pad_step(int d) {             // F1/F2 inside a pad: the next pad, the same page
+static void pad_step(int d) {             // SHIFT+LEFT/RIGHT inside a pad (v3): the next pad, the same page
     act_select_step(d); seq_clamp(); pat_sync();
     if (tab == T_FX && fx_unit < NSLOT) fx_unit = sel;
     if (tab == T_MIX && mcol < NSLOT) mcol = sel;
 }
-enum { HUB_LOOK = PC_N, HUB_N };         // the cards of the hub: the five categories, then LOOK
+// v3 (2026-11-20): MENU+arrows are the screen map, as on M8. UP/DOWN: PROJECT - HOME - the pad; LEFT/RIGHT: the pad's
+// sections. F1/F2 page the sections inside a pad too; SHIFT+LEFT/RIGHT is the next pad.
+static void cat_step(int d) { int c = hubbing ? hub_cur : ui_cat; cat_open(((c < 0 ? 0 : c) + d + PC_N) % PC_N); }
+static void tab_project(void); static void pick_open(void);
+static void menu_nav(int k) {
+    if (tab == T_PRJ) { if (k == K_DOWN) tab_project(); return; }   // back where PROJECT was opened
+    if (in_pad()) {
+        if (k == K_UP) { set_tab(T_GRID); ui_cat = -1; }
+        else if (k == K_LEFT || k == K_RIGHT) cat_step(k == K_RIGHT ? 1 : -1);
+        return;
+    }
+    if (k == K_UP) tab_project();
+    else if (k == K_DOWN) { set_tab(T_GRID); if (has_sound(sel)) cat_open(hub_cur < PC_N ? hub_cur : PC_PATTERN); else pick_open(); }
+}
 static void icon(int id, int x, int y, Col c); static int slot_icon(int i); static Col pad_icol(int s, Col dflt);
 static void tree_key(int k); static void tree_tap(void); static void draw_tree(void);   // pages.h: the hub drawn as a tree
 static void hub_go(void) {               // EDIT on a card
@@ -410,7 +517,7 @@ static void draw_steps2(void) {
         step_value(p, cs, L_TRIG, nsl, nb); snprintf(b, sizeof b, "step %d \3 %s \3 vel %d", cs + 1, nb, p->vel[cs]); }
     else snprintf(b, sizeof b, "step %d", cs + 1);
     ftext(W - 28 - ftext_w(FT_M, b), 660, FT_M, C_WHITE, b);
-    draw_phones(850, 16);
+    if (ui_qbar) draw_phones(850, 16);   // v3: MON on the quick bar at the top
     draw_footer(lane == L_TRIG || lane == L_SLICE ? "EDIT NOTE  L1/R1 LANE  Y BACK  R2 HEAR  EDIT+ARROWS VALUE  OPT LISTEN  OPT+<> WALK AND LISTEN  X+<> PAD  OPT+EDIT DELETE  XX DOUBLE CLIP  SHIFT+X RANDOM"
                                                   : "EDIT+ARROWS VALUE  L1/R1 LANE  Y BACK  OPT LISTEN  X+<> PAD  OPT+EDIT DEFAULT  XX DOUBLE CLIP  SHIFT+X RANDOM");
 }

@@ -11,6 +11,7 @@
 _Static_assert(sizeof(Song) == 301612 + NSLOT * NPAT * 6 + NSLOT * NLFO * 8 + NSLOT * NPAT * NAUTO * (2 + NSTEP) + NSLOT * 16 + NSLOT * (1 + 32 + 16) + NSLOT * NPAT * NAUTO * NSTEP + NSLOT * NINS * 6 + NSLOT * 16 + NSLOT * 8 + NSLOT * 8 + NSLOT * 16 + NSUB * 20 + NJMP * 12, "Song changed size: bump STATE_MAGIC and convert the previous format in load_state");
 static int len_lo(void) { return 1; }      // MIN/MAX LENGTH are gone (2026-11-09): a clip may be 1..NSTEP steps
 static int len_hi(void) { return NSTEP; }
+#define GROW_MAX 64                      // v3: the cursor grows a clip a bar at a time up to here (LENGTH still goes to NSTEP)
 #include <SDL2/SDL.h>
 #include <stdarg.h>
 #include <stddef.h>
@@ -102,7 +103,7 @@ static int patmenu, pm_cur;              // PATTERN's own list (STEPS or ROLL, S
 static int recpage;                      // PATTERN > RECORD is on screen
 static int v2_unit(void), v2_mix(void), v2_mixer(void), v2_fx(void), v2_lfo(void), v2_auto(void), mixer2_tap(void); static void mixer2_arrow(int k);   // UI v2 step 5 pages (pages.h)
 static int v2_steps(void);               // the rebuilt STEPS page is the screen now (below, before seq_clamp)
-static Uint32 menu_down, flash[NSLOT];
+static Uint32 quit_down, flash[NSLOT];   // quit_down: SHIFT+PLAY held since then, 3 s quits (v3, 2026-11-20)
 static char msg[80]; static Uint32 msg_t;
 
 static void logmsg(const char *fmt, ...) {
@@ -1593,7 +1594,7 @@ static void par_str(int pad, int p, char *b, int n) {
 #include "params.h"
 static void par_adjust(int pad, int p, int d, int big) {
     Track *t = &song.t[pad];
-    if (p == P_SAMPLE) p = P_TYPE;        // the instrument switch: every arrow, round (RIGHT/UP next, LEFT/DOWN back)
+    if (p == P_SAMPLE) return;            // v3: the engine is switched on the section strip (EDIT held on SOUND), never by an arrow here
     if (p == P_TYPE) {
         int nt = ((t->type + d) % 4 + 4) % 4; if (nt == t->type) return;   // SAMPLER, GRAND, ACID, CLOUD
         edit_begin(); t->type = (int8_t)nt;
@@ -1732,8 +1733,14 @@ static void seq_move(int k) {
     if (v2_sound()) { sound_move(k); return; }
     if (v2_auto()) { auto2_move(k); return; }
     if (v2_steps()) {                    // STEPS (UI v2): two rows of eight, the pages follow the cursor
-        int len = cur_pat(sel)->len, d = k == K_RIGHT ? 1 : k == K_LEFT ? -1 : k == K_DOWN ? 8 : -8, n = cur_step() + d;
-        if (n >= 0 && n < len) set_step(n);
+        Pattern *p = cur_pat(sel); int len = p->len, d = k == K_RIGHT ? 1 : k == K_LEFT ? -1 : k == K_DOWN ? 8 : -8, n = cur_step() + d;
+        if (k == K_RIGHT && n == len && len < GROW_MAX) {   // v3 (user): past the last step the clip grows a whole bar
+            edit_begin(); p->len = (uint8_t)(len / 16 * 16 + 16 > GROW_MAX ? GROW_MAX : len / 16 * 16 + 16); toast_length("LENGTH", p->len);
+        }
+        int bar = (len - 1) / 16 * 16;   // leaving an empty last bar backwards: it goes again
+        if (len > 16 && cur_step() >= bar && n >= 0 && n < bar) { int used_ = 0; for (int i = bar; i < len; i++) used_ |= p->trig[i];
+            if (!used_) { edit_begin(); p->len = (uint8_t)bar; toast_length("LENGTH", p->len); } }
+        if (n >= 0 && n < p->len) set_step(n);
         return;
     }
     if (srow >= 1 && srow <= 2 && cur_pat(sel)->mode && !is_auto(lane)) {   // the mini roll: up to MODE, down to the parameters
@@ -1954,18 +1961,18 @@ static void pat_play(void) {             // PLAY in the window: the pattern unde
 }
 
 // ---------- PROJECT ----------
-enum { J_TEMPO, J_SWING, J_KEY, J_SCALE, J_LAUNCH, J_METRO, J_BEATS, J_COUNT, J_QUANT, J_MASTER, J_THEME, J_LIB, J_NEW, J_SNAP, J_PROJ, J_SAVE, J_SAVEAS, J_EXPORT, J_HINT, J_STRIP, J_VIEW, J_LOCK, J_NAV, J_DRAWER, J_MXFX, J_MXLINK, J_MPORT, J_MCLK, J_MNOTE, J_MCH, J_MCLKIN, J_TRIM, J_ABOUT, J_MSND, J_MVIB, J_MVOL, J_MTONE, J_MWHEN, J_MDIV, J_MVOFF, J_N };
+enum { J_TEMPO, J_SWING, J_KEY, J_SCALE, J_LAUNCH, J_METRO, J_BEATS, J_COUNT, J_QUANT, J_MASTER, J_THEME, J_LIB, J_NEW, J_SNAP, J_PROJ, J_SAVE, J_SAVEAS, J_EXPORT, J_HINT, J_STRIP, J_VIEW, J_LOCK, J_NAV, J_DRAWER, J_MXFX, J_MXLINK, J_MPORT, J_MCLK, J_MNOTE, J_MCH, J_MCLKIN, J_TRIM, J_ABOUT, J_MSND, J_MVIB, J_MVOL, J_MTONE, J_MWHEN, J_MDIV, J_MVOFF, J_QBAR, J_SECS, J_N };
 // The sections of PROJECT (2026-11-09): the left column chooses one, the middle shows its settings
 // 2026-11-14 (user): INTERFACE holds how BrickPad looks and moves, ABOUT every key of it by topic (the sheet SHIFT used to show)
 // 2026-11-20 (user: "too many tabs, sort them by what they are for"): eight sections by task, the metronome its own.
 enum { JS_FILE, JS_TEMPO, JS_METRO, JS_PLAY, JS_OUT, JS_MIDI, JS_SET, JS_HELP, JS_N };
-#define JS_ROWS 8                        // settings in a section, at most
+#define JS_ROWS 10                       // settings in a section, at most
 enum { AB_N = 11 }; static int ab_pg;   // ABOUT: its topics, the one shown
 static const char *const prj_sec_name[JS_N] = {"FILE", "TEMPO", "METRONOME", "PLAY / REC", "OUTPUT", "MIDI", "SETTINGS", "HELP"};
 static const int8_t prj_sec[JS_N][JS_ROWS] = {{J_PROJ, J_SAVE, J_SAVEAS, J_EXPORT, J_NEW, -1}, {J_TEMPO, J_SWING, J_BEATS, J_KEY, J_SCALE, J_SNAP, -1},
                                         {J_MSND, J_MVIB, J_MVOL, J_MTONE, J_MWHEN, J_MDIV, J_MVOFF, -1}, {J_LAUNCH, J_COUNT, J_QUANT, -1},
                                         {J_MASTER, J_TRIM, J_DRAWER, J_MXFX, J_MXLINK, -1}, {J_MPORT, J_MCLKIN, J_MCLK, J_MNOTE, J_MCH, -1},
-                                        {J_VIEW, J_STRIP, J_NAV, J_HINT, J_LOCK, J_THEME, J_LIB, -1}, {J_ABOUT, -1}};
+                                        {J_VIEW, J_STRIP, J_SECS, J_QBAR, J_NAV, J_HINT, J_LOCK, J_THEME, J_LIB, -1}, {J_ABOUT, -1}};
 static const char *const prj_help[J_N] = {"THE PROJECT'S SPEED. EDIT TAPS IT, L1/R1 HELD NUDGE WHILE PLAYING", "LATE EVEN 1/16 STEPS: A SHUFFLE",
     "THE TONIC EVERY PAD PLAYS IN (A PAD CAN HAVE ITS OWN)", "WHICH NOTES THE DEGREES, KEYS AND RANDOM USE",
     "A CLIP STARTS OR STOPS ON THIS GRID, AS IN ABLETON", "A CLICK ON EVERY BEAT WHILE PLAYING", "BEATS IN A BAR: LAUNCH AND RECORDING COUNT THEM",
@@ -1984,15 +1991,18 @@ static const char *const prj_help[J_N] = {"THE PROJECT'S SPEED. EDIT TAPS IT, L1
     "THE CLICK YOU HEAR. MENU+X ANYWHERE: OFF, SOUND, SOUND + VIBRATION, VIBRATION", "THE BRICK BUZZES ON THE BEAT: ALONE IT IS A SILENT METRONOME (THE BAR'S FIRST BUZZES LONGER)",
     "HOW LOUD THE CLICK IS (IT NEVER GOES INTO AN EXPORT OR A FREEZE)", "CLICK: A SHORT TICK. WOOD: A KNOCK. BEEP: A LONGER TONE",
     "ALWAYS WHILE PLAYING, OR ONLY WHILE RECORDING AND ITS COUNT-IN", "A CLICK ON EVERY BEAT, EVERY 1/8 OR EVERY 1/16 (THE BEAT IS LOUDER)",
-    "THE BUZZ EARLIER (-) OR LATER (+) IN MS, UNTIL IT LANDS WITH THE CLICK"};
-static const char *prj_name[J_N] = {"TEMPO", "SWING", "KEY", "SCALE", "CLIP LAUNCH", "METRONOME", "BEATS/BAR", "COUNT-IN", "REC QUANT", "MASTER VOL", "THEME", "CHECK LIBRARY", "NEW PROJECT", "SCALE SNAP", "PROJECT", "SAVE", "SAVE AS", "EXPORT WAV", "FOOTER HINTS", "PAD STRIP", "VIEW", "KID LOCK", "PAD MENU", "MIXER DRAWER", "STRIP EFFECTS", "SCENE MIX", "MIDI PORT", "CLOCK OUT", "MIDI NOTES", "MIDI CHANNEL", "CLOCK IN", "OUTPUT TRIM", "ALL THE KEYS", "SOUND", "VIBRATION", "VOLUME", "SOUND OF IT", "WHEN", "EVERY", "VIBRATION TIMING"};
-static int ui_strip = 1, ui_simple, ui_lock;   // PROJECT > INTERFACE: the pad strip (0 hidden, 1 thin, 2 big), the simple view, its kid lock (ui.cfg beside the binary)
+    "THE BUZZ EARLIER (-) OR LATER (+) IN MS, UNTIL IT LANDS WITH THE CLICK",
+    "WHERE THE QUICK BAR SITS: AT THE TOP OR THE BOTTOM. ARROW PAST THE EDGE OF A PAGE REACHES IT",
+    "THE PAD'S SECTIONS UNDER THE PADS: PATTERN SOUND FX MOD MIX LOOK"};
+static const char *prj_name[J_N] = {"TEMPO", "SWING", "KEY", "SCALE", "CLIP LAUNCH", "METRONOME", "BEATS/BAR", "COUNT-IN", "REC QUANT", "MASTER VOL", "THEME", "CHECK LIBRARY", "NEW PROJECT", "SCALE SNAP", "PROJECT", "SAVE", "SAVE AS", "EXPORT WAV", "FOOTER HINTS", "PAD STRIP", "VIEW", "KID LOCK", "PAD MENU", "MIXER DRAWER", "STRIP EFFECTS", "SCENE MIX", "MIDI PORT", "CLOCK OUT", "MIDI NOTES", "MIDI CHANNEL", "CLOCK IN", "OUTPUT TRIM", "ALL THE KEYS", "SOUND", "VIBRATION", "VOLUME", "SOUND OF IT", "WHEN", "EVERY", "VIBRATION TIMING", "QUICK BAR", "SECTION STRIP"};
+static int ui_strip = 1, ui_simple, ui_lock, ui_qbar, ui_secs = 1;   // v3: ui_qbar the quick bar 0 top 1 bottom, ui_secs the section strip on
+// PROJECT > INTERFACE: the pad strip (0 hidden, 1 thin, 2 big), the simple view, its kid lock (ui.cfg beside the binary)
 static int ui_tree, ui_drawer_left;          // the pad menu as a tree (A23) instead of the list; the mixer's drawer on the left
 static int ui_mxlink = 1;                    // PROJECT > MIXER > SCENE MIX (2026-11-15, user): one mix for the same sound in every scene
 static int ui_mxfx = 1;                      // PROJECT > MIXER > STRIP EFFECTS (2026-11-14, user): the strips show their effects and sends too
-static void ui_cfg_save(void) { char b[48]; int n = snprintf(b, sizeof b, "%d %d %d %d %d %d %d\n", ui_strip, ui_simple, ui_lock, ui_tree, ui_drawer_left, ui_mxfx, ui_mxlink); write_whole("ui.cfg", b, n); }
-static void ui_cfg_load(void) { FILE *f = fopen("ui.cfg", "r"); if (f) { int a = 1, b = 0, c = 0, d = 0, e = 0, g = 1, l = 1;
-    if (fscanf(f, "%d %d %d %d %d %d %d", &a, &b, &c, &d, &e, &g, &l) >= 1) { ui_strip = clampi(a, 0, 2); ui_simple = b != 0; ui_lock = c != 0; ui_tree = d != 0; ui_drawer_left = e != 0; ui_mxfx = g != 0; ui_mxlink = l != 0; } fclose(f); } }
+static void ui_cfg_save(void) { char b[48]; int n = snprintf(b, sizeof b, "%d %d %d %d %d %d %d %d %d\n", ui_strip, ui_simple, ui_lock, ui_tree, ui_drawer_left, ui_mxfx, ui_mxlink, ui_qbar, ui_secs); write_whole("ui.cfg", b, n); }
+static void ui_cfg_load(void) { FILE *f = fopen("ui.cfg", "r"); if (f) { int a = 1, b = 0, c = 0, d = 0, e = 0, g = 1, l = 1, q = 0, sc = 1;
+    if (fscanf(f, "%d %d %d %d %d %d %d %d %d", &a, &b, &c, &d, &e, &g, &l, &q, &sc) >= 1) { ui_qbar = q != 0; ui_secs = sc != 0; ui_strip = clampi(a, 0, 2); ui_simple = b != 0; ui_lock = c != 0; ui_tree = d != 0; ui_drawer_left = e != 0; ui_mxfx = g != 0; ui_mxlink = l != 0; } fclose(f); } }
 static int trim_db;                        // OUTPUT TRIM 0..24 dB (trim.cfg beside the binary: a device setting, not the project's)
 static void trim_apply(void) { out_trim = powf(10, trim_db / 20.f); }
 static void trim_save(void) { char b[16]; int n = snprintf(b, sizeof b, "%d\n", trim_db); write_whole("trim.cfg", b, n); trim_apply(); }
@@ -2369,6 +2379,8 @@ static void prj_edit_arrow(int k) {
     if (jcur == J_MNOTE) { midi_notes = !midi_notes; midi_cfg_save(); return; }
     if (jcur == J_MCH) { midi_ch = (midi_ch + d * (big ? 4 : 1) + 17) % 17; midi_cfg_save(); return; }
     if (jcur == J_STRIP) { ui_strip = (ui_strip + 1) % 3; ui_cfg_save(); return; }
+    if (jcur == J_QBAR) { ui_qbar = !ui_qbar; ui_cfg_save(); return; }
+    if (jcur == J_SECS) { ui_secs = !ui_secs; ui_cfg_save(); return; }
     if (jcur == J_VIEW) { ui_simple = !ui_simple; ui_cfg_save(); return; }
     if (jcur == J_LOCK) { ui_lock = !ui_lock; ui_cfg_save(); return; }
     if (jcur == J_HINT) { hint_set(!hint_on); return; }
@@ -2382,6 +2394,8 @@ static void prj_edit_arrow(int k) {
     case J_SNAP: act_snap_toggle(); break;
     case J_HINT: hint_set(!hint_on); break;
     case J_STRIP: ui_strip = (ui_strip + (d > 0 ? 1 : 2)) % 3; ui_cfg_save(); break;
+    case J_QBAR: ui_qbar = !ui_qbar; ui_cfg_save(); break;
+    case J_SECS: ui_secs = !ui_secs; ui_cfg_save(); break;
     case J_VIEW: ui_simple = !ui_simple; ui_cfg_save(); break;
     case J_LOCK: ui_lock = !ui_lock; ui_cfg_save(); break;
     case J_KEY: act_key_step(d * (big ? 7 : 1)); break;
@@ -2636,7 +2650,7 @@ static void prj_reset_row(int j) {       // one PROJECT setting back to its defa
     case J_SNAP: song.snap = dz->snap; break; case J_BEATS: song.beats = dz->beats; break;
     case J_LAUNCH: song.launch = dz->launch; break; case J_METRO: song.metro = dz->metro; break; case J_MASTER: song.master = dz->master; break;
     case J_COUNT: song.count_in = dz->count_in; break; case J_QUANT: song.rec_quant = dz->rec_quant; song.rec_len = dz->rec_len; break;
-    case J_VIEW: ui_simple = 0; break; case J_STRIP: ui_strip = 1; break; case J_NAV: ui_tree = 0; break; case J_LOCK: ui_lock = 0; break;
+    case J_VIEW: ui_simple = 0; break; case J_STRIP: ui_strip = 1; break; case J_QBAR: ui_qbar = 0; break; case J_SECS: ui_secs = 1; break; case J_NAV: ui_tree = 0; break; case J_LOCK: ui_lock = 0; break;
     case J_HINT: if (!hint_on) hint_set(1); break;
     case J_DRAWER: ui_drawer_left = 0; break; case J_MXFX: ui_mxfx = 1; break; case J_MXLINK: ui_mxlink = 1; break;
     case J_MPORT: midi_want[0] = 0; midi_close(); midi_cfg_save(); break; case J_MCLK: midi_clk_out = 0; midi_cfg_save(); break;
@@ -3113,6 +3127,15 @@ static void roll_key(int k, int down) {
     int last = (T - 1) / rl_snap * rl_snap;
     if (held[K_SHIFT]) { rl_t = clampi(rl_t + dx * RL_COLS * rl_snap, 0, last); rl_n = clampi(rl_n + 12 * dy, 0, 127);
         rl_v0 += dx * RL_COLS * rl_snap; rl_n0 += 12 * dy; roll_view(); return; }
+    if (dx > 0 && rl_t >= last && p->len < GROW_MAX) {   // v3: past the end the clip grows a bar (16 steps)
+        edit_begin(); p->len = (uint8_t)(p->len / 16 * 16 + 16 > GROW_MAX ? GROW_MAX : p->len / 16 * 16 + 16); toast_length("LENGTH", p->len);
+        T = roll_ticks(p); last = (T - 1) / rl_snap * rl_snap;
+    }
+    if (dx < 0 && p->len > 16) {         // back out of an empty last bar: it goes
+        int bt = roll_ticks(p) * ((p->len - 1) / 16 * 16) / p->len, any = 0;
+        for (int j = 0; j < NNOTE; j++) if (p->roll[j].len && p->roll[j].start + p->roll[j].len > bt) any = 1;
+        if (!any && rl_t >= bt && rl_t - rl_snap < bt) { edit_begin(); p->len = (uint8_t)((p->len - 1) / 16 * 16); toast_length("LENGTH", p->len); T = roll_ticks(p); last = (T - 1) / rl_snap * rl_snap; }
+    }
     rl_t = clampi(rl_t + dx * rl_snap, 0, last); rl_n = clampi(rl_n + dy, 0, 127); roll_view();
 }
 
@@ -3642,8 +3665,10 @@ static void icon(int id, int x, int y, Col c); static int slot_icon(int i); stat
 static float mx_show[NSLOT + 3]; static void mx_meters(void); static void meter_bar(int x, int y, int w, int h, float v);
 #include "pages.h"
 #include "simple.h"
-static void key_event(int k, int down) {
+#include "ctx.h"
+static void key_event1(int k, int down) {
     if (k < 0) return;
+    if ((k == K_X || k == K_Y) && !sim_on && !perform && !naming && !chording && !ui_simple) return;   // v3: X and Y are gone (OPTION's menu)
     if (k == K_PLAY && !down) play_release();
     input_key(k, down);
     if (k == K_OPT && !down && opt_gate) { opt_gate = 0; engine_release(); }
@@ -3654,6 +3679,12 @@ static void key_event(int k, int down) {
     if (k == K_EDIT && !down && gb_heard) { gb_heard = 0; engine_release_key(GB_TAG); }
     if (k == K_EDIT && down) paint_anchor = -1;
     input_combo(k, down);
+    if (k == K_SHIFT && !down) quit_down = 0;
+    if (k == K_PLAY && !down) quit_down = 0;
+    if (k == K_PLAY && held[K_SHIFT]) { if (down) { quit_down = SDL_GetTicks() | 1; used[K_SHIFT] = 1; } return; }   // v3: SHIFT+PLAY held 3 s quits
+    if (x_latch_key(k, down)) return;
+    if (ctxing) { ctx_key(k, down); return; }
+    if (held[K_MENU] && k == K_UP && y_back_here()) { if (down) { used[K_MENU] = 1; sim_key(K_Y, -1); } return; }   // v3: Y's way back
     if (down && k != K_X) x_tap_t = 0;   // X, another key, X is not a double tap
     seq_clamp();
     if (learning && learn_key(k, down)) return;
@@ -3677,24 +3708,23 @@ static void key_event(int k, int down) {
     if (k == K_F1 || k == K_F2) {        // tabs on release, so that F1+F2 does not move first
         int other = k == K_F1 ? K_F2 : K_F1;
         if (down && held[other]) { used[K_F1] = used[K_F2] = 1; tab_project(); adv_hold = SDL_GetTicks() | 1; }   // a tap: PROJECT; held 3 s: the simple view
-        else if (!down && !used[k]) { if (perform == 1 && held[K_SHIFT]) act_scene(k == K_F2 ? 1 : -1); else if (in_pad() && !perform) pad_step(k == K_F2 ? 1 : -1); else { ui_cat = -1; tab_step(k == K_F2 ? 1 : -1); } }
+        else if (!down && !used[k]) { if (perform == 1 && held[K_SHIFT]) act_scene(k == K_F2 ? 1 : -1); else if (in_pad() && !perform) cat_step(k == K_F2 ? 1 : -1); else { ui_cat = -1; tab_step(k == K_F2 ? 1 : -1); } }
         return;
     }
-    if (k == K_PLAY && held[K_SHIFT]) return;   // SHIFT = BTN_MODE: Knulli kills the app on a double press of this combo, leave it unbound
     if (k == K_PLAY && down && held[K_MENU]) {   // once: rec, twice: capture
-        menu_down = 0;
         if (combo_t) { combo_t = 0; capture(); }
         else { combo_t = SDL_GetTicks() | 1; combo_pos = engine_posf(); }
         return;
     }
-    if (k == K_X && down && held[K_MENU]) { menu_down = 0; metro_cycle(); return; }   // 2026-11-20 (user): the metronome from anywhere
     if (k == K_MENU) {
         if (down) browse_hold = 0;
-        if (down) menu_down = held[K_SHIFT] ? 0 : SDL_GetTicks();   // SHIFT+MENU is the system's d-pad toggle, not ours
-        else { if (menu_down && SDL_GetTicks() - menu_down < 600) { int pm = perform; set_tab(T_GRID); perform = (pm + 1) % 3; }   // GRID > PADS > KEYS
-            menu_down = 0; }
-        return;
+        return;                          // v3: MENU alone does nothing; PADS and KEYS are on the quick bar
     }
+    if (held[K_MENU] && k <= K_RIGHT) { if (down) { used[K_MENU] = 1; qb_focus = strip_focus = 0; if (!ui_over()) menu_nav(k); } return; }   // v3: the screen map
+    if (strip_focus && !strips_here()) strip_focus = 0;
+    if (qb_focus && qbar_key(k, down)) return;
+    if (strip_focus && strip_key(k, down)) return;
+    if (perform && k == K_OPT && held[K_SHIFT]) { if (down) { used[K_SHIFT] = 1; perform = 0; toast("PLAY MODE OFF"); } return; }   // v3: the way out of PADS and KEYS
     if (perform) {                       // PADS: 12 slots; KEYS: selected slot on 12 scale degrees
         int i; for (i = 0; i < NSLOT && cell_key[i] != k; i++);
         if (k == K_PLAY && down) play_key();
@@ -3750,7 +3780,7 @@ static void key_event(int k, int down) {
     if (theming) { theme_key(k, down); return; }
     if (iconing) { icon_key(k, down); return; }
     if (ducking) { duck_key(k, down); return; }
-    if (jump_ok() && down && held[K_SHIFT] && k <= K_RIGHT) { used[K_SHIFT] = 1; jump_hit = jump_cat(k); cat_open(jump_hit); return; }   // the jump (L3)
+    if (jump_ok() && held[K_SHIFT] && k <= K_RIGHT) { if (down) { used[K_SHIFT] = 1; if (k == K_LEFT || k == K_RIGHT) pad_step(k == K_RIGHT ? 1 : -1); } return; }   // v3: SHIFT+<> the next pad
     if (hubbing) { hub_key(k, down); return; }
     if (patmenu) { patmenu_key(k, down); return; }
     if (modmenu) { modmenu_key(k, down); return; }
@@ -3797,12 +3827,7 @@ static void key_event(int k, int down) {
     if (held[K_SHIFT] && k == K_EDIT) { used[K_EDIT] = 1; copy_paste(1); return; }
     if (held[K_SHIFT] && k == K_X && tab == T_SEQ) { used[K_X] = 1; rnd_open(); return; }   // RANDOM
     if ((k == K_EDIT && held[K_OPT]) || (k == K_OPT && held[K_EDIT])) { used[K_EDIT] = used[K_OPT] = 1; delete_action(); return; }
-    if (k == K_OPT) {                    // sound on press, not on release
-        if (tab == T_SEQ && srow >= 1 && srow <= 2 && !cur_pat(sel)->mode) step_listen(cur_step());
-        else if (tab == T_GRID) { listen(sel); rec_hit(sel, -1, NOTE_NONE); }
-        else { engine_trig_held(sel, 1.f, tab == T_SEQ && srow >= 3 ? song.lnote[sel] : 0, -1); opt_gate = 1; flash[sel] = SDL_GetTicks(); rec_hit(sel, -1, NOTE_NONE); }   // parameters etc.: only while held (the panel: its listening note)
-        return;
-    }
+    if (k == K_OPT) return;              // v3: OPTION alone opens the menu on release (key_event); LISTEN is an item there
     if (arrow && held[K_SHIFT] && tab == T_SEQ && srow >= 1 && srow <= 2 && !cur_pat(sel)->mode && (k == K_LEFT || k == K_RIGHT)) {   // a page at once
         spage = clampi(spage + (k == K_RIGHT ? 1 : -1), 0, last_page());
         return;
@@ -3862,6 +3887,27 @@ static void key_event(int k, int down) {
     if (tab == T_SEQ && (k == K_L1 || k == K_R1)) {   // the pad's own lanes, round (PATTERN: without A1-A4, they are MOD's)
         int l[L_N], n = lane_list(l), i = 0; if (ui_cat == PC_PATTERN) n -= NAUTO; while (i < n && l[i] != lane) i++;
         lane = l[((i < n ? i : 0) + (k == K_R1 ? 1 : n - 1)) % n]; return; }
+}
+// v3: an arrow towards the quick bar that moved nothing on the page (its edge) puts the cursor on the bar. The cursors of
+// every page are compared before and after; windows keep their keys.
+static int qb_edge(int k, int down) {
+    if (!down || qb_focus || strip_focus || x_latch || v_latch || ctxing || !(k == K_UP && (!ui_qbar || strips_here()) || k == K_DOWN && ui_qbar) || perform || ui_over() || chording || ui_simple || learning || exporting || asking || cfm || naming) return 0;
+    for (int i = K_OPT; i < K_N; i++) if (held[i] && i != k) return 0;
+    return 1;
+}
+static void cur_snap(int *a) {
+    int v[] = {tab, sel, srow, scol, lane, gb_cur, mrow, mcol, mx_r, mx_pg, hub_cur, hubbing, tr_lv, tr_pg, tr_0, fx2_slot, fx_unit, fx_page,
+               lcol, lrow, jcur, jcol, jsec, pm_cur, mm_cur, mix2_cur, dk_row, dk_col, dk_pt, sc_cur, scn_cur, ui_cat, patmenu, modmenu,
+               recpage, scening, spage, sl_r, sl_c, ted_row, ted_col, pcur, ab_pg, cl_deep, rolling, rl_t, rl_n, rl_v0, rl_n0, sp_cur, sp_pg[0], sp_pg[1], sp_pg[2], sp_pg[3], fx2_cur, mx_fz};
+    memcpy(a, v, sizeof v); a[63] = (int)(sizeof v / sizeof *v);
+}
+static void key_event(int k, int down) {
+    if (k == K_OPT && !down && !used[K_OPT] && ctx_ok()) { key_event1(k, down); ctx_open(); return; }   // v3: OPTION tapped alone
+    if (!qb_edge(k, down)) { key_event1(k, down); return; }
+    int a[64], b[64]; cur_snap(a); key_event1(k, down); cur_snap(b);
+    if (memcmp(a, b, a[63] * sizeof *a)) return;
+    if (k == K_UP && strips_here()) { strip_focus = sec_on() ? 1 : 2; sec_cur = ui_cat >= 0 ? ui_cat : hub_cur; }   // the page's top: the strips first
+    else qb_focus = 1;
 }
 
 // ---------- screens ----------
@@ -4040,7 +4086,7 @@ static void draw_roll(void) {
     if (i >= 0) { const Note *n = &p->roll[i]; snprintf(b, sizeof b, "%s \3 len %d/128 \3 vel %d \3 chance %d%s", nm, n->len, n->vel, n->prob, n->flags & NF_ACC ? " \3 acc" : ""); }
     else snprintf(b, sizeof b, "%s", nm);
     ftext(W - 28 - ftext_w(FT_S, b), 694, FT_S, C_WHITE, b);
-    draw_phones(850, 16);
+    if (ui_qbar) draw_phones(850, 16);   // v3: MON on the quick bar at the top
     draw_footer(i >= 0 ? "EDIT DELETE  EDIT+ARROWS LENGTH/PITCH  Y BACK  R2 HEAR  X+ARROWS VEL/CHANCE  L1/R1 GRID  OPT+<> NEXT  SHIFT+X RANDOM"
                        : "EDIT NOTE  L1/R1 GRID  Y BACK  OPT+<> NEXT  X+EDIT CHORD  SHIFT+ARROWS PAGE  SHIFT+X RANDOM");
 }
@@ -4151,6 +4197,8 @@ static void prj_value(int i, char *b) {
     case J_SNAP: snprintf(b, 32, song.snap ? "ON" : "OFF"); break;
     case J_HINT: snprintf(b, 32, hint_on ? "ON" : "OFF"); break;
     case J_STRIP: snprintf(b, 32, "%s", ui_strip == 2 ? "BIG" : ui_strip ? "THIN" : "HIDDEN"); break;
+    case J_QBAR: snprintf(b, 32, ui_qbar ? "BOTTOM" : "TOP"); break;
+    case J_SECS: snprintf(b, 32, ui_secs ? "ON" : "HIDDEN"); break;
     case J_VIEW: snprintf(b, 32, ui_simple ? "SIMPLE" : "ADVANCED"); break;
     case J_LOCK: snprintf(b, 32, ui_lock ? "ON" : "OFF"); break;
     case J_NAV: snprintf(b, 32, ui_tree ? "TREE" : "LIST"); break;
@@ -4187,7 +4235,7 @@ static double draw_build_ms, draw_present_ms;   // summed over the frames since 
 static Uint32 last_input;                // the last button or d-pad event
 static int frame_rate(Uint32 now) {      // frames per second for what is happening now
     int keys = 0; for (int k = 0; k < K_N; k++) keys |= held[k];
-    if (keys || (last_input && ms_since(now, last_input) < 500) || browse_hold || menu_down) return 30;   // UI v2: never over 30
+    if (keys || (last_input && ms_since(now, last_input) < 500) || browse_hold || quit_down) return 30;   // UI v2: never over 30
     if (engine_playing() || engine_counting() >= 0 || engine_voices() > 0 || (msg_t && now - msg_t < 1600)) return 30;
     for (int i = 0; i < NSLOT; i++) if (flash[i] && now - flash[i] < 200) return 30;
     return 10;
@@ -4243,7 +4291,9 @@ static const char *const pick_name[4] = {"SAMPLER", "GRAND", "ACID", "CLOUD"};
 static const char *const pick_what[4] = {"SAMPLES, LOOPS, SLICES", "TWO OSCILLATORS, LADDER FILTER", "303-STYLE BASS, ACCENT, SLIDE", "GRAINS FROM A SAMPLE"};
 static int pk_cur; static SDL_Texture *pk_tex[4];
 enum { PK_SY = 250, PK_SH = 694 - 250 };   // what a miniature shows: the panel below the steps
-static void pick_open(void) { picking = 1; pk_cur = 0; }   // UI v2 (A03): a list, no panel pictures (they took 12 MB)
+static int pk_change;                    // v3: the picker switches the engine of a pad that has one
+static void pick_open(void) { picking = 1; pk_cur = 0; pk_change = 0; }
+static void engine_pick(void) { pick_open(); pk_change = 1; pk_cur = song.t[sel].type & 3; }   // UI v2 (A03): a list, no panel pictures (they took 12 MB)
 static void pick_close(void) {
     picking = 0;
     for (int i = 0; i < 4; i++) if (pk_tex[i]) { SDL_DestroyTexture(pk_tex[i]); pk_tex[i] = NULL; }   // 3 MB each
@@ -4251,12 +4301,22 @@ static void pick_close(void) {
 static void hub_open(void);
 static void pick_take(int i) {
     pick_close();
+    if (pk_change) {                      // v3: another engine for this pad; each engine keeps its own settings
+        pk_change = 0; if (i == (song.t[sel].type & 3)) { cat_open(PC_SOUND); return; }
+        Track *t = &song.t[sel]; edit_begin(); t->type = (int8_t)i;
+        if (i == 1 && t->sp[SP_MARK] != SP_INIT) synth_defaults(t->sp);
+        if (i == 2 && t->ap[AP_MARK] != AP_INIT) acid_defaults(t->ap);
+        if (i == 3 && t->cp[CP_MARK] != CP_INIT) cl_defaults(t->cp);
+        cat_open(PC_SOUND); sound_sync();
+        if ((i == 0 || i == 3) && !engine_sample(sel)) browse_slot();   // a sampler or grains without a sample: the browser
+        return;
+    }
     if (i == 0) { browse_slot(); return; }
     Track *t = &song.t[sel]; edit_begin(); t->type = (int8_t)i;
     if (i == 1 && t->sp[SP_MARK] != SP_INIT) synth_defaults(t->sp);
     if (i == 2 && t->ap[AP_MARK] != AP_INIT) acid_defaults(t->ap);
     if (i == 3 && t->cp[CP_MARK] != CP_INIT) cl_defaults(t->cp);
-    cl_deep = 0; hub_open(); hub_cur = PC_PATTERN;   // UI v2: the pad is open now, its list first (PATTERN: the notes come next)
+    cl_deep = 0; cat_open(PC_SOUND); sound_sync();   // v3: the engine first, so its sound comes next
     if (i == 3) browse_slot();           // grains need a sample: the browser first
     else toast(i == 1 ? "GRAND IS ON THE PAD: OPTION PLAYS IT" : "ACID IS ON THE PAD: OPTION PLAYS IT");
 }
@@ -4269,7 +4329,7 @@ static void pick_key(int k, int down) {
 // The empty pad (UI v2, mockup A03): "what goes here?", the four engines as cards in their colours.
 static void draw_pick(void) {
     static const char *const what[4] = {"sample or loop", "synth: chords, pads", "bass line 303", "granular textures"};
-    const char *q = "Empty pad. What goes here?";
+    const char *q = pk_change ? "Another engine for this pad?" : "Empty pad. What goes here?";
     ftext(W / 2 - ftext_w(FT_LB, q) / 2, 84, FT_LB, C_WHITE, q);
     enum { CX = 122, CWD = 778, CHT = 126, DY = 142, Y0 = 130 };
     for (int i = 0; i < 4; i++) {
@@ -4723,10 +4783,11 @@ static void draw(void) {
     if (ui_simple && !exporting && !naming && !asking) { draw_simple(); goto shown; }
     v2_normalize();
     // PAD STRIP BIG: the page is drawn into a texture, then set a little smaller under the big strip; the footer stays 1:1
-    static SDL_Texture *body; int big = ui_strip == STRIP_BIG && strip_on();
+    static SDL_Texture *body; int big = ui_strip == STRIP_BIG && strip_on(), secs = sec_on();   // v3: the sections push the page down the same way
+    int bigs = big; big = big || secs;
     if (big && !body) { body = SDL_CreateTexture(R, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_TARGET, W, H); if (!body) logmsg("strip: no render target, BIG drawn as THIN"); }
     if (big && body && !SDL_SetRenderTarget(R, body)) { SDL_SetRenderDrawColor(R, C_BG.r, C_BG.g, C_BG.b, 255); SDL_RenderClear(R); } else big = 0;
-    if (big) { ui_strip = STRIP_THIN; ui2_header(); ui_strip = STRIP_BIG; } else ui2_header();   // the page's own header: cut off below
+    if (bigs) { ui_strip = STRIP_THIN; ui2_header(); ui_strip = STRIP_BIG; } else ui2_header();   // the page's own header: cut off below
     if (exporting) draw_export2();
     else if (naming) draw_naming2();
     else if (browsing) { if (bmode) draw_prjbrowse2(); else draw_browse2(); }
@@ -4759,12 +4820,15 @@ static void draw(void) {
     default: draw_hub(); break;       // not reached: v2_normalize gives every state a screen
     }
     if (big) { SDL_SetRenderTarget(R, NULL);
-        enum { SY = 69, DY = 122 }; int sh = V2_FOOT - SY, dh = V2_FOOT - DY, dw = W * dh / sh;
+        int SY = strip_on() ? 69 : V2_HEAD, sy = bigs ? 122 : SY + 4, DY = secs ? sy + 36 : sy, sh = V2_FOOT - SY, dh = V2_FOOT - DY, dw = W * dh / sh;
+        rect(0, SY, W, DY - SY, C_BG, 1);
         SDL_Rect s1 = {0, SY, W, sh}, d1 = {(W - dw) / 2, DY, dw, dh}, s2 = {0, V2_FOOT, W, H - V2_FOOT};
         SDL_RenderCopy(R, body, &s1, &d1); SDL_RenderCopy(R, body, &s2, &s2);
-        ui2_header(); }
+        if (bigs) ui2_header(); else { int st = ui_strip; if (strip_on()) ui_strip = STRIP_THIN; ui2_header(); ui_strip = st; }
+        if (secs) ui2_secs(sy); }
     ui_popup(); ui_cross();
     if (asking) draw_ask2();
+    if (ctxing) draw_ctx();
     if (cfm) draw_cfm2();
 shown:;
     ui_quit_hold(); adv_hold_draw();
@@ -4930,8 +4994,8 @@ int main(int argc, char **argv) {
         }
         Uint32 now = SDL_GetTicks();
         for (int d = 0; d < 4; d++)   // arrow auto-repeat (not in PERFORM: arrows are pads there)
-            if (!perform && input_repeat(d, now)) key_event(K_UP + d, 1);
-        if (menu_down && now - menu_down > 3000) run = 0;
+            if (!perform && input_repeat(d, now)) key_event1(K_UP + d, 1);   // a repeat never leaves the page for the quick bar
+        if (quit_down && now - quit_down > 3000) run = 0;
         combo_tick(now);
         browse_tick(now);
         metro.rec = (int8_t)(rec || rec_wait); scene_poll(); launch_tick(); rec_tick(); export_tick(); frz_tick(); midi_poll(now);
