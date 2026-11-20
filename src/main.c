@@ -1191,6 +1191,7 @@ static int cur_step(void) { return spage * 32 + (srow - 1) * 16 + scol; }
 static void set_step(int st) { spage = st / 32; srow = 1 + (st % 32) / 16; scol = st % 16; }
 static int last_page(void) { int l = song.t[sel].pat[song.t[sel].cur].len; return (l > 0 ? l - 1 : 0) / 32; }
 static int last_page(void);
+static int chording; static void chord_open(void); static void chord_key(int k, int down); static void draw_chords(void); static void chord_leave(void);   // CHORDS (chords.h)
 static int rolling; static const int rl_d32[6];   // the piano roll (below, before key_event)
 static int picking; static void pick_open(void); static void pick_close(void); static void draw_pick(void); static void pick_key(int k, int down);
 static int randing; static int presetting; static void preset_open(void); static void preset_close(int keep);
@@ -2678,7 +2679,7 @@ static void step_listen(int st) {        // only this step's slice, with its not
     flash[sel] = SDL_GetTicks();
     rec_hit(sel, sl, note);
 }
-static void set_tab(int t) { leave_screen(); if (browsing) browse_close(); slicing = 0; roll_leave(); randing = 0; learning = 0; learn_lfo = -1; pt_pick = 0; if (picking) pick_close(); if (presetting) preset_close(1); theming = 0; iconing = 0; ducking = 0; perform = 0; tab = t; hubbing = 0; patmenu = 0; modmenu = 0; scening = 0; recpage = 0; if (t == T_GRID || t == T_PRJ) ui_cat = -1; }
+static void set_tab(int t) { leave_screen(); if (browsing) browse_close(); slicing = 0; roll_leave(); randing = 0; learning = 0; learn_lfo = -1; pt_pick = 0; if (picking) pick_close(); if (presetting) preset_close(1); theming = 0; iconing = 0; ducking = 0; if (chording) chord_leave(); perform = 0; tab = t; hubbing = 0; patmenu = 0; modmenu = 0; scening = 0; recpage = 0; if (t == T_GRID || t == T_PRJ) ui_cat = -1; }
 // KEYS: the pad gets its own tonality, the project's stays. Coming back to the project's value means following the project again.
 static void pad_tonality(int k) {
     Track *t = &song.t[sel]; char b[48];
@@ -2921,7 +2922,7 @@ static void roll_leave(void) {           // out of the editor: no note it starte
 static void rnd_open(void);
 static void roll_key(int k, int down) {
     Pattern *p = cur_pat(sel); int T = roll_ticks(p);
-    if (k == K_L2 && !held[K_SHIFT]) { if (down) { roll_mode(); if (!cur_pat(sel)->mode) { roll_leave(); srow = 1; } } return; }   // 2026-11-19 (user): back to STEPS on the fly
+    if (k == K_L2 && !held[K_SHIFT]) { if (down) { roll_leave(); chord_open(); } return; }   // 2026-11-19 (user): round STEPS > ROLL > CHORDS
     if (k == K_R2) { if (down && !held[K_SHIFT]) { hear_on = !hear_on; toast(hear_on ? "HEAR NOTES ON" : "HEAR NOTES OFF"); } return; }
     if (!down) {
         if (k == K_EDIT) {
@@ -3625,6 +3626,7 @@ static void key_event(int k, int down) {
     }
     if (slicing) { slice_key(k, down); return; }
     if (randing) { rnd_key(k, down); return; }   // before ROLL: RANDOM opens over a roll pattern too
+    if (chording) { chord_key(k, down); return; }
     if (rolling) { roll_key(k, down); return; }
     if (picking) { pick_key(k, down); return; }
     if (presetting) { preset_key(k, down); return; }
@@ -3926,6 +3928,7 @@ static void draw_roll(void) {
     draw_footer(i >= 0 ? "EDIT DELETE  EDIT+ARROWS LENGTH/PITCH  Y BACK  L2 STEPS  R2 HEAR  X+ARROWS VEL/CHANCE  L1/R1 GRID  OPT+<> NEXT  SHIFT+X RANDOM"
                        : "EDIT NOTE  L1/R1 GRID  Y BACK  OPT+<> NEXT  X+EDIT CHORD  SHIFT+ARROWS PAGE  SHIFT+X RANDOM");
 }
+#include "chords.h"
 static void slice_card(int x, int y, int w, const char *lb, const char *v, Col ec, int on) {   // UI v2: a name and a value, as on the SOUND cards
     if (on) rframe(x, y, w, 96, 8, 4, ec, C_CELL); else rrect(x, y, w, 96, 8, C_CELL);
     ftext(x + 20, y + 12, FT_M, C_DIM, lb); ftext(x + w - 20 - ftext_w(FT_XB, v), y + 10, FT_XB, C_WHITE, v);
@@ -4607,6 +4610,7 @@ static void draw(void) {
     else if (browsing) { if (bmode) draw_prjbrowse2(); else draw_browse2(); }
     else if (slicing) draw_slice();
     else if (randing) draw_rnd2();
+    else if (chording) draw_chords();
     else if (rolling) draw_roll();
     else if (picking) draw_pick();
     else if (presetting) draw_presets2();

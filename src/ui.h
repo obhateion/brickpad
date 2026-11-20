@@ -94,7 +94,7 @@ static void ui2_header(void) {           // NEON > PADS on the left, the transpo
     if (browsing || presetting || slicing || ducking || tab == T_PRJ) return;
     if (scening) { snprintf(t, sizeof t, "%d/%d", scn_cur + 1, scene_count()); ftext(W - 20 - ftext_w(FT_MB, t), y, FT_MB, th_cur[TC_SMP], t); return; }   // A11, A12: nothing on the right
     if (v2_sound()) { snd_page_count(t, sizeof t); ftext(W - 20 - ftext_w(FT_MB, t), y, FT_MB, C_ENG(song.t[sel].type), t); return; }   // A08: 1/5
-    if (v2_steps() || rolling) { snprintf(t, sizeof t, "P%02d", song.t[sel].cur + 1); ftext(W - 20 - ftext_w(FT_MB, t), y, FT_MB, C_ORANGE, t); return; }   // A05: the pattern
+    if (v2_steps() || rolling || chording) { snprintf(t, sizeof t, "P%02d", song.t[sel].cur + 1); ftext(W - 20 - ftext_w(FT_MB, t), y, FT_MB, C_ORANGE, t); return; }   // A05: the pattern
     if (in_pad() || tab != T_GRID || scening) return;   // the mockups: the tempo on HOME only (A01)
     snprintf(t, sizeof t, "%c %d", engine_playing() ? 1 : 2, (int)(song.tempo * tempo_mul + 0.5f));
     ftext(W - 20 - ftext_w(FT_MB, t), y, FT_MB, engine_playing() ? th_cur[TC_SMP] : C_DIM, t);
@@ -133,7 +133,7 @@ static void ui2_footer(const char *h) {  // at most three key chips: the key in 
 }
 
 static int ui_window(void) {             // a window over the screens: no popup, the path names it
-    return exporting || naming || browsing || slicing || rolling || randing || picking || presetting || theming || iconing || ducking;
+    return exporting || naming || browsing || slicing || rolling || chording || randing || picking || presetting || theming || iconing || ducking;
 }
 static void ui_path(char *b, int n) {    // NEON > INSTRUMENT > 06 GRAND > DEEP
     int l = snprintf(b, n, "%s", prj_cur[0] ? prj_cur : "UNTITLED");
@@ -146,7 +146,7 @@ static void ui_path(char *b, int n) {    // NEON > INSTRUMENT > 06 GRAND > DEEP
     if (pad >= 0) UI_ADD("%02d %.14s", pad + 1, slot_name(pad) ? slot_name(pad) : "EMPTY");
     else if (tab == T_FX) UI_ADD("%s", fx_unit == NSLOT ? "RETURN A" : fx_unit == NSLOT + 1 ? "RETURN B" : "MASTER");
     if (exporting) UI_ADD("EXPORT"); else if (naming) UI_ADD("NAME"); else if (browsing) UI_ADD("%s", bmode ? "FILES" : "SOUND > FILE");
-    else if (slicing) UI_ADD("SOUND > SLICES > EDIT"); else if (rolling) UI_ADD("PATTERN > ROLL"); else if (randing) UI_ADD("RANDOM");
+    else if (slicing) UI_ADD("SOUND > SLICES > EDIT"); else if (chording) UI_ADD("PATTERN > CHORDS"); else if (rolling) UI_ADD("PATTERN > ROLL"); else if (randing) UI_ADD("RANDOM");
     else if (picking) UI_ADD("ENGINE"); else if (presetting) UI_ADD("SOUND > PRESETS"); else if (theming) UI_ADD("THEME");
     else if (iconing) UI_ADD("LOOK"); else if (ducking) UI_ADD("MOD > DUCK");
     else if (recpage) UI_ADD("PATTERN > RECORD");
