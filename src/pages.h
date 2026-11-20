@@ -237,7 +237,12 @@ static void draw_auto2(void) {
                 int vx = IX + pt * IW / len, vy = BOT - al->v[pt] * (BOT - TOP) / 100; line(px, py, vx, py, 3, ec); line(vx, py, vx, vy, 3, ec); px = vx; py = vy; }
             float v = auto_value(al, bc, len, sf); int qx = IX + xx, qy = BOT - (int)(v * (BOT - TOP) / 100);
             if (px >= 0) line(px, py, qx, qy, 3, ec); px = qx; py = qy; }
-        for (int i = 0; i < len; i++) if (al->v[i] != AUTO_EMPTY) disc2(IX + i * IW / len, BOT - al->v[i] * (BOT - TOP) / 100, i == st ? 9 : 7, i == st ? C_WHITE : mix(C_WHITE, ec, 60)); }
+        // 2026-11-20 (user: "the same everywhere curves are edited", as DUCK): a dot half way along each stretch for its bend
+        // (orange when bent), hollow points, the one under the cursor filled
+        for (int i = 0; i < len; i++) if (al->v[i] != AUTO_EMPTY) { int j = i + 1; while (j < len && al->v[j] == AUTO_EMPTY) j++; if (j >= len) break;
+            double mf = (i + j) / 2.0; disc2(IX + (int)(mf * IW / len), BOT - (int)(auto_value(al, bc, len, mf) * (BOT - TOP) / 100), held[K_X] && i == aut_point_back() ? 7 : 5, bc[i] ? C_ORANGE : C_GREY); }
+        for (int i = 0; i < len; i++) if (al->v[i] != AUTO_EMPTY) { int cx = IX + i * IW / len, cy = BOT - al->v[i] * (BOT - TOP) / 100;
+            if (i == st) disc2(cx, cy, 12, C_WHITE); else { disc2(cx, cy, 10, ec); disc2(cx, cy, 6, C_CELL); } } }
     else { const char *m = al->target ? "no points: EDIT puts one on the step" : "no target: UP, then EDIT+<> picks one"; ftext(512 - ftext_w(FT_M, m) / 2, PY + PH / 2 - 12, FT_M, C_DIM, m); }
     char b[48]; int back = aut_point_back();
     if (back >= 0) snprintf(b, sizeof b, "bend %+d%%", bc[back]); else snprintf(b, sizeof b, "bend -");
