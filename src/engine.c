@@ -708,6 +708,10 @@ static const SubStep *sub_lookup(int s, int q, int st) {   // the step's SUB cel
     for (int i = 0; i < NSUB; i++) { const SubStep *e = &song.sub[i]; if (e->slot == s + 1 && e->pat == q && e->step == st) return e; }
     return NULL;
 }
+static const JumpStep *jmp_lookup(int s, int q, int st) {   // the step's PRB mode, NULL: NOTE
+    for (int i = 0; i < NJMP; i++) { const JumpStep *e = &song.jmp[i]; if (e->slot == s + 1 && e->pat == q && e->step == st) return e; }
+    return NULL;
+}
 static void tick(uint32_t i, double off, double f32) {
     uint32_t bar = (song.beats > 0 ? song.beats : 4) * 8; (void)bar;
     uint32_t q = (uint32_t)engine_quant32(); int edge = !q || i % q == 0;   // a launch quantum starts here
@@ -751,19 +755,32 @@ static void tick(uint32_t i, double off, double f32) {
         int st = (rel / d) % (p->len ? p->len : 16);
         play_step[s] = st;
         if (skip_step[s] == st + 1) { skip_step[s] = 0; continue; }
-        if (!p->trig[st] || rand() % 100 >= p->prob[st]) continue;
+        if (!p->trig[st]) continue;
+        const JumpStep *js = jmp_lookup(s, t->cur, st); int pm = js ? js->mode : PM_NOTE, hit = rand() % 100 < p->prob[st];
+        if (pm == PM_NOTE && !hit) continue;   // NOTE: the chance plays the step; SUB and JUMP: the step always plays
         double o = off;
         if (d <= 2 && i % 4 == 2) o += song.swing / 100.0 * f32;
         int r = p->rep[st] < 1 ? 1 : p->rep[st];
+        if (pm == PM_SUB && !hit) r = 1;   // SUB: the chance splits the step into its cells
         float semis = p->note[st] == NOTE_NONE ? 0 : note_semis_of(s, smp[s], (uint8_t)p->note[st]);   // a step holds a MIDI pitch (2026-11-09)
         int sl = nslices_of(s, smp[s]) ? (p->slice[st] < 0 ? st : p->slice[st]) : -1;
+        if (pm == PM_JUMP) {              // JUMP: another step's note or slice, or a note / slice of its own; the rhythm stays
+            int v = -1, ns = nslices_of(s, smp[s]), L = p->len ? p->len : 16;
+            if (js->form == 0) { for (int k = 0; k < 3; k++) if (js->a[k] >= 0 && rand() % 100 < js->ch[k]) { v = js->a[k]; break; } }
+            else if (hit) { int lo = js->a[0] < js->a[1] ? js->a[0] : js->a[1], hi = js->a[0] < js->a[1] ? js->a[1] : js->a[0]; v = lo + rand() % (hi - lo + 1); }
+            if (v >= 0) {
+                if (js->kind == 0) { int q = v % L; semis = p->note[q] == NOTE_NONE ? 0 : note_semis_of(s, smp[s], (uint8_t)p->note[q]); if (ns && t->type != 2) sl = p->slice[q] < 0 ? q : p->slice[q]; }
+                else if (ns) sl = v % ns;
+                else { int m = 60 - (int)note_semis_of(s, smp[s], 60) + (int)semis_of(s, smp[s], v); semis = note_semis_of(s, smp[s], (uint8_t)(m < 0 ? 0 : m > 127 ? 127 : m)); }   // a degree of the pad's scale (deg_midi with the engine's sample)
+            }
+        }
         synth_gate = (int)(d * f32 / r * 0.9);   // a synth note lasts most of its step
         if (t->type == 2) {                 // ACID: the step's ACCENT and SLIDE; a sliding step is held into the next one
             acid_flags = p->slice[st] >= 0 ? p->slice[st] & 3 : 0;
             if (acid_flags & ACID_SLIDE) synth_gate = (int)(d * f32 * 1.15);
             sl = -1;
         }
-        const SubStep *ss = sub_lookup(s, t->cur, st); int nsl = nslices_of(s, smp[s]);
+        const SubStep *ss = r > 1 || pm != PM_SUB ? sub_lookup(s, t->cur, st) : NULL; int nsl = nslices_of(s, smp[s]);
         for (int k = 0; k < r; k++) {     // SUB: each cell on or off, its own velocity and note (2026-11-20)
             if (ss && k < NCELL && (ss->off >> k & 1)) continue;
             int v = ss && k < NCELL && ss->vel[k] > 0 ? ss->vel[k] : p->vel[st], dn = ss && k < NCELL ? ss->note[k] : 0;

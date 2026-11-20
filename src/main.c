@@ -8,7 +8,7 @@
 #include "cloud.h"
 #include "fx.h"
 #include "presets.h"
-_Static_assert(sizeof(Song) == 301612 + NSLOT * NPAT * 6 + NSLOT * NLFO * 8 + NSLOT * NPAT * NAUTO * (2 + NSTEP) + NSLOT * 16 + NSLOT * (1 + 32 + 16) + NSLOT * NPAT * NAUTO * NSTEP + NSLOT * NINS * 6 + NSLOT * 16 + NSLOT * 8 + NSLOT * 8 + NSLOT * 16 + NSUB * 20, "Song changed size: bump STATE_MAGIC and convert the previous format in load_state");
+_Static_assert(sizeof(Song) == 301612 + NSLOT * NPAT * 6 + NSLOT * NLFO * 8 + NSLOT * NPAT * NAUTO * (2 + NSTEP) + NSLOT * 16 + NSLOT * (1 + 32 + 16) + NSLOT * NPAT * NAUTO * NSTEP + NSLOT * NINS * 6 + NSLOT * 16 + NSLOT * 8 + NSLOT * 8 + NSLOT * 16 + NSUB * 20 + NJMP * 12, "Song changed size: bump STATE_MAGIC and convert the previous format in load_state");
 static int len_lo(void) { return 1; }      // MIN/MAX LENGTH are gone (2026-11-09): a clip may be 1..NSTEP steps
 static int len_hi(void) { return NSTEP; }
 #include <SDL2/SDL.h>
@@ -361,8 +361,19 @@ static SubStep *sub_get(int s, int q, int st) {   // its entry, a new one if non
     return NULL;
 }
 static void sub_tidy(SubStep *e) { if (!e->off) { for (int k = 0; k < NCELL; k++) if (e->vel[k] || e->note[k]) return; e->slot = 0; } }   // all as the step: no entry
-static void sub_drop(int s, int q, int st) { SubStep *e = sub_find(s, q, st); if (e) e->slot = 0; }
-static void sub_drop_pat(int s, int q) { for (int i = 0; i < NSUB; i++) if (song.sub[i].slot == s + 1 && song.sub[i].pat == q) song.sub[i].slot = 0; }
+static JumpStep *jmp_find(int s, int q, int st) {   // the step's PRB mode entry (NULL: NOTE)
+    for (int i = 0; i < NJMP; i++) { JumpStep *e = &song.jmp[i]; if (e->slot == s + 1 && e->pat == q && e->step == st) return e; }
+    return NULL;
+}
+static JumpStep *jmp_get(int s, int q, int st) {
+    JumpStep *e = jmp_find(s, q, st); if (e) return e;
+    for (int i = 0; i < NJMP; i++) if (!song.jmp[i].slot) { e = &song.jmp[i]; memset(e, 0, sizeof *e); e->slot = (uint8_t)(s + 1); e->pat = (uint8_t)q; e->step = (uint8_t)st;
+        e->a[0] = e->a[1] = e->a[2] = -1; e->ch[0] = 50; e->ch[1] = e->ch[2] = 25; return e; }
+    return NULL;
+}
+static void sub_drop(int s, int q, int st) { SubStep *e = sub_find(s, q, st); if (e) e->slot = 0; JumpStep *j = jmp_find(s, q, st); if (j) j->slot = 0; }   // the cells and the PRB mode
+static void sub_drop_pat(int s, int q) { for (int i = 0; i < NSUB; i++) if (song.sub[i].slot == s + 1 && song.sub[i].pat == q) song.sub[i].slot = 0;
+    for (int i = 0; i < NJMP; i++) if (song.jmp[i].slot == s + 1 && song.jmp[i].pat == q) song.jmp[i].slot = 0; }
 static void sub_drop_p(const Pattern *p, int st) { int s, q; if (pat_owner(p, &s, &q)) { if (st < 0) sub_drop_pat(s, q); else sub_drop(s, q, st); } }   // st -1: the whole pattern
 static int pat_used(const Pattern *p) {
     if (p->mode) { for (int i = 0; i < NNOTE; i++) if (p->roll[i].len) return 1; return 0; }
@@ -431,7 +442,8 @@ static void song_sanitize(void) {
         for (int c = 0; c < NCABLE; c++) if (song.gp[s][c][0] >= JO_N || song.gp[s][c][1] >= JI_N) song.gp[s][c][0] = song.gp[s][c][1] = 0;
         KEEP(song.lnote[s], -48, 48);
         for (int k = 0; k < AX_N; k++) { int lo, hi; ax_range(k, &lo, &hi); KEEP(song.ax[s][k], lo, hi); }
-        if (s == 0) { mix_sanitize(&song.mix); for (int i = 0; i < NSUB; i++) { SubStep *e = &song.sub[i]; if (e->slot > NSLOT || e->pat >= NPAT || e->step >= NSTEP) e->slot = 0; } }
+        if (s == 0) { mix_sanitize(&song.mix); for (int i = 0; i < NSUB; i++) { SubStep *e = &song.sub[i]; if (e->slot > NSLOT || e->pat >= NPAT || e->step >= NSTEP) e->slot = 0; }
+            for (int i = 0; i < NJMP; i++) { JumpStep *j = &song.jmp[i]; if (j->slot > NSLOT || j->pat >= NPAT || j->step >= NSTEP || j->mode >= PM_N || j->kind > 1 || j->form > 1) j->slot = 0; } }
         for (int q = 0; q < NPAT; q++) { uint8_t *fo = song.fol[s][q]; if (fo[FO_AFTER] > 64) fo[FO_AFTER] = 64; if (fo[FO_A] >= FA_N) fo[FO_A] = 0; if (fo[FO_B] >= FA_N) fo[FO_B] = 0;
             if (fo[FO_BCH] > 100) fo[FO_BCH] = 100; if (fo[FO_JUMP] >= NPAT) fo[FO_JUMP] = 0; fo[FO_SPARE] = 0; }
         for (int j = 0; j < NLFO; j++) { Lfo *L = &song.lfo[s][j];
@@ -480,10 +492,10 @@ static void load_from(const char *path) {   // state.bin or a project file
     FILE *f = fopen(path, "rb");
     static Song tmp; memset(&tmp, 0, sizeof tmp);    // zero: fields a shorter file does not have
     size_t got = f ? fread(&tmp, 1, sizeof tmp, f) : 0;
-    file_song_sz = tmp.magic == 0xB2B2000F ? offsetof(Song, sub) : sizeof(Song);   // where a project file's scenes begin
+    file_song_sz = tmp.magic == 0xB2B2000F ? offsetof(Song, sub) : tmp.magic == 0xB2B20010 ? offsetof(Song, jmp) : sizeof(Song);   // where a project file's scenes begin
     {   // a file from before the mixer (6) or before follow actions (7): the same layout, shorter; the rest starts at zero
-        size_t end = tmp.magic == 0xB2B20006 ? offsetof(Song, mix) : tmp.magic == 0xB2B20007 ? offsetof(Song, fol) : tmp.magic == 0xB2B20008 ? offsetof(Song, lfo) : tmp.magic == 0xB2B20009 ? offsetof(Song, aut) : tmp.magic == 0xB2B2000A ? offsetof(Song, ax) : tmp.magic == 0xB2B2000B ? offsetof(Song, lnote) : tmp.magic == 0xB2B2000C ? offsetof(Song, acurve) : tmp.magic == 0xB2B2000D ? offsetof(Song, acurve) : tmp.magic == 0xB2B2000E ? offsetof(Song, pname) : tmp.magic == 0xB2B2000F ? offsetof(Song, sub) : 0;   // 0E: before pad names, SAMPLER DEEP and the DUCK window (only appended)
-        if (end && got >= offsetof(Song, t) && (got <= end || tmp.magic == 0xB2B2000F)) {   // (a 0F project file goes on with its scenes after the song) notes_deg = tmp.magic <= 0xB2B2000C;   // files before 0x0D have degrees in their steps
+        size_t end = tmp.magic == 0xB2B20006 ? offsetof(Song, mix) : tmp.magic == 0xB2B20007 ? offsetof(Song, fol) : tmp.magic == 0xB2B20008 ? offsetof(Song, lfo) : tmp.magic == 0xB2B20009 ? offsetof(Song, aut) : tmp.magic == 0xB2B2000A ? offsetof(Song, ax) : tmp.magic == 0xB2B2000B ? offsetof(Song, lnote) : tmp.magic == 0xB2B2000C ? offsetof(Song, acurve) : tmp.magic == 0xB2B2000D ? offsetof(Song, acurve) : tmp.magic == 0xB2B2000E ? offsetof(Song, pname) : tmp.magic == 0xB2B2000F ? offsetof(Song, sub) : tmp.magic == 0xB2B20010 ? offsetof(Song, jmp) : 0;   // 0E: before pad names, SAMPLER DEEP and the DUCK window (only appended)
+        if (end && got >= offsetof(Song, t) && (got <= end || tmp.magic >= 0xB2B2000F)) {   // (a 0F project file goes on with its scenes after the song) notes_deg = tmp.magic <= 0xB2B2000C;   // files before 0x0D have degrees in their steps
             memset((char *)&tmp + end, 0, sizeof tmp - end);
             if (tmp.magic < 0xB2B2000E)     // (a 0E file has its bends; it only lacks what was appended, and stays where it is)
             for (int s2 = 0; s2 < NSLOT; s2++) for (int q = 0; q < NPAT; q++) for (int a = 0; a < NAUTO; a++)   // bends: JUMP lanes hold, GLIDE lanes are straight
@@ -1211,6 +1223,7 @@ static int cur_step(void) { return spage * 32 + (srow - 1) * 16 + scol; }
 static void set_step(int st) { spage = st / 32; srow = 1 + (st % 32) / 16; scol = st % 16; }
 static int last_page(void) { int l = song.t[sel].pat[song.t[sel].cur].len; return (l > 0 ? l - 1 : 0) / 32; }
 static int last_page(void);
+static int prbing; static void prb_open(int st); static void prb_key(int k, int down); static void draw_prb(void);   // PRB modes (prb.h)
 static int subbing; static void sub_open(int st); static void sub_key(int k, int down); static void draw_sub(void);   // SUB cells (sub.h)
 static int chording; static void chord_open(void); static void chord_key(int k, int down); static void draw_chords(void); static void chord_leave(void);   // CHORDS (chords.h)
 static int rolling; static const int rl_d32[6];   // the piano roll (below, before key_event)
@@ -1873,6 +1886,7 @@ static void seq_tap(void) {
         }
         if (edit_put) { edit_put = 0; return; }   // put when EDIT went down: the release leaves it on
         if (p->trig[st] && lane == L_REP) { sub_open(st); return; }   // SUB: EDIT dives into the step's cells
+        if (p->trig[st] && lane == L_PROB) { prb_open(st); return; }  // PRB: its mode NOTE / SUB / JUMP
         if (p->trig[st] && lane != L_TRIG) { char b[32]; snprintf(b, sizeof b, "ERASE ON THE %s LANE", lane_nm(L_TRIG)); toast(b); return; }   // 2026-11-12, user
         if (!p->trig[st]) step_seed(p, st);
         p->trig[st] = !p->trig[st];
@@ -2106,7 +2120,7 @@ static void scenes_read(const char *path, long off) {   // after the playing sce
     for (; n < h.n; n++) {
         if (!(scn[n] = calloc(1, sizeof(Song)))) break;
         if (n == h.cur) continue;
-        if (fseek(f, off + (long)sizeof h + (long)n * one, SEEK_SET) || fread(scn[n], (size_t)one, 1, f) != 1 || (scn[n]->magic == 0xB2B2000F && one < (long)sizeof(Song) && (scn[n]->magic = STATE_MAGIC, 0)) || scn[n]->magic != song.magic) {
+        if (fseek(f, off + (long)sizeof h + (long)n * one, SEEK_SET) || fread(scn[n], (size_t)one, 1, f) != 1 || (scn[n]->magic >= 0xB2B2000F && scn[n]->magic < STATE_MAGIC && one < (long)sizeof(Song) && (scn[n]->magic = STATE_MAGIC, 0)) || scn[n]->magic != song.magic) {
             if (n > h.cur) { free(scn[n]); scn[n] = NULL; } else { h.cur = n; n++; }   // a cut file: the scenes before it stay
             break; }
         scene_carry(scn[n], &song); scn_rest(scn[n]);
@@ -2703,7 +2717,7 @@ static void step_listen(int st) {        // only this step's slice, with its not
     flash[sel] = SDL_GetTicks();
     rec_hit(sel, sl, note);
 }
-static void set_tab(int t) { leave_screen(); if (browsing) browse_close(); slicing = 0; roll_leave(); randing = 0; learning = 0; learn_lfo = -1; pt_pick = 0; if (picking) pick_close(); if (presetting) preset_close(1); theming = 0; iconing = 0; ducking = 0; subbing = 0; if (chording) chord_leave(); perform = 0; tab = t; hubbing = 0; patmenu = 0; modmenu = 0; scening = 0; recpage = 0; if (t == T_GRID || t == T_PRJ) ui_cat = -1; }
+static void set_tab(int t) { leave_screen(); if (browsing) browse_close(); slicing = 0; roll_leave(); randing = 0; learning = 0; learn_lfo = -1; pt_pick = 0; if (picking) pick_close(); if (presetting) preset_close(1); theming = 0; iconing = 0; ducking = 0; subbing = 0; prbing = 0; if (chording) chord_leave(); perform = 0; tab = t; hubbing = 0; patmenu = 0; modmenu = 0; scening = 0; recpage = 0; if (t == T_GRID || t == T_PRJ) ui_cat = -1; }
 // KEYS: the pad gets its own tonality, the project's stays. Coming back to the project's value means following the project again.
 static void pad_tonality(int k) {
     Track *t = &song.t[sel]; char b[48];
@@ -3654,6 +3668,7 @@ static void key_event(int k, int down) {
     }
     if (slicing) { slice_key(k, down); return; }
     if (randing) { rnd_key(k, down); return; }   // before ROLL: RANDOM opens over a roll pattern too
+    if (prbing) { prb_key(k, down); return; }
     if (subbing) { sub_key(k, down); return; }
     if (chording) { chord_key(k, down); return; }
     if (rolling) { roll_key(k, down); return; }
@@ -3958,6 +3973,7 @@ static void draw_roll(void) {
 }
 #include "chords.h"
 #include "sub.h"
+#include "prb.h"
 static void slice_card(int x, int y, int w, const char *lb, const char *v, Col ec, int on) {   // UI v2: a name and a value, as on the SOUND cards
     if (on) rframe(x, y, w, 96, 8, 4, ec, C_CELL); else rrect(x, y, w, 96, 8, C_CELL);
     ftext(x + 20, y + 12, FT_M, C_DIM, lb); ftext(x + w - 20 - ftext_w(FT_XB, v), y + 10, FT_XB, C_WHITE, v);
@@ -4639,6 +4655,7 @@ static void draw(void) {
     else if (browsing) { if (bmode) draw_prjbrowse2(); else draw_browse2(); }
     else if (slicing) draw_slice();
     else if (randing) draw_rnd2();
+    else if (prbing) draw_prb();
     else if (subbing) draw_sub();
     else if (chording) draw_chords();
     else if (rolling) draw_roll();

@@ -7,6 +7,7 @@
 - PATTERN list: a RANDOM card. EQUALIZER insert (shelves, a bell, low and high cut).
 - MIDI (PROJECT > MIDI): the USB port (remembered by name, found again when plugged in), CLOCK OUT (Start, Stop, 24 a
   beat), notes in as KEYS (the open pad at their pitch) or PADS (36-47 = pads 1-12) with velocity, a channel or ALL.
+- PRB modes: EDIT on a step of the PRB lane: NOTE (the chance plays it), SUB (the chance splits it into its cells), JUMP (another step's note or slice, or a scale tone / slice of its own, from a LIST of 3 with their chances or a RANGE). Format 0x11, older files load whole.
 - SUB (was REP): a step of up to 8 cells; EDIT on a step of the SUB lane opens them: EDIT on/off, EDIT+^v velocity, EDIT+<> note (slice), L1/R1 how many, OPT hears, OPT+EDIT as the step. Format 0x10: older files load whole, scenes too.
 - CHORDS (the clip's MODE on PATTERN's first card: EDIT + arrows go round STEPS > PIANO ROLL > CHORDS, EDIT opens it; L2 no longer switches): 7 chords of the pad's key and scale as triads, sevenths, sus4; the clip in slots of LENGTH (X); EDIT puts the chord and goes on, OPT hears, R2 inversion, EDIT+^v octave, OPT+EDIT clears a slot. The chords are roll notes.
 - DUCK curve as up to 8 points (as ShaperBox): <> chooses, EDIT+^v level, EDIT+<> move, X a new point, X+^v the bend to the next, OPT+EDIT deletes; the pad's sound drawn under the curve as it passes. Presets stay tables until a point is touched.

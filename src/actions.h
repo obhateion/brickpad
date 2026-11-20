@@ -49,12 +49,14 @@ static void act_strip_paste(int s) {
     if (!have_strip) return;
     push_undo(); uint8_t solo = song.mix.pad[s].solo; song.mix.pad[s] = strip_board; memcpy(song.mbx[s], strip_mbx, sizeof strip_mbx); song.mix.pad[s].solo = solo; song.t[s].vol = strip_vol; song.t[s].pan = strip_pan; toast("STRIP PASTED");
 }
-static SubStep clip_sub[NSTEP]; static int clip_nsub;   // the copied pattern's SUB cells
+static SubStep clip_sub[NSTEP]; static int clip_nsub; static JumpStep clip_jmp[NSTEP]; static int clip_njmp;   // the copied pattern's SUB cells and PRB modes
 static void act_pattern_copy(const Pattern *p) { clip_board = *p; have_clip = 1; clip_nsub = 0; int s, q;
     if (pat_owner(p, &s, &q)) for (int i = 0; i < NSUB && clip_nsub < NSTEP; i++) if (song.sub[i].slot == s + 1 && song.sub[i].pat == q) clip_sub[clip_nsub++] = song.sub[i];
+    clip_njmp = 0; if (pat_owner(p, &s, &q)) for (int i = 0; i < NJMP && clip_njmp < NSTEP; i++) if (song.jmp[i].slot == s + 1 && song.jmp[i].pat == q) clip_jmp[clip_njmp++] = song.jmp[i];
     toast("PATTERN COPIED"); }
 static void act_pattern_paste(Pattern *p) { if (have_clip) { push_undo(); *p = clip_board; int s, q;
-    if (pat_owner(p, &s, &q)) { sub_drop_pat(s, q); for (int i = 0; i < clip_nsub; i++) { SubStep *e = sub_get(s, q, clip_sub[i].step); if (e) { *e = clip_sub[i]; e->slot = (uint8_t)(s + 1); e->pat = (uint8_t)q; } } }
+    if (pat_owner(p, &s, &q)) { sub_drop_pat(s, q); for (int i = 0; i < clip_nsub; i++) { SubStep *e = sub_get(s, q, clip_sub[i].step); if (e) { *e = clip_sub[i]; e->slot = (uint8_t)(s + 1); e->pat = (uint8_t)q; } }
+        for (int i = 0; i < clip_njmp; i++) { JumpStep *j = jmp_get(s, q, clip_jmp[i].step); if (j) { *j = clip_jmp[i]; j->slot = (uint8_t)(s + 1); j->pat = (uint8_t)q; } } }
     toast("PATTERN PASTED"); } }
 
 // clips and steps
