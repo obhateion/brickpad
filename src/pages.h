@@ -23,13 +23,15 @@ static void fx2_sync(void) {             // the 1.2 cursor follows the card: fx_
     fcol = fx2_slot;
     if (fx2_cur < 0) { frow = 0; fx_sub = 0; } else { frow = c[fx2_cur].row; fx_sub = c[fx2_cur].side; }
 }
-static void fx2_move(int k) {            // two columns of cards; UP from the first row: the picture
+static int fx2_cols(int n);
+static void fx2_move(int k) {            // knobs in two rows; UP from the first row: the picture
     FxCard c[16]; int n = fx2_cards(c);
     if (fx2_cur < 0) { if (k == K_DOWN && n) fx2_cur = 0; }
-    else if (k == K_LEFT) { if (fx2_cur & 1) fx2_cur--; }
-    else if (k == K_RIGHT) { if (!(fx2_cur & 1) && fx2_cur + 1 < n) fx2_cur++; }
-    else if (k == K_DOWN) { if (fx2_cur + 2 < n) fx2_cur += 2; else if ((fx2_cur | 1) + 1 < n) fx2_cur = n - 1; }
-    else fx2_cur = fx2_cur >= 2 ? fx2_cur - 2 : -1;
+    else { int cl = fx2_cols(n);          // v3: rows of knobs
+        if (k == K_LEFT) { if (fx2_cur % cl) fx2_cur--; }
+        else if (k == K_RIGHT) { if (fx2_cur % cl < cl - 1 && fx2_cur + 1 < n) fx2_cur++; }
+        else if (k == K_DOWN) { if (fx2_cur + cl < n) fx2_cur += cl; else if (fx2_cur / cl < (n - 1) / cl) fx2_cur = n - 1; }
+        else fx2_cur = fx2_cur >= cl ? fx2_cur - cl : -1; }
     fx2_sync();
 }
 static void fx2_picture(int x, int y, int w, int h, const FxSlot *f, Col c) {   // what the effect does, as one line
@@ -98,11 +100,11 @@ static void fx2_card(int x, int y, int w, int h, const FxSlot *f, FxCard cd, int
         else if (f->type == FX_RING) { lb = "SOURCE"; if (val) snprintf(v, sizeof v, "PAD %d", val); else snprintf(v, sizeof v, "OSC"); }   // 2026-11-19 (user): any sound modulates
         else { lb = mb_name[cd.row - 2]; snprintf(v, sizeof v, "%+d DB", val); } }
     else { int k = cd.row - 2; lb = fx_pname[f->type][k]; val = f->p[k]; fx_range(f->type, k, &lo, &hi); fx_pstr(f->type, k, val, v); }
-    if (on) { rframe(x, y, w, h, 8, 4, ec, C_CELL); ui_focus(lb, v, hi - lo > 3 ? (val - lo) * 100 / (hi - lo) : -1, ec); } else rrect(x, y, w, h, 8, C_CELL);
-    ftext(x + 20, y + 12, FT_M, C_DIM, lb);
-    ftext(x + w - 20 - ftext_w(FT_XB, v), y + 10, FT_XB, C_WHITE, v);
-    if (hi - lo > 3) { int by = y + h - 26; rect(x + 20, by, w - 40, 8, C_LINE, 1); rect(x + 20, by, (w - 40) * clampi(val - lo, 0, hi - lo) / (hi - lo), 8, ec, 1); }
+    if (on) ui_focus(lb, v, hi - lo > 3 ? (val - lo) * 100 / (hi - lo) : -1, ec);
+    int cx, cy, r; float fz = lo < 0 && hi > 0 ? (float)-lo / (hi - lo) : 0;   // v3: a knob, as on SOUND
+    knob_draw(x, y, w, h, lb, v, hi > lo ? (float)clampi(val - lo, 0, hi - lo) / (hi - lo) : 0, fz, on, ec, &cx, &cy, &r);
 }
+static int fx2_cols(int n) { return n <= 10 ? 5 : n <= 12 ? 6 : 8; }   // two rows of knobs, always
 static void draw_fx2(void) {
     PadMix *pm = &song.mix.pad[fx_unit]; Col ec = C_CAT(PC_FX); fx2_sync();
     for (int s = 0; s < 2; s++) {        // the inserts as tabs
@@ -113,51 +115,17 @@ static void draw_fx2(void) {
         ftext(x + 240 - ftext_w(FT_MB, b) / 2, 92, FT_MB, on ? C_BG : f->type && f->on ? C_WHITE : C_DIM, b);
     }
     const FxSlot *f = &pm->ins[fx2_slot]; FxCard c[16]; int n = fx2_cards(c);
-    int rows = (n + 1) / 2, ph = 186, h = 162, dy = 174, y0 = 153 + ph + 16;   // four cards, the rest by pages
+    int ph = 186, cols = fx2_cols(n), kw = 970 / cols, h = 166, y0 = 153 + ph + 16;   // v3: every knob at once
     if (fx2_cur < 0) rframe(26, 153, 971, ph, 8, 4, ec, C_CELL); else rrect(26, 153, 971, ph, 8, C_CELL);
     fx2_picture(46, 153, 931, ph, f, ec);
     fx2_live(46, 153, 931, ph, f, ec);
-    int vis = 2, first = (fx2_cur < 0 ? 0 : fx2_cur / 2) / 2 * 2;
-    for (int i = first * 2; i < n && i < (first + vis) * 2; i++)
-        fx2_card(i & 1 ? 518 : 32, y0 + (i / 2 - first) * dy, 473, h, f, c[i], i == fx2_cur, ec);
-    ui_cards_more(1004, y0, vis * dy - 8, first, rows);
+    for (int i = 0; i < n; i++) fx2_card(30 + (i % cols) * kw, y0 + (i / cols) * (h + 8), kw - 8, h, f, c[i], i == fx2_cur, ec);
     if (fx2_cur < 0) draw_footer("EDIT CHANGE  L1/R1 SLOT  Y BACK  EDIT+<> TYPE  X ON/OFF  OPT+EDIT REMOVE");
     else draw_footer("EDIT+ARROWS VALUE  L1/R1 SLOT  Y BACK  X ON/OFF  OPT+EDIT DEFAULT");
 }
 
 // ---- MOD: its list (LFO, AUTOMATION, DUCK), as PATTERN's ----
 static void modmenu_open(void) { set_tab(T_SEQ); ui_cat = hub_cur = PC_MOD; modmenu = 1; }
-static void modmenu_key(int k, int down) {
-    if (!down) { if (k == K_EDIT && !used[K_EDIT]) {
-        if (mm_cur == 0) { modmenu = 0; set_tab(T_FX); ui_cat = PC_MOD; fx_unit = sel; fx_page = 1; }
-        else if (mm_cur == 1) { modmenu = 0; set_tab(T_SEQ); ui_cat = PC_MOD; if (!is_auto(lane)) lane = L_A1; set_step(0); seq_clamp(); }
-        else duck_open(sel); }       // the DUCK window over the list: Y there comes back here
-        return; }
-    if (k == K_Y) { modmenu = 0; hub_open(); hub_cur = PC_MOD; return; }
-    if (k == K_PLAY) { play_key(); return; }
-    if ((k == K_EDIT && held[K_OPT]) || (k == K_OPT && held[K_EDIT])) { used[K_EDIT] = used[K_OPT] = 1;   // the four LFOs, the automation of every pattern, the duck
-        static const int part[3] = {PP_LFO, PP_AUTO, PP_DUCK}; static const char *const what[3] = {"THE 4 LFOS", "ALL AUTOMATION", "THE DUCK"};
-        cfm_pad(sel, part[clampi(mm_cur, 0, 2)], what[clampi(mm_cur, 0, 2)]); return; }
-    if (k == K_OPT) { act_listen(sel); return; }
-    if (k == K_UP || k == K_LEFT) mm_cur = (mm_cur + 2) % 3;
-    if (k == K_DOWN || k == K_RIGHT) mm_cur = (mm_cur + 1) % 3;
-}
-static void draw_modmenu(void) {
-    enum { CX = 122, CWD = 778, CHT = 104, DY = 122, Y0 = 82 };
-    static const char *const nm[3] = {"LFO", "AUTOMATION", "DUCK"};
-    for (int c = 0; c < 3; c++) {
-        int y = Y0 + c * DY, on = c == mm_cur; Col cc = C_CAT(PC_MOD); char b[96], t[24]; b[0] = 0;
-        rrect(CX, y, CWD, CHT, 8, on ? mix(C_SELBG, C_DIM, 40) : C_CELL);
-        rect(CX, y, 9, CHT, cc, 1);
-        ftext(CX + 38, y + 12, FT_LB, cc, nm[c]);
-        for (int j = 0; j < (c == 2 ? 0 : 4); j++) { int l = (int)strlen(b);
-            if (c == 0) { const Lfo *L = &song.lfo[sel][j]; lfo_tname(sel, L->target, t); snprintf(b + l, sizeof b - l, "%s%d %s", j ? " \3 " : "", j + 1, L->target && L->depth ? t : "-"); }
-            else { const AutoLane *al = &song.aut[sel][song.t[sel].cur][j]; lfo_tname(sel, al->target, t); snprintf(b + l, sizeof b - l, "%sA%d %s", j ? " \3 " : "", j + 1, al->target ? t : "-"); } }
-        if (c == 2) { const PadMix *pm = &song.mix.pad[sel]; (void)pm; snprintf(b, sizeof b, "the pad ducks under another one: curve, source, depth, length"); }
-        ftext(CX + 38, y + 56, FT_M, on ? C_WHITE : C_DIM, b);
-    }
-    draw_footer("EDIT OPEN  F1/F2 PAD  Y BACK  OPT+EDIT CLEAR");
-}
 
 // ---- MOD > LFO (A18): LFO 1-4 as tabs (L1/R1), its shape, seven cards (the 1.2 rows: lrow) ----
 static int v2_lfo(void) { return ui_cat == PC_MOD && tab == T_FX && fx_unit < NSLOT && fx_page && !modmenu; }
@@ -165,9 +133,9 @@ static const int8_t lfo2_ord[LR_N] = {LR_TARGET, LR_SHAPE, LR_RATE, LR_DEPTH, LR
 static int lfo2_pos(void) { for (int i = 0; i < LR_N; i++) if (lfo2_ord[i] == lrow) return i; return 0; }
 static void lfo2_move(int k) {
     int p = lfo2_pos();
-    if (k == K_LEFT) { if (p & 1) p--; } else if (k == K_RIGHT) { if (!(p & 1) && p + 1 < LR_N) p++; }
-    else if (k == K_DOWN) { if (p + 2 < LR_N) p += 2; else if ((p | 1) + 1 < LR_N) p = LR_N - 1; }
-    else if (p >= 2) p -= 2;
+    if (k == K_LEFT) { if (p % 4) p--; } else if (k == K_RIGHT) { if (p % 4 < 3 && p + 1 < LR_N) p++; }   // v3: knobs, four a row
+    else if (k == K_DOWN) { if (p + 4 < LR_N) p += 4; else if (p < 4) p = LR_N - 1; }
+    else if (p >= 4) p -= 4;
     lrow = lfo2_ord[p];
 }
 static float lfo2_shape(int sh, float t, unsigned *rng) {   // one period, -1..1
@@ -196,18 +164,13 @@ static void draw_lfo2(void) {
           px = x; py = y; }
       if (act) { float v = engine_lfo(fx_unit, lcol); disc2(986, 227 - (int)(v * 80), 6, C_WHITE); }   // where it is now
       else if (!L->target) ui_empty(206, 160, 611, 134, "NO TARGET YET", "TARGET: EDIT, then EDIT on a SOUND card"); }   // empty state (TZ)
-    int cp = lfo2_pos(), first = cp / 2 / 2 * 2;
-    for (int i = first * 2; i < LR_N && i < first * 2 + 4; i++) {
-        int r = lfo2_ord[i], x = i & 1 ? 518 : 32, y = 343 + (i / 2 - first) * 178, on = r == lrow, lo = 0, hi = 0, v = 0;
+    for (int i = 0; i < LR_N; i++) {     // v3: every setting as a knob at once
+        int r = lfo2_ord[i], x = 30 + (i % 4) * 242, y = 343 + (i / 4) * 178, on = r == lrow, lo = 0, hi = 0, v = 0, cx, cy, kr;
         lfo_str(fx_unit, lcol, r, b);
-        if (on) rframe(x, y, 473, 166, 8, 4, ec, C_CELL); else rrect(x, y, 473, 166, 8, C_CELL);
-        ftext(x + 20, y + 12, FT_M, C_DIM, lr_name[r]);
-        ftext(x + 453 - ftext_w(FT_XB, b) > x + 140 ? x + 453 - ftext_w(FT_XB, b) : x + 140, y + 10, ftext_w(FT_XB, b) < 300 ? FT_XB : FT_M, C_WHITE, b);
         if (r == LR_DEPTH) { lo = -100; hi = 100; v = L->depth; } else if (r == LR_PHASE) { hi = 100; v = L->phase; } else if (r == LR_RATE && !L->sync) { hi = 100; v = L->rate; }
-        if (hi > lo) { rect(x + 20, y + 140, 433, 8, C_LINE, 1); rect(x + 20, y + 140, 433 * (v - lo) / (hi - lo), 8, ec, 1); }
         if (on) ui_focus(lr_name[r], b, hi > lo ? (v - lo) * 100 / (hi - lo) : -1, ec);
+        knob_draw(x, y, 234, 170, lr_name[r], b, hi > lo ? (float)(v - lo) / (hi - lo) : 0, lo < 0 ? 0.5f : 0, on, ec, &cx, &cy, &kr);
     }
-    ui_cards_more(1004, 343, 348, first, (LR_N + 1) / 2);
     draw_footer(lrow == LR_TARGET ? "EDIT PICK ON SOUND  EDIT+<> TARGET  L1/R1 LFO  Y BACK  OPT+EDIT UNLINK" : "EDIT+ARROWS VALUE  L1/R1 LFO  Y BACK  OPT+EDIT LFO OFF");
 }
 
@@ -257,15 +220,14 @@ static const int8_t mix2_rows[8] = {MX_VOL, MX_PAN, MX_SA, MX_SB, MX_FRZ, MX_DUC
 static int mix2_cur;
 static int v2_mix(void) { return ui_cat == PC_MIX && tab == T_MIX && mcol < NSLOT && !ducking; }
 static void mix2_move(int k) {
-    if (k == K_LEFT) { if (mix2_cur & 1) mix2_cur--; } else if (k == K_RIGHT) { if (!(mix2_cur & 1)) mix2_cur++; }
-    else if (k == K_DOWN) { if (mix2_cur + 2 < 8) mix2_cur += 2; } else if (mix2_cur >= 2) mix2_cur -= 2;
+    if (k == K_LEFT) { if (mix2_cur % 4) mix2_cur--; } else if (k == K_RIGHT) { if (mix2_cur % 4 < 3) mix2_cur++; }   // v3: four a row
+    else if (k == K_DOWN) { if (mix2_cur < 4) mix2_cur += 4; } else if (mix2_cur >= 4) mix2_cur -= 4;
     mrow = mix2_rows[mix2_cur];
 }
 static void draw_mix2(void) {
     Col ec = C_CAT(PC_MIX); const Track *t = &song.t[mcol]; const PadMix *pm = &song.mix.pad[mcol]; mrow = mix2_rows[mix2_cur & 7];
     static const char *const nm[8] = {"VOLUME", "PAN", "SEND A", "SEND B", "FREEZE", "DUCK", "MUTE", "SOLO"};
-    int first = mix2_cur / 4 * 2;           // four cards a page: VOLUME PAN SENDS, then FREEZE DUCK MUTE SOLO
-    for (int i = first * 2; i < first * 2 + 4; i++) { char v[24]; int x = i & 1 ? 518 : 32, y = 86 + (i / 2 - first) * 312, on = i == mix2_cur, val = -1, lo = 0, hi = 100;
+    for (int i = 0; i < 8; i++) { char v[24]; int x = 30 + (i % 4) * 242, y = 90 + (i / 4) * 300, on = i == mix2_cur, val = -1, lo = 0, hi = 100;   // v3: all eight at once
         switch (i) { case 0: val = t->vol; snprintf(v, sizeof v, "%d", t->vol); break;
             case 1: val = t->pan; lo = -50; hi = 50; if (t->pan) snprintf(v, sizeof v, "%c%d", t->pan < 0 ? 'L' : 'R', abs(t->pan)); else snprintf(v, sizeof v, "C"); break;
             case 2: val = pm->send_a; snprintf(v, sizeof v, "%d", pm->send_a); break;
@@ -274,11 +236,15 @@ static void draw_mix2(void) {
             case 5: if (pm->spare[DK_SRC]) snprintf(v, sizeof v, "PAD %d %d%%", pm->spare[DK_SRC], pm->spare[DK_AMT]); else snprintf(v, sizeof v, "OFF"); break;
             case 6: snprintf(v, sizeof v, "%s", t->mute ? "ON" : "OFF"); break;
             default: snprintf(v, sizeof v, "%s", pm->solo ? "ON" : "OFF"); }
-        if (on) { rframe(x, y, 473, 296, 8, 4, ec, C_CELL); ui_focus(nm[i], v, val >= 0 ? (val - lo) * 100 / (hi - lo) : -1, ec); } else rrect(x, y, 473, 296, 8, C_CELL);
-        ftext(x + 20, y + 12, FT_M, C_DIM, nm[i]); ftext(x + 453 - ftext_w(FT_XB, v), y + 10, FT_XB, (i >= 4 && (i == 4 ? frozen(mcol) : i == 6 ? t->mute : i == 7 ? pm->solo : pm->spare[DK_SRC] != 0)) ? ec : C_WHITE, v);
-        if (val >= 0 || i == 1) { int by = y + 296 - 30; rect(x + 20, by, 433, 8, C_LINE, 1);
-            if (i == 1) { int cx = x + 20 + 433 / 2, w = 433 * t->pan / 100; if (w > 0) rect(cx, by, w, 8, ec, 1); else rect(cx + w, by, -w, 8, ec, 1); rect(cx, by - 4, 2, 16, C_WHITE, 1); }
-            else rect(x + 20, by, 433 * clampi(val - lo, 0, hi - lo) / (hi - lo), 8, ec, 1); } }
+        if (on) ui_focus(nm[i], v, i < 4 ? (val - lo) * 100 / (hi - lo) : -1, ec);
+        if (i < 4) { int cx, cy, kr; knob_draw(x, y, 234, 290, nm[i], v, (float)clampi(val - lo, 0, hi - lo) / (hi - lo), lo < 0 ? 0.5f : 0, on, ec, &cx, &cy, &kr); continue; }
+        int lit = i == 4 ? frozen(mcol) : i == 6 ? t->mute : i == 7 ? pm->solo : pm->spare[DK_SRC] != 0;   // the switches: a lamp button (M, S as drawn buttons)
+        if (on) rframe(x, y, 234, 290, 8, 3, ec, C_CELL); else rrect(x, y, 234, 290, 8, C_CELL);
+        ftext(x + 117 - ftext_w(FT_S, nm[i]) / 2, y + 8, FT_S, on ? C_WHITE : C_DIM, nm[i]);
+        const char *big = i == 6 ? "M" : i == 7 ? "S" : NULL;
+        rrect(x + 47, y + 90, 140, 90, 12, lit ? ec : C_SELBG);
+        if (big) ftext(x + 117 - ftext_w(FT_XB, big) / 2, y + 135 - fv2[FT_XB].h / 2, FT_XB, lit ? C_BG : C_DIM, big);
+        ftext(x + 117 - ftext_w(FT_MB, v) / 2, y + 290 - 40, FT_MB, lit ? ec : C_WHITE, v); }
     draw_footer(mix2_cur == 4 ? "EDIT FREEZE/LIVE  Y BACK" : mix2_cur == 5 ? "EDIT OPEN DUCK  EDIT+<> SOURCE  Y BACK  EDIT+^v DEPTH" : mix2_cur >= 6 ? "EDIT ON/OFF  Y BACK" : "EDIT+ARROWS VALUE  Y BACK  OPT+EDIT DEFAULT");
 }
 
@@ -488,20 +454,6 @@ static void draw_scenes(void) {
 // its categories, the pages of each, joined by curves. <> change the level, ^v choose on it, EDIT opens what the cursor is on:
 // a page of level 3 opens straight, without its list. tr_lv: 0 HOME, 1 the pad, 2 the category (hub_cur), 3 its pages (tr_pg).
 static const char *const tr_home[4] = {"PADS", "MIXER", "SCENES", "PROJECT"};
-static int tree_pages(int c, const char *nm[8]) {
-    switch (c) {
-    case PC_PATTERN: nm[0] = cur_pat(sel)->mode ? "ROLL" : "STEPS"; nm[1] = "SELECT"; nm[2] = "RECORD"; return 3;
-    case PC_SOUND: { int n = snd_page_n(); if (n > 8) n = 8; for (int i = 0; i < n; i++) nm[i] = snd_page_nm(i); return n; }
-    case PC_FX: nm[0] = "INSERT 1"; nm[1] = "INSERT 2"; return 2;
-    case PC_MOD: nm[0] = "LFO 1-4"; nm[1] = "AUTOMATION"; nm[2] = "DUCK"; return 3;
-    case PC_MIX: nm[0] = "VOLUME"; nm[1] = "PAN"; nm[2] = "SEND A"; nm[3] = "SEND B"; nm[4] = "FREEZE"; return 5;
-    }
-    nm[0] = "ICON"; nm[1] = "COLOUR"; return 2;
-}
-static int tree_page_now(int c) {         // the page of a category that was open last
-    const char *nm[8]; int n = tree_pages(c, nm), i = c == PC_PATTERN ? pm_cur : c == PC_SOUND ? sp_pg[song.t[sel].type & 3] : c == PC_FX ? fx2_slot : c == PC_MOD ? mm_cur : 0;
-    return clampi(i, 0, n - 1);
-}
 static void tree_open(int c, int i) {
     switch (c) {
     case PC_PATTERN: pm_cur = i; cat_open(PC_PATTERN); break;
@@ -510,72 +462,11 @@ static void tree_open(int c, int i) {
     case PC_MOD: mm_cur = i;
         if (i == 0) { set_tab(T_FX); ui_cat = hub_cur = PC_MOD; fx_unit = sel; fx_page = 1; }
         else if (i == 1) { set_tab(T_SEQ); ui_cat = hub_cur = PC_MOD; if (!is_auto(lane)) lane = L_A1; set_step(0); seq_clamp(); }
-        else { modmenu_open(); duck_open(sel); }
+        else { cat_open(PC_MOD); duck_open(sel); }
         break;
     case PC_MIX: cat_open(PC_MIX); mix2_cur = i; mrow = mix2_rows[i]; break;
     default: icon_open(); if (i) ic_pal = track_icol(&song.t[sel]); break;
     }
-}
-static void tree_key(int k) {
-    const char *nm[8]; int d = k == K_DOWN ? 1 : -1;
-    tr_lv = clampi(tr_lv, 0, 3); hub_cur = clampi(hub_cur, 0, HUB_N - 1);
-    if (k == K_LEFT) { if (tr_lv == 3 && tr_pg > 0) tr_pg--; else if (tr_lv > 0) tr_lv--; if (tr_lv == 0) tr_0 = 0; return; }
-    if (k == K_RIGHT) {
-        if (tr_lv == 3) { if (tr_pg < tree_pages(hub_cur, nm) - 1) tr_pg++; }
-        else { if (tr_lv == 0) tr_0 = 0; tr_lv++; if (tr_lv == 3) tr_pg = tree_page_now(hub_cur); }   // only PADS leads on to the pad
-        return; }
-    if (tr_lv == 0) tr_0 = clampi(tr_0 + d, 0, 3);
-    else if (tr_lv == 1) pad_step(d);
-    else { hub_cur = (hub_cur + d + HUB_N) % HUB_N; tr_pg = tree_page_now(hub_cur); }
-}
-static void tree_tap(void) {
-    if (tr_lv == 0) { tr_lv = 2;
-        if (tr_0 == 3) { tab_project(); return; }   // F1+F2 or Y there comes back to the tree
-        set_tab(tr_0 == 1 ? T_MIX : T_GRID); ui_cat = -1; scening = tr_0 == 2; if (tr_0 == 1) mcol = sel; }
-    else if (tr_lv == 1) tr_lv = 2;
-    else if (tr_lv == 2) hub_go();
-    else tree_open(hub_cur, tr_pg);
-}
-static void tree_link(int x0, int y0, int x1, int y1, Col c) {   // a curve that leaves and arrives level
-    int px = x0, py = y0;
-    for (int i = 1; i <= 16; i++) { float t = i / 16.f, u = 1 - t, by = u * u * u * y0 + 3 * u * u * t * y0 + 3 * u * t * t * y1 + t * t * t * y1;
-        int x = x0 + (x1 - x0) * i / 16, y = (int)(by + 0.5f); line(px, py, x, y, 2, c); px = x; py = y; }
-}
-static void tree_block(int x, int y, int w, int h, Col stripe, int cur, int way) {   // cur: the cursor is here; way: it is on the way to the cursor
-    if (cur) rframe(x - 3, y - 3, w + 6, h + 6, 9, 3, C_WHITE, way ? mix(C_SELBG, C_DIM, 40) : C_CELL);
-    else rrect(x, y, w, h, 7, way ? mix(C_SELBG, C_DIM, 40) : C_CELL);
-    rect(x, y + 3, 6, h - 6, stripe, 1);
-}
-static void draw_tree(void) {
-    enum { X0 = 18, W0 = 152, X1 = 216, W1 = 164, X2 = 424, W2 = 190, X3 = 656, W3 = 350, YR = 106, DY = 100, BH = 70, PY = 340, PH = 100 };
-    static const char *const lv[4] = {"LEVEL 0 \003 HOME", "LEVEL 1 \003 PAD", "LEVEL 2 \003 CATEGORY", "LEVEL 3 \003 PAGES"}; static const int lx[4] = {X0, X1, X2, X3};
-    const Track *t = &song.t[sel]; char b[64]; const char *nm[8];
-    tr_lv = clampi(tr_lv, 0, 3); hub_cur = clampi(hub_cur, 0, HUB_N - 1);
-    for (int i = 0; i < 4; i++) ftext(lx[i], 76, FT_S, i == tr_lv ? C_WHITE : C_DIM, lv[i]);
-    // the links first, under the blocks: PADS to the pad, the pad to its categories, a category to its pages
-    tree_link(X0 + W0, YR + BH / 2, X1, PY + PH / 2, tr_lv >= 1 || !tr_0 ? C_WHITE : C_GREY);
-    for (int c = 0; c < HUB_N; c++) { int y = YR + c * DY + BH / 2, on = tr_lv >= 2 && c == hub_cur;
-        if (!on) { tree_link(X1 + W1, PY + PH / 2, X2, y, C_GREY); line(X2 + W2, y, X3, y, 2, C_GREY); } }
-    if (tr_lv >= 2) { int y = YR + hub_cur * DY + BH / 2; tree_link(X1 + W1, PY + PH / 2, X2, y, C_WHITE); line(X2 + W2, y, X3, y, 2, tr_lv == 3 ? C_WHITE : C_GREY); }
-    for (int i = 0; i < 4; i++) { int y = YR + i * DY, cur = tr_lv == 0 && i == tr_0;
-        tree_block(X0, y, W0, BH, i == 0 ? th_cur[TC_SMP] : i == 1 ? C_CAT(PC_MIX) : i == 2 ? C_PLAY : C_GREY, cur, !cur && i == 0 && tr_lv > 0);
-        ftext(X0 + 18, y + 10, FT_MB, C_WHITE, tr_home[i]); }
-    tree_block(X1, PY, W1, PH, C_ENG(t->type), tr_lv == 1, tr_lv > 1);
-    snprintf(b, sizeof b, "%02d %.9s", sel + 1, slot_name(sel) ? slot_name(sel) : "EMPTY"); ftext(X1 + 18, PY + 10, FT_MB, C_WHITE, b);
-    ftext(X1 + 18, PY + 38, FT_S, C_ENG(t->type), type_name[t->type & 3]);
-    ftext(X1 + 18, PY + PH - 28, FT_S, C_DIM, "any of 12 pads");
-    for (int c = 0; c < HUB_N; c++) { int y = YR + c * DY, on = c == hub_cur && tr_lv >= 2, n = tree_pages(c, nm), x = X3 + 18, yy = y + (n > 3 ? 11 : 24); Col cc = hub_col(c);
-        tree_block(X2, y, W2, BH, cc, on && tr_lv == 2, on && tr_lv == 3);
-        ftext(X2 + 18, y + 10, FT_MB, C_WHITE, hub_name(c));
-        if (c == HUB_LOOK) icon(slot_icon(sel), X2 + W2 - 44, y + 19, pad_icol(sel, C_ENG(t->type)));
-        tree_block(X3, y, W3, BH, cc, 0, on && tr_lv == 3);
-        for (int i = 0; i < n; i++) { int w = ftext_w(FT_S, nm[i]), pick = on && tr_lv == 3 && i == tr_pg;
-            if (x + w > X3 + W3 - 12) { x = X3 + 18; yy += 26; }
-            if (pick) rrect(x - 6, yy - 2, w + 12, 25, 5, C_WHITE);
-            ftext(x, yy, FT_S, pick ? C_BG : on ? C_WHITE : C_DIM, nm[i]); x += w;
-            if (i < n - 1) x += ftext(x, yy, FT_S, C_DIM, " \003 "); } }
-    draw_footer(tr_lv == 0 ? "EDIT OPEN  ^v SCREEN  > THE PAD  Y BACK" : tr_lv == 1 ? "^v PAD  <> LEVEL  EDIT CATEGORIES  Y BACK  F1/F2 PAD"
-              : tr_lv == 2 ? "EDIT OPEN  <> LEVEL  ^v CATEGORY  Y BACK  F1/F2 PAD" : "EDIT OPEN THE PAGE  <> PAGE  ^v CATEGORY  Y BACK  F1/F2 PAD");
 }
 
 // ---- PROJECT (A24): the sections on the left, the settings of the one chosen as cards (the 1.2 page's jsec/jcol/jcur) ----

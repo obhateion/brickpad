@@ -28,6 +28,11 @@ static void lay_go(int m) {             // v3 (user): the layout of the clip: ST
 static void lay_steps(void) { lay_go(0); }
 static void lay_roll(void) { lay_go(1); }
 static void lay_chords(void) { lay_go(2); }
+static void cx_patterns(void) { if (rolling) roll_leave(); if (chording) chord_leave(); pat_open(); }
+static void cx_record(void) { cat_open(PC_PATTERN); if (rolling) roll_leave(); if (chording) chord_leave(); recpage = 1; }
+static void cx_lfo(void) { cat_open(PC_MOD); }
+static void cx_auto(void) { set_tab(T_SEQ); ui_cat = hub_cur = PC_MOD; if (!is_auto(lane)) lane = L_A1; set_step(0); seq_clamp(); }
+static void cx_duck(void) { duck_open(sel); }
 static void lat_len(void) { v_latch = 1; toast("ARROWS: LENGTH (^v A BAR)"); }
 static void lat_grid(void) { v_latch = 2; toast("ARROWS: GRID"); }
 static void ctx_layout(void) {
@@ -36,8 +41,10 @@ static void ctx_layout(void) {
     if (m != 1) ctx_add("LAYOUT: PIANO ROLL", 0, 0, 0, lay_roll);
     if (m != 2) ctx_add("LAYOUT: CHORDS", 0, 0, 0, lay_chords);
     ctx_add("LENGTH", 0, 0, 0, lat_len); ctx_add("GRID", 0, 0, 0, lat_grid);
+    ctx_add("PATTERNS / FOLLOW", 0, 0, 0, cx_patterns); ctx_add("RECORD", 0, 0, 0, cx_record);
 }
-static void ctx_common(void) { ctx_add("COPY", 0, 0, 0, cx_copy); ctx_add("PASTE", 0, 0, 0, cx_paste); ctx_add("CLEAR", 0, 0, 0, delete_action); }
+static void cx_undo(void) { act_undo(); }
+static void ctx_common(void) { ctx_add("UNDO", 0, 0, 0, cx_undo); ctx_add("COPY", 0, 0, 0, cx_copy); ctx_add("PASTE", 0, 0, 0, cx_paste); ctx_add("CLEAR", 0, 0, 0, delete_action); }
 
 static int ctx_ok(void) {
     return !perform && !qb_focus && !strip_focus && !ui_simple && !learning && !exporting && !asking && !cfm && !naming && !ctxing
@@ -59,6 +66,13 @@ static void ctx_open(void) {
         ctx_add("DOUBLE CLIP", 0, 0, 0, clip_double); ctx_add("RANDOM", K_X, K_SHIFT, 0, NULL); ctx_common();
     } else if (v2_fx()) { ctx_add("INSERT ON / OFF", K_X, -1, 0, NULL); ctx_common(); }
     else if (tab == T_MIX && mcol < NSLOT) { ctx_add("MUTE", 0, 0, 0, cx_mute); ctx_add("SOLO", 0, 0, 0, cx_solo); ctx_common(); }
+    else if (v2_lfo() || v2_auto()) {    // MOD: its three kinds (the list that was MOD's menu)
+        if (!v2_lfo()) ctx_add("LFO", 0, 0, 0, cx_lfo);
+        if (!v2_auto()) ctx_add("AUTOMATION", 0, 0, 0, cx_auto);
+        ctx_add("DUCK", 0, 0, 0, cx_duck);
+        if (v2_auto()) ctx_add("BEND", 0, 0, 0, NULL), ctx_it[ctx_n - 1].latch = 1;
+        ctx_common(); }
+    else if (v2_sound()) { ctx_add("LISTEN", 0, 0, 0, cx_listen); ctx_add("MIDI LEARN", K_R2, -1, 0, NULL); ctx_common(); }
     else { ctx_add("LISTEN", 0, 0, 0, cx_listen); ctx_common(); }
     ctxing = ctx_n > 0;
 }
@@ -95,6 +109,20 @@ static int x_latch_key(int k, int down) {  // 1: the key ended the latch and is 
     if (k <= K_RIGHT) { held[K_X] = used[K_X] = 1; return 0; }
     if (!down) return 0;
     x_latch = 0; held[K_X] = 0; used[K_X] = 1; toast("DONE"); return 1;
+}
+// v3: the page's own tabs are a row the cursor reaches (UP from the page's top); <> turn them as L1/R1 used to.
+static int page_tabs(void) { return !ui_over() && !perform && (v2_sound() || v2_steps() || v2_fx() || v2_lfo() || v2_auto() || v2_mixer() || v2_unit()); }
+static int tabs_key(int k, int down) {
+    if (sim_on) return 0;                 // its own L1/R1 go on to the page
+    if (k == K_PLAY || k == K_SHIFT || k == K_MENU || k == K_F1 || k == K_F2) return 0;
+    if (!down) return 1;
+    if (k == K_LEFT || k == K_RIGHT) sim_key(k == K_RIGHT ? K_R1 : K_L1, -1);
+    else if (k == K_UP) { tab_focus = 0; if (strips_here()) { strip_focus = sec_on() ? 1 : 2; sec_cur = ui_cat >= 0 ? ui_cat : hub_cur; } else if (!ui_qbar) qb_focus = 1; }
+    else if (k == K_DOWN || k == K_OPT || k == K_EDIT) tab_focus = 0;
+    return 1;
+}
+static void tabs_frame(void) {          // an outline round the tab row (draw() puts it on the page before the page goes under the strips)
+    rect(14, 66, W - 28, 3, C_WHITE, 1); rect(14, 115, W - 28, 3, C_WHITE, 1); rect(14, 66, 3, 52, C_WHITE, 1); rect(W - 17, 66, 3, 52, C_WHITE, 1);
 }
 static int y_back_here(void) {            // windows and sub-pages where Y was the way back: MENU+UP now
     return ui_over() || naming || exporting || asking || cfm || scening || recpage || tab == T_PAT || v2_unit() || (tab == T_PRJ && jcol)

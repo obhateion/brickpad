@@ -97,6 +97,7 @@ static int tab = T_GRID, browsing, slicing, theming, perform, sel = 5, undo_arme
 static int hubbing, hub_cur, ui_cat = -1;   // UI v2: the pad hub is on screen; the category opened from it (-1 none), ui.h
 static int tr_lv = 2, tr_0, tr_pg;       // the hub as a tree (PROJECT > INTERFACE > PAD MENU): the level of the cursor, HOME's screen on level 0, the page on level 3
 enum { PC_PATTERN, PC_SOUND, PC_FX, PC_MOD, PC_MIX, PC_N };   // the categories inside a pad
+static void cat_open(int c);              // ui.h: a pad's section (v3: the only way into a pad)
 static int scening;                      // HOME > SCENES (A02) is on screen, over the pads
 static int modmenu, mm_cur;              // MOD's own list (LFO, AUTOMATION, DUCK), as PATTERN's
 static int patmenu, pm_cur;              // PATTERN's own list (STEPS or ROLL, SELECT, RECORD) is on screen; its cursor, kept
@@ -1147,7 +1148,7 @@ static void browse_key(int k) {
         if (bent[bcur].dir) { if (strlen(p) < 500) browse_open(p); }
         else if (k == K_EDIT && bmode) prj_open_req(p);   // a project: open it (asks first when this one has changes)
         else if (k == K_EDIT && strlen(p) < 256) { push_undo(); set_slot_file(sel, p); norm_new(sel); auto_setup(sel); snprintf(blast, sizeof blast, "%s", bdir); browse_close();
-            if (tab == T_GRID && ui_cat < 0 && !perform) { hubbing = 1; hub_cur = PC_PATTERN; } }   // UI v2: a pad that just got its sound opens (its list)
+            if (tab == T_GRID && ui_cat < 0 && !perform) cat_open(PC_SOUND); }   // v3: a pad that just got its sound opens on it
     } else if (k == K_OPT) browse_close();
 }
 static void neighbour_file(int pad, int dir) {
@@ -1940,7 +1941,7 @@ static int fol_pat(void) { return pat_last >= 0 && pat_last < NPAT ? pat_last : 
 static void pat_open(void) { Track *t = &song.t[sel]; pcur = pat_last = t->queued >= 0 ? t->queued : t->cur; pfol = 0; tab = T_PAT; sl_r = pcur / 8; sl_c = pcur % 8; }
 static void pat_close(int take) {         // OK and Y both leave on the chosen pattern (the one EDIT played or marked)
     (void)take; pat_switch(pat_last);
-    if (ui_cat == PC_PATTERN) { patmenu_open(); return; }   // UI v2: back to PATTERN's list
+    if (ui_cat == PC_PATTERN) { cat_open(PC_PATTERN); return; }   // v3: back to the layout
     tab = T_SEQ; srow = -1; scol = 1;
 }
 static void pat_tap(void) {
@@ -1972,7 +1973,7 @@ static const char *const prj_sec_name[JS_N] = {"FILE", "TEMPO", "METRONOME", "PL
 static const int8_t prj_sec[JS_N][JS_ROWS] = {{J_PROJ, J_SAVE, J_SAVEAS, J_EXPORT, J_NEW, -1}, {J_TEMPO, J_SWING, J_BEATS, J_KEY, J_SCALE, J_SNAP, -1},
                                         {J_MSND, J_MVIB, J_MVOL, J_MTONE, J_MWHEN, J_MDIV, J_MVOFF, -1}, {J_LAUNCH, J_COUNT, J_QUANT, -1},
                                         {J_MASTER, J_TRIM, J_DRAWER, J_MXFX, J_MXLINK, -1}, {J_MPORT, J_MCLKIN, J_MCLK, J_MNOTE, J_MCH, -1},
-                                        {J_VIEW, J_STRIP, J_SECS, J_QBAR, J_NAV, J_HINT, J_LOCK, J_THEME, J_LIB, -1}, {J_ABOUT, -1}};
+                                        {J_VIEW, J_STRIP, J_SECS, J_QBAR, J_HINT, J_LOCK, J_THEME, J_LIB, -1}, {J_ABOUT, -1}};
 static const char *const prj_help[J_N] = {"THE PROJECT'S SPEED. EDIT TAPS IT, L1/R1 HELD NUDGE WHILE PLAYING", "LATE EVEN 1/16 STEPS: A SHUFFLE",
     "THE TONIC EVERY PAD PLAYS IN (A PAD CAN HAVE ITS OWN)", "WHICH NOTES THE DEGREES, KEYS AND RANDOM USE",
     "A CLIP STARTS OR STOPS ON THIS GRID, AS IN ABLETON", "A CLICK ON EVERY BEAT WHILE PLAYING", "BEATS IN A BAR: LAUNCH AND RECORDING COUNT THEM",
@@ -2597,7 +2598,7 @@ static void edit_arrow(int k) {
 static void hub_open(void);
 static void edit_tap(void) {
     switch (tab) {
-    case T_GRID: if (has_sound(sel)) hub_open(); else pick_open(); break;   // UI v2: EDIT opens the pad, an empty one asks for an engine
+    case T_GRID: if (has_sound(sel)) cat_open(hub_cur < PC_N ? hub_cur : PC_SOUND); else pick_open(); break;   // v3: EDIT opens the pad on its last section (no pad menu); an empty one asks for an engine
     case T_SEQ: seq_tap(); break;
     case T_PAT: pat_tap(); break;
     case T_PRJ: prj_tap(); break;
@@ -3061,7 +3062,7 @@ static void roll_key(int k, int down) {
         if (k == K_X || k == K_OPT) undo_armed = 0;   // each combo its own undo step
         return;
     }
-    if (k == K_Y) { roll_leave(); if (ui_cat == PC_PATTERN) patmenu_open(); return; }   // UI v2: back to PATTERN's list
+    if (k == K_Y) { roll_leave(); return; }
     if (held[K_SHIFT] && k == K_X) { used[K_SHIFT] = used[K_X] = 1; rnd_open(); return; }   // RANDOM, over the roll (Y comes back here)
     if (k == K_PLAY) { play_key(); return; }
     if (held[K_SHIFT] && k == K_L2) {
@@ -3668,7 +3669,7 @@ static float mx_show[NSLOT + 3]; static void mx_meters(void); static void meter_
 #include "ctx.h"
 static void key_event1(int k, int down) {
     if (k < 0) return;
-    if ((k == K_X || k == K_Y) && !sim_on && !perform && !naming && !chording && !ui_simple) return;   // v3: X and Y are gone (OPTION's menu)
+    if ((k == K_X || k == K_Y) && !sim_on && !perform && !ui_simple) return;   // v3: X and Y are gone (OPTION's menu)
     if (k == K_PLAY && !down) play_release();
     input_key(k, down);
     if (k == K_OPT && !down && opt_gate) { opt_gate = 0; engine_release(); }
@@ -3685,6 +3686,10 @@ static void key_event1(int k, int down) {
     if (x_latch_key(k, down)) return;
     if (ctxing) { ctx_key(k, down); return; }
     if (held[K_MENU] && k == K_UP && y_back_here()) { if (down) { used[K_MENU] = 1; sim_key(K_Y, -1); } return; }   // v3: Y's way back
+    if ((k == K_L1 || k == K_R1 || k == K_L2 || k == K_R2) && !sim_on && !perform && !ui_simple && !ui_over() && !naming && !exporting && !asking && !cfm && !learning) {
+        if (down) { int d = k == K_R1 || k == K_R2 ? 1 : -1; qb_focus = strip_focus = tab_focus = 0;   // v3: L/R page as F1/F2 do
+            if (in_pad()) cat_step(d); else { ui_cat = -1; tab_step(d); } }
+        return; }
     if (down && k != K_X) x_tap_t = 0;   // X, another key, X is not a double tap
     seq_clamp();
     if (learning && learn_key(k, down)) return;
@@ -3724,6 +3729,8 @@ static void key_event1(int k, int down) {
     if (strip_focus && !strips_here()) strip_focus = 0;
     if (qb_focus && qbar_key(k, down)) return;
     if (strip_focus && strip_key(k, down)) return;
+    if (tab_focus && !page_tabs()) tab_focus = 0;
+    if (tab_focus && tabs_key(k, down)) return;
     if (perform && k == K_OPT && held[K_SHIFT]) { if (down) { used[K_SHIFT] = 1; perform = 0; toast("PLAY MODE OFF"); } return; }   // v3: the way out of PADS and KEYS
     if (perform) {                       // PADS: 12 slots; KEYS: selected slot on 12 scale degrees
         int i; for (i = 0; i < NSLOT && cell_key[i] != k; i++);
@@ -3781,15 +3788,9 @@ static void key_event1(int k, int down) {
     if (iconing) { icon_key(k, down); return; }
     if (ducking) { duck_key(k, down); return; }
     if (jump_ok() && held[K_SHIFT] && k <= K_RIGHT) { if (down) { used[K_SHIFT] = 1; if (k == K_LEFT || k == K_RIGHT) pad_step(k == K_RIGHT ? 1 : -1); } return; }   // v3: SHIFT+<> the next pad
-    if (hubbing) { hub_key(k, down); return; }
-    if (patmenu) { patmenu_key(k, down); return; }
-    if (modmenu) { modmenu_key(k, down); return; }
+    if (hubbing || patmenu || modmenu) { hubbing = patmenu = modmenu = 0; cat_open(hub_cur < PC_N ? hub_cur : PC_PATTERN); return; }   // v3: the pad menu is gone
     if (scening) { scene_key(k, down); return; }
     if (recpage) { record_key(k, down); return; }
-    if (ui_cat >= 0 && k == K_Y && tab != T_PAT && !pt_pick) {   // UI v2: Y goes back to the pad's hub, on release (Y+arrows BEND)
-        if (!down && !used[K_Y]) { int c = ui_cat; if (ui_tree) { hub_open(); hub_cur = c; } else if (c == PC_PATTERN) patmenu_open(); else if (c == PC_MOD) modmenu_open(); else { hub_open(); hub_cur = c; } return; }   // the tree has no lists in between
-        if (!down || !(tab == T_SEQ && srow >= 1 && srow <= 2)) return;
-    }
     if (!down) {                         // taps fire on release when no combo was used
         if (k == K_EDIT) { if (!used[K_EDIT]) edit_tap(); undo_armed = 0; }
         if (k == K_X && !used[K_X] && tab == T_SEQ && !held[K_SHIFT]) {
@@ -3891,7 +3892,7 @@ static void key_event1(int k, int down) {
 // v3: an arrow towards the quick bar that moved nothing on the page (its edge) puts the cursor on the bar. The cursors of
 // every page are compared before and after; windows keep their keys.
 static int qb_edge(int k, int down) {
-    if (!down || qb_focus || strip_focus || x_latch || v_latch || ctxing || !(k == K_UP && (!ui_qbar || strips_here()) || k == K_DOWN && ui_qbar) || perform || ui_over() || chording || ui_simple || learning || exporting || asking || cfm || naming) return 0;
+    if (!down || qb_focus || strip_focus || tab_focus || x_latch || v_latch || ctxing || !(k == K_UP && (!ui_qbar || strips_here() || page_tabs()) || k == K_DOWN && ui_qbar) || perform || ui_over() || chording || ui_simple || learning || exporting || asking || cfm || naming) return 0;
     for (int i = K_OPT; i < K_N; i++) if (held[i] && i != k) return 0;
     return 1;
 }
@@ -3906,7 +3907,8 @@ static void key_event(int k, int down) {
     if (!qb_edge(k, down)) { key_event1(k, down); return; }
     int a[64], b[64]; cur_snap(a); key_event1(k, down); cur_snap(b);
     if (memcmp(a, b, a[63] * sizeof *a)) return;
-    if (k == K_UP && strips_here()) { strip_focus = sec_on() ? 1 : 2; sec_cur = ui_cat >= 0 ? ui_cat : hub_cur; }   // the page's top: the strips first
+    if (k == K_UP && page_tabs()) tab_focus = 1;   // the page's top: its own tabs, then the strips
+    else if (k == K_UP && strips_here()) { strip_focus = sec_on() ? 1 : 2; sec_cur = ui_cat >= 0 ? ui_cat : hub_cur; }
     else qb_focus = 1;
 }
 
@@ -4521,7 +4523,7 @@ static void nm_key(int k, int down) {
     if (k == K_Y) { naming = 0; nm_then = 0; ask_act = 0; nk_reset(); return; }
     if (k == K_PLAY) { nk_reset(); naming_ok(); return; }
     if (k == K_OPT) { nk_del(); return; }
-    if (k == K_X) { nk_low = !nk_low; return; }
+    if (k == K_SHIFT || k == K_X) { nk_low = !nk_low; return; }   // v3: SHIFT the case (X is gone)
     int l = (int)strlen(nm_buf); (void)opened;
     if (k == K_L1) { nm_pos = nm_pos > 0 ? nm_pos - 1 : 0; return; }
     if (k == K_R1) { nm_pos = nm_pos < l ? nm_pos + 1 : l; return; }
@@ -4802,9 +4804,6 @@ static void draw(void) {
     else if (theming) draw_theme2();
     else if (iconing) draw_icons2();
     else if (ducking) draw_duck2();
-    else if (hubbing) draw_hub();
-    else if (patmenu) draw_patmenu();
-    else if (modmenu) draw_modmenu();
     else if (scening) draw_scenes();
     else if (recpage) draw_record();
     else if (v2_steps()) draw_steps2();
@@ -4817,8 +4816,9 @@ static void draw(void) {
     else if (v2_mixer()) draw_mixer2();
     else switch (tab) {
     case T_GRID: draw_grid(); break; case T_PAT: draw_pat(); break; case T_PRJ: draw_prj2(); break;
-    default: draw_hub(); break;       // not reached: v2_normalize gives every state a screen
+    default: draw_grid(); break;      // not reached: v2_normalize gives every state a screen
     }
+    if (big && tab_focus) tabs_frame();   // on the page, before it is set under the strips
     if (big) { SDL_SetRenderTarget(R, NULL);
         int SY = strip_on() ? 69 : V2_HEAD, sy = bigs ? 122 : SY + 4, DY = secs ? sy + 36 : sy, sh = V2_FOOT - SY, dh = V2_FOOT - DY, dw = W * dh / sh;
         rect(0, SY, W, DY - SY, C_BG, 1);
@@ -4826,7 +4826,8 @@ static void draw(void) {
         SDL_RenderCopy(R, body, &s1, &d1); SDL_RenderCopy(R, body, &s2, &s2);
         if (bigs) ui2_header(); else { int st = ui_strip; if (strip_on()) ui_strip = STRIP_THIN; ui2_header(); ui_strip = st; }
         if (secs) ui2_secs(sy); }
-    ui_popup(); ui_cross();
+    else if (tab_focus) tabs_frame();
+    ui_popup();
     if (asking) draw_ask2();
     if (ctxing) draw_ctx();
     if (cfm) draw_cfm2();

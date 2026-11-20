@@ -220,7 +220,7 @@ static void v2_normalize(void) {
     if (exporting || naming || browsing || slicing || randing || picking || presetting || theming || iconing || ducking || hubbing || patmenu || modmenu || recpage || rolling) return;
     if (tab == T_PAT) { if (ui_cat < 0) ui_cat = PC_PATTERN; return; }
     if (tab == T_SEQ) {
-        if (ui_cat < 0 || ui_cat == PC_FX || ui_cat == PC_MIX) { int c = ui_cat < 0 ? PC_PATTERN : ui_cat; tab = T_GRID; hubbing = 1; hub_cur = c; ui_cat = -1; return; }
+        if (ui_cat < 0 || ui_cat == PC_FX || ui_cat == PC_MIX) { cat_open(ui_cat < 0 ? PC_PATTERN : ui_cat); return; }   // v3: no pad menu, its section
         if (ui_cat == PC_PATTERN) { if (is_auto(lane)) lane = lane_first(); if (cur_pat(sel)->mode) { roll_open(); return; } if (srow < 1 || srow > 2) { srow = 1; scol = 0; } }
         else if (ui_cat == PC_SOUND) { if (srow < 3) sound_sync(); }
         else if (ui_cat == PC_MOD && !is_auto(lane)) { lane = L_A1; if (srow > 2) set_step(0); }

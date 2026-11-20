@@ -75,7 +75,7 @@ static void chord_key(int k, int down) {
     if (k == K_EDIT) { combo = 0; if (held[K_OPT]) { push_undo(); edit_begin(); ch_clear_slot(p, ch_slot); toast("SLOT CLEARED"); combo = 1; } else ch_hear(ch_row, ch_col); return; }
     if (held[K_EDIT]) combo = 1;
     if (k == K_PLAY) { play_key(); return; }
-    if (k == K_Y) { chord_leave(); if (ui_cat == PC_PATTERN) patmenu_open(); return; }   // back to PATTERN's list, as the roll
+    if (k == K_Y) { chord_leave(); return; }
     if (k == K_OPT) { ch_hear(ch_row, ch_col); return; }
     if (k == K_X) { ch_len = (ch_len + 1) % 4; ch_slot = 0; return; }
     if (k == K_R2) { ch_inv = (ch_inv + 1) % 3; ch_hear(ch_row, ch_col); return; }

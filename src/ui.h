@@ -9,6 +9,7 @@ enum { STRIP_HIDDEN, STRIP_THIN, STRIP_BIG };
 static const char *const cat_name[PC_N] = {"PATTERN", "SOUND", "FX", "MOD", "MIX"};
 enum { HUB_LOOK = PC_N, HUB_N };         // the cards of the hub: the five categories, then LOOK
 static int strip_focus, sec_cur;         // v3: the cursor on a strip: 1 the sections, 2 the pads; sec_cur the section under it
+static int tab_focus;                    // v3: the cursor on the page's own tabs (SOUND pages, STEPS lanes, FX inserts...)
 static void pad_step(int d); static void cat_open(int c);
 static void draw_footer(const char *hint);
 static char ui_hint[256];                // this frame's whole footer hint
@@ -206,6 +207,7 @@ static void ui2_footer(const char *h) {  // at most three key chips: the key in 
     if (qb_focus) h = "EDIT PRESS  <> BUTTON  OPTION BACK";
     else if (strip_focus == 1) h = sec_cur == HUB_LOOK ? "EDIT OPEN  <> SECTION  OPTION BACK" : sec_cur == PC_SOUND ? "EDIT(HOLD) ENGINE  <> SECTION  OPTION BACK" : "<> SECTION  ^ UP  OPTION BACK";
     else if (strip_focus == 2) h = "<> PAD  v SECTIONS  OPTION BACK";
+    else if (tab_focus) h = "<> PAGE  ^ UP  OPTION BACK";
     if (!hint_on) return;                // PROJECT > SYSTEM > FOOTER HINTS off: every key is in PROJECT > ABOUT
     while (*h && left--) {
         const char *e = strstr(h, "  "); int n = e ? (int)(e - h) : (int)strlen(h), k = (int)strcspn(h, " "); char b[64];
@@ -279,33 +281,9 @@ static int ui_pair(int x, int y, const char *p, int n) {   // a key chip and wha
     snprintf(b, sizeof b, "%.*s", n - w > 0 ? n - w - 1 : 0, p + w + (n > w)); for (char *q = b; *q; q++) if (*q >= 'A' && *q <= 'Z') *q += 32;
     return kw + 8 + ftext(x + kw + 8, y + 2, FT_S, C_WHITE, b);
 }
-// SHIFT held inside a pad: the cross of the jump (L3), as big as the mockup draws it: four categories around the pad over
-// the dark screen, SHIFT+arrow opens one from any depth and it stays lit until SHIFT goes up. The list of every key that
-// SHIFT used to show lives in PROJECT > ABOUT now (2026-11-14, user).
-static int jump_cat(int k) { return k == K_UP ? PC_PATTERN : k == K_RIGHT ? PC_SOUND : k == K_DOWN ? PC_FX : PC_MIX; }
-static int jump_hit = -1;                // the category the cross has just opened
+// v3: SHIFT+LEFT/RIGHT inside a pad is the next pad (the cross of the jump is gone, 2026-11-20).
 static int jump_ok(void) { return in_pad() && !ui_over() && !perform && !ui_simple; }
 static void ui2_footer(const char *h);
-static void ui_cross(void) {
-    jump_hit = -1; return;               // v3: SHIFT+<> is the next pad now; the cross goes after the user's check
-    if (!jump_ok() || !shift_t) return;
-    if (jump_hit < 0 && (used[K_SHIFT] || ms_since(SDL_GetTicks(), shift_t) < 200)) return;
-    enum { BW = 270, BH = 92, MX = 512, MY = 389 };
-    static const int bc[4] = {PC_PATTERN, PC_MIX, PC_SOUND, PC_FX}, bx[4] = {377, 87, 667, 377}, by[4] = {159, 343, 343, 527};
-    static const char *const hint = "hold SHIFT and press an arrow";
-    ui_shade(215);
-    ftext((W - ftext_w(FT_M, hint)) / 2, 100, FT_M, C_WHITE, hint);
-    for (int i = 0; i < 4; i++) {
-        Col cc = C_CAT(bc[i]); int on = jump_hit == bc[i]; const char *nm = cat_name[bc[i]];
-        rframe(bx[i], by[i], BW, BH, 12, 3, cc, on ? cc : mix(C_BG, cc, 28));
-        ftext(bx[i] + (BW - ftext_w(FT_LB, nm)) / 2, by[i] + (BH - fv2[FT_LB].h) / 2, FT_LB, on ? C_BG : cc, nm);
-    }
-    char b[48]; disc2(MX, MY, 62, C_LINE);
-    snprintf(b, sizeof b, "%02d", sel + 1); ftext(MX - ftext_w(FT_LB, b) / 2, MY - 26, FT_LB, C_WHITE, b);
-    snprintf(b, sizeof b, "%.9s", slot_name(sel) ? slot_name(sel) : type_name[song.t[sel].type & 3]); ftext(MX - ftext_w(FT_S, b) / 2, MY + 6, FT_S, C_DIM, b);
-    if (jump_hit < 0) snprintf(b, sizeof b, "SHIFT+ARROW STRAIGHT TO A CATEGORY"); else snprintf(b, sizeof b, "SHIFT+ARROW STRAIGHT TO %s", cat_name[jump_hit]);
-    ui2_footer(b);
-}
 
 // The value popup: while EDIT+arrows turn a control of the instrument panel, its name, value and where it sits.
 static char uf_name[32], uf_val[48]; static int uf_f; static Col uf_col;   // the card under the cursor this frame (ui_focus)
@@ -341,9 +319,7 @@ static void cat_open(int c) {
     hub_cur = c; ui_cat = c;
     if (c == PC_PATTERN && is_auto(lane)) lane = lane_first();
     if (c == PC_PATTERN && (srow < 1 || srow > 2)) { srow = 1; scol = 0; }
-    if (c == PC_PATTERN && pm_cur == 1) pat_open();   // the page it was left on
-    else if (c == PC_PATTERN && pm_cur == 2) recpage = 1;
-    else if (c == PC_PATTERN && cur_pat(sel)->mode) roll_open();
+    if (c == PC_PATTERN && cur_pat(sel)->mode) roll_open();   // v3: PATTERN is its layout; PATTERNS and RECORD are in OPTION's menu
     if (c == PC_SOUND) { srow = 3; scol = 0; cl_deep = 0; gb_cur = 0; }
     if (c == PC_FX || c == PC_MOD) { fx_unit = sel; fx_page = c == PC_MOD; }
     if (c == PC_MIX) mcol = sel;
@@ -375,26 +351,6 @@ static void menu_nav(int k) {
     else if (k == K_DOWN) { set_tab(T_GRID); if (has_sound(sel)) cat_open(hub_cur < PC_N ? hub_cur : PC_PATTERN); else pick_open(); }
 }
 static void icon(int id, int x, int y, Col c); static int slot_icon(int i); static Col pad_icol(int s, Col dflt);
-static void tree_key(int k); static void tree_tap(void); static void draw_tree(void);   // pages.h: the hub drawn as a tree
-static void hub_go(void) {               // EDIT on a card
-    if (hub_cur == HUB_LOOK) icon_open(); else if (hub_cur == PC_PATTERN) patmenu_open(); else if (hub_cur == PC_MOD) modmenu_open(); else cat_open(hub_cur);
-}
-static void hub_clear(int c) {           // OPT+EDIT on a card of the hub: what it holds, as on an empty pad
-    static const int part[HUB_N] = {PP_PAT, PP_SOUND, PP_FX, PP_LFO | PP_AUTO | PP_DUCK, PP_MIX, PP_LOOK};
-    static const char *const what[HUB_N] = {"ALL 16 PATTERNS", "THE SOUND", "THE EFFECTS", "LFO, AUTOMATION, DUCK", "THE MIX", "THE LOOK"};
-    cfm_pad(sel, part[clampi(c, 0, HUB_N - 1)], what[clampi(c, 0, HUB_N - 1)]);
-}
-static void hub_key(int k, int down) {
-    if (!down) { if (k == K_EDIT && !used[K_EDIT]) { if (ui_tree) tree_tap(); else hub_go(); } return; }
-    if (k == K_Y) { hubbing = 0; tr_lv = 2; return; }   // back to HOME
-    if (k == K_PLAY) { play_key(); return; }
-    if ((k == K_EDIT && held[K_OPT]) || (k == K_OPT && held[K_EDIT])) { used[K_EDIT] = used[K_OPT] = 1;   // clear the card (YES/NO first)
-        if (ui_tree && tr_lv == 1) cfm_pad(sel, PP_ALL, ""); else if (!ui_tree || tr_lv >= 2) hub_clear(hub_cur); return; }
-    if (k == K_OPT) { act_listen(sel); return; }
-    if (ui_tree) { if (k <= K_RIGHT) tree_key(k); return; }
-    if (k == K_UP || k == K_LEFT) hub_cur = (hub_cur + HUB_N - 1) % HUB_N;
-    if (k == K_DOWN || k == K_RIGHT) hub_cur = (hub_cur + 1) % HUB_N;
-}
 static void hub_line(int c, char *b, int n) {   // what is inside, in a few words
     const Track *t = &song.t[sel]; const Pattern *p = cur_pat(sel); const PadMix *pm = &song.mix.pad[sel];
     switch (c) {
@@ -408,56 +364,7 @@ static void hub_line(int c, char *b, int n) {   // what is inside, in a few word
 }
 static const char *hub_name(int c) { return c < PC_N ? cat_name[c] : "LOOK"; }
 static Col hub_col(int c) { return c < PC_N ? C_CAT(c) : C_GREY; }
-static void draw_hub(void) {              // the cards of A03: stripe, name in the category's colour, what is inside
-    if (ui_tree) { draw_tree(); return; }
-    enum { CX = 122, CWD = 778, CHT = 94, DY = 106, Y0 = 76 };
-    static const char *const jump[HUB_N] = {"SHIFT+UP", "SHIFT+RIGHT", "SHIFT+DOWN", "", "SHIFT+LEFT", ""};
-    hub_cur = clampi(hub_cur, 0, HUB_N - 1);
-    for (int c = 0; c < HUB_N; c++) {
-        int y = Y0 + c * DY, on = c == hub_cur; Col cc = hub_col(c); char b[96];
-        rrect(CX, y, CWD, CHT, 8, on ? mix(C_SELBG, C_DIM, 40) : C_CELL);
-        rect(CX, y, 9, CHT, cc, 1);
-        ftext(CX + 38, y + 9, FT_LB, c < PC_N ? cc : C_WHITE, hub_name(c));
-        ftext(CX + CWD - 26 - ftext_w(FT_S, jump[c]), y + 13, FT_S, C_DIM, jump[c]);
-        hub_line(c, b, sizeof b); ftext(CX + 38, y + 50, FT_M, on ? C_WHITE : C_DIM, b);
-        if (c == HUB_LOOK) icon(slot_icon(sel), CX + CWD - 62, y + (CHT - 32) / 2, pad_icol(sel, C_ENG(song.t[sel].type)));   // the icon as it is now
-    }
-    draw_footer("EDIT OPEN  F1/F2 PAD  Y BACK  OPT+EDIT CLEAR");
-}
 
-// PATTERN (UI v2): its pages as a list, STEPS (the roll when the pattern is one) and SELECT; RECORD comes with A04.
-static void patmenu_key(int k, int down) {
-    if (!down) { if (k == K_EDIT && !used[K_EDIT]) { patmenu = 0;
-        if (pm_cur == 1) pat_open(); else if (pm_cur == 2) recpage = 1; else if (cur_pat(sel)->mode == 2) chord_open(); else if (cur_pat(sel)->mode) roll_open(); else { srow = 1; scol = 0; lane = lane_first(); seq_clamp(); }
-        if (pm_cur == 3) rnd_open(); } return; }   // RANDOM: its window over the steps (or the roll)   // STEPS open on the notes
-    if (k == K_Y) { hub_open(); hub_cur = PC_PATTERN; return; }
-    if (k == K_PLAY) { play_key(); return; }
-    if (pm_cur == 0 && held[K_EDIT] && (k == K_UP || k == K_DOWN || k == K_LEFT || k == K_RIGHT)) {   // EDIT + an arrow on the first card: the clip's MODE, round
-        used[K_EDIT] = 1; pat_mode_step(k == K_RIGHT || k == K_DOWN ? 1 : -1); return; }
-    if ((k == K_EDIT && held[K_OPT]) || (k == K_OPT && held[K_EDIT])) { used[K_EDIT] = used[K_OPT] = 1;   // STEPS: this pattern, SELECT: all 16, RECORD: its settings
-        if (pm_cur == 3) return; if (pm_cur == 2) cfm_prj(-1); else { char b[32]; snprintf(b, sizeof b, "PATTERN P%d", song.t[sel].cur + 1); cfm_pad(sel, pm_cur ? PP_PAT : PP_STEPS, pm_cur ? "ALL 16 PATTERNS" : b); } return; }
-    if (k == K_OPT) { act_listen(sel); return; }
-    if (k == K_UP || k == K_LEFT) pm_cur = (pm_cur + 3) % 4;
-    if (k == K_DOWN || k == K_RIGHT) pm_cur = (pm_cur + 1) % 4;
-}
-static void draw_patmenu(void) {
-    enum { CX = 122, CWD = 778, CHT = 104, DY = 122, Y0 = 82 };
-    const Track *t = &song.t[sel]; const Pattern *p = cur_pat(sel); int used = 0; for (int q = 0; q < NPAT; q++) used += pat_used(&t->pat[q]);
-    for (int c = 0; c < 4; c++) {
-        int y = Y0 + c * DY, on = c == pm_cur; Col cc = C_CAT(PC_PATTERN); char b[96];
-        rrect(CX, y, CWD, CHT, 8, on ? mix(C_SELBG, C_DIM, 40) : C_CELL);
-        rect(CX, y, 9, CHT, cc, 1);
-        int ix = c ? 0 : 44; if (!c) icon(p->mode == 2 ? IC_M_CHORD : p->mode ? IC_M_PIANO : IC_M_STEP_SEQ, CX + 30, y + 16, cc);   // the clip's MODE: its icon, name and a small picture
-        ftext(CX + 38 + ix, y + 12, FT_LB, cc, c == 3 ? "RANDOM" : c == 2 ? "RECORD" : c ? "SELECT" : pat_mode_name[p->mode % 3]);
-        if (!c) { if (p->mode == 2) draw_chord_mini(p, CX + CWD - 250, y + 14, 230, CHT - 28, on); else if (p->mode) draw_roll_mini(p, CX + CWD - 250, y + 14, 230, CHT - 28, -1, on); else for (int i = 0; i < 16; i++) rect(CX + CWD - 250 + i * 14, y + 40, 11, 24, i < p->len && p->trig[i] ? cc : C_LINE, 1); }
-        if (c == 3) snprintf(b, sizeof b, "rhythm, notes or both \3 in the key and scale of %s", t->scale || t->key ? "the pad" : "the project");
-        else if (c == 2) snprintf(b, sizeof b, "count-in %d \3 quantize %s \3 play it on KEYS or PADS (MENU)", song.count_in, quant_name[song.rec_quant % 5]);
-        else if (c) snprintf(b, sizeof b, "P%02d of %d used \3 length \3 division \3 what plays after", t->cur + 1, used);
-        else snprintf(b, sizeof b, "%d steps \3 %s", p->len, div_name[p->div % 6]);
-        ftext(CX + 38, y + 56, FT_M, on ? C_WHITE : C_DIM, b);
-    }
-    draw_footer(pm_cur == 0 ? "EDIT OPEN  EDIT+ARROWS MODE  Y BACK  F1/F2 PAD  OPT+EDIT CLEAR" : "EDIT OPEN  F1/F2 PAD  Y BACK  OPT+EDIT CLEAR");
-}
 
 // PATTERN > STEPS (mockup A05): the lanes as tabs (L1/R1), sixteen steps in two rows, the pages follow the cursor.
 static void slice_label(char *b, const Pattern *p, int i, int ns);   // main.c, below
@@ -538,7 +445,7 @@ static void record_key(int k, int down) {
     if (!down) { if (k == K_EDIT && !used[K_EDIT]) rec_toggle(engine_posf(), SDL_GetTicks() | 1); return; }
     if (k == K_Y) {                      // the count or the wait: cancel; else back to the list (a running take goes on)
         if (rec && (engine_counting() >= 0 || rec_wait)) rec_toggle(engine_posf(), SDL_GetTicks() | 1);
-        else { recpage = 0; patmenu_open(); }
+        else { recpage = 0; cat_open(PC_PATTERN); }
         return;
     }
     if (k == K_PLAY) { play_key(); return; }

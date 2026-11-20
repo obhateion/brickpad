@@ -238,22 +238,34 @@ static void knob_arc(int cx, int cy, int r, int t, float a0, float a1, Col c) { 
     if (a1 < a0) { float s = a0; a0 = a1; a1 = s; }
     for (float a = a0; a <= a1 + 0.01f; a += 3) disc2(cx + (int)(r * cosf(a * 0.0174533f)), cy + (int)(r * sinf(a * 0.0174533f)), t / 2, c);
 }
+// The knob alone, for any page: f = where the value sits 0..1, z = where its arc starts (0, or the middle for +/- values).
+// Returns the angle of the value, for rings drawn round it.
+static float knob_draw(int x, int y, int w, int h, const char *lb, char *v, float f, float z, int on, Col ec, int *kcx, int *kcy, int *kr) {
+    if (on) rframe(x, y, w, h, 8, 3, ec, C_CELL); else rrect(x, y, w, h, 8, C_CELL);
+    char l2[16]; snprintf(l2, sizeof l2, "%.13s", lb);
+    ftext(x + (w - ftext_w(FT_S, l2)) / 2, y + 8, FT_S, on ? C_WHITE : C_DIM, l2);
+    int cx = x + w / 2, cy = y + 30 + (h - 70) / 2, r = (h - 70) / 2 - 8; if (r > 44) r = 44; if (r > w / 2 - 14) r = w / 2 - 14;
+    float a = 135 + 270 * f, a0 = 135 + 270 * z;
+    knob_arc(cx, cy, r, 6, 135, 405, C_LINE);
+    if (fabsf(a - a0) > 1) knob_arc(cx, cy, r, 6, a0, a, ec);
+    disc2(cx, cy, r - 12 > 4 ? r - 12 : 4, mix(C_CELL, C_BG, 128));
+    line(cx + (int)((r - 26) * cosf(a * 0.0174533f) * 0.2f), cy + (int)((r - 26) * sinf(a * 0.0174533f) * 0.2f),
+         cx + (int)((r - 14) * cosf(a * 0.0174533f)), cy + (int)((r - 14) * sinf(a * 0.0174533f)), 4, C_WHITE);
+    int fw = ftext_w(FT_MB, v) <= w - 12 ? FT_MB : FT_S; if (ftext_w(fw, v) > w - 12) v[(w - 12) / fv2[fw].w] = 0;
+    ftext(cx - ftext_w(fw, v) / 2, y + h - 30, fw, C_WHITE, v);
+    *kcx = cx; *kcy = cy; *kr = r; return a;
+}
 static void snd_knob(int x, int y, int w, int h, int p, int on, Col ec) {
     char v[96]; if (p == P_SAMPLE) snprintf(v, sizeof v, "OPEN"); else if (p == P_DIR) snprintf(v, sizeof v, "%s", song.t[sel].rev ? "\005" : "\004");
     else par_str(sel, p, v, sizeof v);
-    if (on) rframe(x, y, w, h, 8, 3, ec, C_CELL); else rrect(x, y, w, h, 8, C_CELL);
-    const char *lb = snd_label(p); char l2[16]; snprintf(l2, sizeof l2, "%.13s", lb);
-    ftext(x + (w - ftext_w(FT_S, l2)) / 2, y + 8, FT_S, on ? C_WHITE : C_DIM, l2);
-    int cx = x + w / 2, cy = y + 30 + (h - 70) / 2, r = (h - 70) / 2 - 8; if (r > 44) r = 44;
+    const char *lb = snd_label(p);
     int lo = 0, hi = 1, st, bg; float f = 0; if (p != P_SAMPLE) { par_limits(sel, p, &lo, &hi, &st, &bg); if (hi > lo) f = (float)clampi(par_get(sel, p) - lo, 0, hi - lo) / (hi - lo); }
-    if (p == P_SAMPLE) { rrect(cx - r, cy - 18, 2 * r, 36, 8, C_SELBG); }
-    else {
-        float a = 135 + 270 * f, z = lo < 0 && hi > 0 ? 135 + 270.f * -lo / (hi - lo) : 135;
-        knob_arc(cx, cy, r, 6, 135, 405, C_LINE);
-        if (fabsf(a - z) > 1) knob_arc(cx, cy, r, 6, z, a, ec);
-        disc2(cx, cy, r - 12, mix(C_CELL, C_BG, 128));
-        line(cx + (int)((r - 26) * cosf(a * 0.0174533f) * 0.2f), cy + (int)((r - 26) * sinf(a * 0.0174533f) * 0.2f),
-             cx + (int)((r - 14) * cosf(a * 0.0174533f)), cy + (int)((r - 14) * sinf(a * 0.0174533f)), 4, C_WHITE);
+    if (p == P_SAMPLE) {                  // a button, not a knob
+        if (on) rframe(x, y, w, h, 8, 3, ec, C_CELL); else rrect(x, y, w, h, 8, C_CELL);
+        ftext(x + (w - ftext_w(FT_S, lb)) / 2, y + 8, FT_S, on ? C_WHITE : C_DIM, lb);
+        rrect(x + 20, y + h / 2 - 18, w - 40, 36, 8, C_SELBG); ftext(x + w / 2 - ftext_w(FT_MB, v) / 2, y + h / 2 - fv2[FT_MB].h / 2, FT_MB, C_WHITE, v);
+    } else {
+        int cx, cy, r; float a = knob_draw(x, y, w, h, lb, v, f, lo < 0 && hi > 0 ? (float)-lo / (hi - lo) : 0, on, ec, &cx, &cy, &r);
         int b = auto_bind_target(p);
         if (b >= 0) {                     // what moves it
             for (int j = 0; j < NLFO; j++) { const Lfo *lf = &song.lfo[sel][j]; if (lf->target != b || !lf->depth) continue;
@@ -262,8 +274,6 @@ static void snd_knob(int x, int y, int w, int h, int p, int on, Col ec) {
             for (int k = 0; k < NAUTO; k++) if (al[k].target == b) { disc2(cx + (int)((r + 9) * cosf(a * 0.0174533f)), cy + (int)((r + 9) * sinf(a * 0.0174533f)), 6, C_CAT(PC_MOD)); break; }
         }
     }
-    int fw = ftext_w(FT_MB, v) <= w - 12 ? FT_MB : FT_S; if (ftext_w(fw, v) > w - 12) v[(w - 12) / fv2[fw].w] = 0;
-    ftext(cx - ftext_w(fw, v) / 2, p == P_SAMPLE ? cy - fv2[fw].h / 2 : y + h - 30, fw, C_WHITE, v);
     char tg[4][4]; int nt = snd_tags(p, tg), tx = x + w - 6 - nt * 30;   // A1 / L1 badges in the corner
     for (int i = 0; i < nt; i++) { Col bc = tg[i][0] == 'A' ? C_CAT(PC_MOD) : C_WHITE; rrect(tx + i * 30, y + h - 58, 26, 18, 4, bc); ftext(tx + i * 30 + 13 - ftext_w(FT_S, tg[i]) / 2, y + h - 58, FT_S, C_BG, tg[i]); }
     if (on) ui_focus(lb, v, par_is_number(p) && hi > lo ? (int)(f * 100) : -1, ec);
