@@ -84,6 +84,7 @@ static SDL_Renderer *R;
 static FILE *logf;
 static int koct, key_on[NSLOT];
 static int rec;
+static int scn_lock, rec_replace, ex_resample; static uint8_t rec_wiped[NSLOT];   // the quick drawer (2026-11-21): SCENE LOCK, REPLACE, RESAMPLE
 static Uint32 combo_t; static double combo_pos;   // MENU+PLAY pressed then, waiting for a second PLAY
 #define COMBO_MS 300
 #define X_TWICE_MS 350               // two X taps this close double the clip
@@ -185,7 +186,9 @@ enum { CAT_OTHER, CAT_KICK, CAT_SNARE, CAT_CLAP, CAT_HAT, CAT_OHAT, CAT_CYM, CAT
 // ---------- song helpers ----------
 #define UNDO_N 10
 static Song undo_buf[UNDO_N]; static int undo_n, undo_top;
-static void push_undo(void) { undo_buf[undo_top] = song; undo_top = (undo_top + 1) % UNDO_N; if (undo_n < UNDO_N) undo_n++; }
+#define REDO_N 4                         // REDO (quick bar, 2026-11-21): what UNDO took back, until the next edit
+static Song redo_buf[REDO_N]; static int redo_n, redo_top;
+static void push_undo(void) { redo_n = 0; undo_buf[undo_top] = song; undo_top = (undo_top + 1) % UNDO_N; if (undo_n < UNDO_N) undo_n++; }
 static void edit_begin(void) { if (!undo_armed) { push_undo(); undo_armed = 1; } }
 
 // ---------- library index: what is known about the files, kept in library.idx ----------
@@ -347,8 +350,17 @@ static void undo(void) {
     if (!undo_n) { toast("NOTHING TO UNDO"); return; }
     undo_top = (undo_top + UNDO_N - 1) % UNDO_N; undo_n--;
     Song cur = song; song = undo_buf[undo_top];
+    redo_buf[redo_top] = cur; redo_top = (redo_top + 1) % REDO_N; if (redo_n < REDO_N) redo_n++;
     for (int s = 0; s < NSLOT; s++) { song.t[s].on = cur.t[s].on; song.t[s].queued = cur.t[s].queued; }
     sync_samples(); toast("UNDO");
+}
+static void redo(void) {
+    if (!redo_n) { toast("NOTHING TO REDO"); return; }
+    redo_top = (redo_top + REDO_N - 1) % REDO_N; redo_n--;
+    undo_buf[undo_top] = song; undo_top = (undo_top + 1) % UNDO_N; if (undo_n < UNDO_N) undo_n++;   // as push_undo, keeping the redo
+    Song cur = song; song = redo_buf[redo_top];
+    for (int s = 0; s < NSLOT; s++) { song.t[s].on = cur.t[s].on; song.t[s].queued = cur.t[s].queued; }
+    sync_samples(); toast("REDO");
 }
 static Pattern *cur_pat(int s) { return &song.t[s].pat[song.t[s].cur]; }
 // ---- SUB cells (2026-11-20): the pool in Song.sub (bp.h). An entry exists only while a cell differs from the step.
@@ -2874,6 +2886,8 @@ static void rec_store(int s, int slice, int note, double pos) {
         if (rec_n < (int)(sizeof rec_ev / sizeof *rec_ev)) rec_ev[rec_n++] = (RecEv){(int8_t)s, (int8_t)note, (int8_t)slice, pos, -1, (int16_t)rec_tag_now};
         return;
     }
+    if (rec_replace && !rec_wiped[s]) {  // REPLACE: the take's first note wipes the clip, its length stays
+        rec_wiped[s] = 1; for (int i = 0; i < NSTEP; i++) p->trig[i] = 0; for (int i = 0; i < NNOTE; i++) p->roll[i].len = 0; }
     int d = engine_step32(p), g = rec_grid(d), len = p->len ? p->len : 16;
     long rel = (long)((pos - engine_anchor(s)) / g + 0.5) * g;   // steps count from where the clip began
     if (rel < 0) rel += (long)len * d * (1 + (-rel) / ((long)len * d));
@@ -2900,7 +2914,7 @@ static void rec_toggle(double pos, Uint32 pressed) {   // MENU+PLAY: pos and tim
     if (rec && rec_wait) { rec = 0; rec_wait = 0; toast("REC CANCELLED"); return; }
     if (rec) { rec_finish(pos); return; }
     engine_queue_stop(0);
-    push_undo();
+    push_undo(); memset(rec_wiped, 0, sizeof rec_wiped);
     int playing = engine_playing();
     rec_n = 0; rec_end = -1; rec_from = 0;
     for (int s = 0; s < NSLOT; s++) { rec_free[s] = !pat_used(cur_pat(s)); rec_pat[s] = song.t[s].cur; }
@@ -3727,6 +3741,7 @@ static void key_event1(int k, int down) {
     }
     if (held[K_MENU] && k <= K_RIGHT) { if (down) { used[K_MENU] = 1; qb_focus = strip_focus = 0; if (!ui_over()) menu_nav(k); } return; }   // v3: the screen map
     if (strip_focus && !strips_here()) strip_focus = 0;
+    if (qd_open && qd_key(k, down)) return;   // the quick drawer
     if (qb_focus && qbar_key(k, down)) return;
     if (strip_focus && strip_key(k, down)) return;
     if (tab_focus && !page_tabs()) tab_focus = 0;
@@ -4057,6 +4072,7 @@ static void draw_roll(void) {
     int beat = 8 * RT, bar = beat * (song.beats > 0 ? song.beats : 4), i = roll_find(p, rl_t, rl_n);
     Col ec = C_ENG(song.t[sel].type), key_w = mix(C_WHITE, C_BG, 30), key_b = C_LINE;
     roll_view();
+    if (follow_ph && st >= 0) { int w = RL_COLS * rl_snap, pt = st * rl_d32[p->div % 6] * RT; rl_v0 = pt / w * w; }   // FOLLOW: the view shows the playhead
     char b[80], nm[8];
     for (int r = 0; r < RL_ROWS; r++) {  // rows, high pitches on top: white and black keys; the pad's scale has a dot, its tonic the accent
         int n = rl_n0 + RL_ROWS - 1 - r, y = GY + r * RH, pc = n % 12, black = pc == 1 || pc == 3 || pc == 6 || pc == 8 || pc == 10;
@@ -4237,7 +4253,7 @@ static double draw_build_ms, draw_present_ms;   // summed over the frames since 
 static Uint32 last_input;                // the last button or d-pad event
 static int frame_rate(Uint32 now) {      // frames per second for what is happening now
     int keys = 0; for (int k = 0; k < K_N; k++) keys |= held[k];
-    if (keys || (last_input && ms_since(now, last_input) < 500) || browse_hold || quit_down) return 30;   // UI v2: never over 30
+    if (keys || (last_input && ms_since(now, last_input) < 500) || browse_hold || quit_down || (anim_busy && ms_since(now, anim_busy) < 100)) return 30;   // UI v2: never over 30
     if (engine_playing() || engine_counting() >= 0 || engine_voices() > 0 || (msg_t && now - msg_t < 1600)) return 30;
     for (int i = 0; i < NSLOT; i++) if (flash[i] && now - flash[i] < 200) return 30;
     return 10;
@@ -4660,7 +4676,7 @@ static int ex_scn, ex_k, ex_home, ex_all0; static long ex_seg;   // 2026-11-15 (
 static void ex_scene(int n) {            // the device is paused: the scene comes in on the next rendered step
     float z[256]; scene_go(n); scn_play = 0; engine_scene_force(); if (!engine_playing()) engine_render(z, 128); scene_poll(); }
 static void export_open(void) {
-    exporting = 1; ex_row = EX_GO; ex_run = 0;
+    exporting = 1; ex_resample = 0; ex_row = EX_GO; ex_run = 0;
     int any = 0; for (int s = 0; s < NSLOT; s++) if (song.t[s].on) any = 1;
     ex_all = !any;                        // nothing on: every clip with notes
 }
@@ -4734,7 +4750,13 @@ static void export_finish(int keep) {
     if (ex_scn) { ex_all = ex_all0; if (scn_cur != ex_home) ex_scene(ex_home); ex_scn = 0; }   // back in the scene that was open
     for (int s = 0; s < NSLOT; s++) { song.t[s].on = ex_on[s]; song.mix.pad[s].solo = (uint8_t)ex_solo[s]; }
     engine_pause(0); ex_run = 0;
-    if (keep) { char b[200]; snprintf(b, sizeof b, ex_what == 1 || ex_what == 2 ? "FILES IN exports/" : "EXPORTED %s", ex_path); toast(b); exporting = 0; } else toast("EXPORT CANCELLED");
+    if (keep) { char b[200]; snprintf(b, sizeof b, ex_what == 1 || ex_what == 2 ? "FILES IN exports/" : "EXPORTED %s", ex_path); toast(b); exporting = 0;
+        if (ex_resample && !ex_stems) {   // RESAMPLE: the render goes onto the first pad with no sound
+            int s = 0; while (s < NSLOT && has_sound(s)) s++; char ap[512];
+            if (s >= NSLOT) toast("NO EMPTY PAD: THE FILE IS IN exports/");
+            else if (realpath(ex_path, ap)) { push_undo(); song.t[s].type = 0; set_slot_file(s, ap); snprintf(b, sizeof b, "RESAMPLED INTO PAD %d", s + 1); toast(b); }
+        }
+        ex_resample = 0; } else toast("EXPORT CANCELLED");
 }
 static void export_tick(void) {          // a slice of the render per frame: about a second of audio
     if (!ex_run) return;
@@ -4827,9 +4849,10 @@ static void draw(void) {
         if (bigs) ui2_header(); else { int st = ui_strip; if (strip_on()) ui_strip = STRIP_THIN; ui2_header(); ui_strip = st; }
         if (secs) ui2_secs(sy); }
     else if (tab_focus) tabs_frame();
+    qd_draw();
     ui_popup();
     if (asking) draw_ask2();
-    if (ctxing) draw_ctx();
+    ctx_e = anim(&ctx_anim, ctxing, 160); if (ctxing || ctx_e > 0) draw_ctx();
     if (cfm) draw_cfm2();
 shown:;
     ui_quit_hold(); adv_hold_draw();

@@ -65,66 +65,7 @@ static void ui2_strip_big(void) {        // BIG (2026-11-14, mockup strip3): twe
         if (on) { int len = cur_pat(i)->len, st = engine_step(i); if (len > 0 && st >= 0) rect(px + 12, y + 47, (pw - 20) * (st % len + 1) / len, 5, c, 1); }
     }
 }
-// The quick bar (v3, 2026-11-20, user: "as Ableton's top bar"): buttons for what a live set toggles. At the top (in the header
-// row) or at the bottom (instead of the footer hints), PROJECT > SETTINGS > QUICK BAR. The arrow past the edge of a page
-// reaches it, <> choose, EDIT presses, the arrow back or OPTION leaves. << and >> nudge the tempo while EDIT is held.
-// Icons, not letters (user 2026-11-20); the focused button's name is in the hint. Metronome vibration went back to
-// PROJECT > METRONOME only (user 2026-11-20).
-enum { QB_MET, QB_MON, QB_CAP, QB_SLOW, QB_FAST, QB_PADS, QB_KEYS, QB_N };
-static const char *const qb_name[QB_N] = {"METRONOME", "HEAR NOTES", "CAPTURE", "TEMPO DOWN", "TEMPO UP", "PADS", "KEYS"};
-static const int16_t qb_icon[QB_N] = {IC_M_METRONOME, IC_PHONES, IC_TAPE, IC_M_BACK, IC_M_FWD, IC_M_PAD_GRID, IC_M_PIANO};
-static int qb_focus, qb_cur;
-static int sec_on(void) { return ui_secs && in_pad() && !ui_over() && !picking; }
-static int strips_here(void) { return in_pad() && !ui_over() && !picking && !perform && (sec_on() || strip_on()); }
-static void capture(void); static void metro_save(void);
-static int qb_lit(int i) {
-    switch (i) { case QB_MET: return metro.snd; case QB_MON: return hear_on;
-    case QB_SLOW: return tempo_mul < 0.9995f; case QB_FAST: return tempo_mul > 1.0005f; case QB_PADS: return perform == 1; case QB_KEYS: return perform == 2; }
-    return 0;
-}
-enum { QB_IC = 24, QB_W = QB_IC + 16 };    // icon size, button width
-static int qbar_w(void) { return QB_N * (QB_W + 6) - 6; }
-static void icon_fit(int id, int x, int y, int sz, Col c) {   // a 16x16 icon at any size (pixel edges rounded)
-    SDL_Rect d[160]; int n = 0;
-    for (int r = 0; r < 16; r++) for (int a = 0; a < 16;) {
-        if (icon_tab[id].px[r][a] != 'X') { a++; continue; }
-        int e = a; while (e < 16 && icon_tab[id].px[r][e] == 'X') e++;
-        int y0 = y + r * sz / 16, y1 = y + (r + 1) * sz / 16, x0 = x + a * sz / 16, x1 = x + e * sz / 16;
-        if (n < 160) d[n++] = (SDL_Rect){x0, y0, x1 - x0, y1 - y0};
-        a = e;
-    }
-    SDL_SetRenderDrawColor(R, c.r, c.g, c.b, 255); SDL_RenderFillRects(R, d, n);
-}
-static void qbar_draw(int x, int y, int h) {
-    int sz = h - 8 < QB_IC ? h - 8 : QB_IC;
-    for (int i = 0; i < QB_N; i++) {
-        int lit = qb_lit(i), cur = qb_focus && i == qb_cur;
-        if (cur) rframe(x - 3, y - 3, QB_W + 6, h + 6, 8, 2, C_WHITE, C_BG);
-        rrect(x, y, QB_W, h, 6, lit ? C_ORANGE : C_SELBG);
-        icon_fit(qb_icon[i], x + (QB_W - sz) / 2, y + (h - sz) / 2, sz, lit ? C_BG : cur ? C_WHITE : C_DIM);
-        x += QB_W + 6;
-    }
-}
-static void qb_press(int i) {
-    switch (i) {
-    case QB_MET: metro.snd = !metro.snd; metro_save(); toast(metro.snd ? "METRONOME SOUND ON" : "METRONOME SOUND OFF"); break;
-    case QB_MON: hear_on = !hear_on; toast(hear_on ? "HEAR NOTES ON" : "HEAR NOTES OFF"); break;
-    case QB_CAP: capture(); break;
-    case QB_SLOW: case QB_FAST: if (midi_clk_in) toast("CLOCK IN: THE TEMPO COMES FROM MIDI"); else tempo_mul = i == QB_SLOW ? 0.94f : 1.06f; break;
-    case QB_PADS: case QB_KEYS: qb_focus = 0; set_tab(T_GRID); ui_cat = -1; perform = i == QB_PADS ? 1 : 2; toast(i == QB_PADS ? "PADS: SHIFT+OPTION LEAVES" : "KEYS: SHIFT+OPTION LEAVES"); break;
-    }
-}
-static int qbar_key(int k, int down) {    // the cursor on the bar: 1 = the key was the bar's
-    if (k == K_EDIT) { if (down) qb_press(qb_cur); else if (qb_cur == QB_SLOW || qb_cur == QB_FAST) tempo_mul = 1.f; return 1; }
-    if (k == K_PLAY || k == K_SHIFT || k == K_MENU || k == K_F1 || k == K_F2) return 0;
-    if (!down) return 1;
-    if (k == K_LEFT || k == K_RIGHT) { qb_cur = clampi(qb_cur + (k == K_RIGHT ? 1 : -1), 0, QB_N - 1); if (!held[K_EDIT]) tempo_mul = midi_clk_in ? tempo_mul : 1.f; }
-    else if (k == K_OPT || k == (ui_qbar ? K_UP : K_DOWN)) {   // back: down to the strips at the top, OPTION straight to the page
-        qb_focus = 0; if (!midi_clk_in) tempo_mul = 1.f;
-        if (k != K_OPT && !ui_qbar && strips_here()) { strip_focus = strip_on() ? 2 : 1; sec_cur = ui_cat >= 0 ? ui_cat : hub_cur; }
-    }
-    return 1;
-}
+#include "quick.h"
 static void icon_open(void); static void cat_step(int d); static void engine_pick(void);
 static int strip_key(int k, int down) {   // the cursor on a strip: <> the section or the pad (at once), ^ up a strip, v or OPTION down
     if (k == K_PLAY || k == K_SHIFT || k == K_MENU || k == K_F1 || k == K_F2) return 0;
@@ -218,8 +159,9 @@ static void ui2_footer(const char *h) {  // at most three key chips: the key in 
     rect(0, V2_FOOT, W, H - V2_FOOT, C_CELL, 1);
     int x = 18, y = V2_FOOT + 10, left = 3, lim = ui2_metro();
     if (msg_t && SDL_GetTicks() - msg_t < 1500) { int w = ftext_w(FT_MB, msg) + 24; rrect(x, y, w, 32, 6, C_ORANGE); ftext(x + 12, y + 4, FT_MB, C_BG, msg); return; }
-    if (ui_qbar) { qbar_draw(x, y, 32); if (qb_focus) ftext(x + qbar_w() + 20, y + 4, FT_MB, C_WHITE, qb_name[qb_cur]); return; }   // at the bottom: no hints
-    char qh[80]; if (qb_focus) { snprintf(qh, sizeof qh, "EDIT %s  <> BUTTON  OPTION BACK", qb_name[qb_cur]); h = qh; }
+    if (ui_qbar) { qbar_draw(x, y, 32); if (qb_focus) ftext(x + qbar_w() + 20, y + 4, FT_MB, C_WHITE, qb_cur == QB_HANDLE ? "MORE" : qa_tab[qb_top[qb_cur]].name); return; }   // at the bottom: no hints
+    char qh[80]; if (qd_open) h = qd_hint();
+    else if (qb_focus) { snprintf(qh, sizeof qh, "EDIT %s  <> BUTTON  OPTION BACK", qb_cur == QB_HANDLE ? "MORE" : qa_tab[qb_top[qb_cur]].name); h = qh; }
     else if (strip_focus == 1) h = sec_cur == HUB_LOOK ? "EDIT OPEN  <> SECTION  OPTION BACK" : sec_cur == PC_SOUND ? "EDIT(HOLD) ENGINE  <> SECTION  OPTION BACK" : "<> SECTION  ^ UP  OPTION BACK";
     else if (strip_focus == 2) h = "<> PAD  v SECTIONS  OPTION BACK";
     else if (tab_focus) h = "<> PAGE  ^ UP  OPTION BACK";
@@ -306,7 +248,7 @@ static void ui_focus(const char *n, const char *v, int f, Col c) {   // f: 0..10
     snprintf(uf_name, sizeof uf_name, "%s", n); snprintf(uf_val, sizeof uf_val, "%s", v); uf_f = f; uf_col = c;
 }
 static void ui_popup(void) {              // EDIT held and turning: the value large, over the page (ТЗ: always on)
-    if (!held[K_EDIT] || !used[K_EDIT] || !uf_name[0] || perform) return;
+    if (!held[K_EDIT] || !used[K_EDIT] || !uf_name[0] || perform || qd_open) return;   // the drawer shows its own values
     enum { PW = 560, PX = (W - PW) / 2, PY = 84 }; int PH = uf_f >= 0 ? 132 : 84;
     rframe(PX, PY, PW, PH, 12, 3, uf_col, C_CELL);
     ftext(PX + 24, PY + 16, FT_M, C_DIM, uf_name);
@@ -415,7 +357,7 @@ static void draw_steps2(void) {
         if (on) rrect(cx - 65, 74, 130, 38, 8, ec);
         ftext(cx - ftext_w(FT_MB, nm) / 2, 81, FT_MB, on ? C_BG : C_DIM, nm);
     }
-    int cs = cur_step(), page = cs / 16, play = song.t[sel].on ? engine_step(sel) : -1; char b[64];
+    int cs = cur_step(), play = song.t[sel].on ? engine_step(sel) : -1, page = follow_ph && play >= 0 ? play / 16 : cs / 16; char b[64];
     for (int v = 0; v < 16; v++) {
         int i = page * 16 + v, x = 29 + (v % 8) * 243 / 2, y = 127 + (v / 8) * 265, on = i < p->len && p->trig[i];
         if (i >= p->len) { rframe(x, y, 108, 252, 8, 2, C_CELL, C_BG); continue; }   // past the end of the pattern

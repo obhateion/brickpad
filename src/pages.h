@@ -350,9 +350,10 @@ static void draw_mixer2(void) {
     if (mx_pg != 2) {                     // the drawer lies over the strips (2026-11-14, user: nothing narrows); they slide so the pad stays in view
         static int off; int open = mx_pg == 1, cs = mcol < NSLOT ? mcol : sel, vis = open ? 8 : NSLOT;
         if (cs < off) off = cs; if (cs >= off + vis) off = cs - vis + 1; off = clampi(off, 0, NSLOT - vis);
-        int x0 = open && ui_drawer_left ? 387 : ui_drawer_left ? 90 : 50;
+        float e = anim(&mx_anim, open, 200);   // the drawer slides in from its side (2026-11-21, user: every drawer moves)
+        int xc = ui_drawer_left ? 90 : 50, xo = ui_drawer_left ? 387 : 50, x0 = xc + (int)((xo - xc) * e);
         for (int s = 0; s < NSLOT; s++) mx_strip(s, x0 + (s - off) * 78, 37);
-        if (open) mx_drawer(ui_drawer_left ? 0 : 704); else mx_tab();
+        if (e > 0) mx_drawer(ui_drawer_left ? -(int)((1 - e) * 340) : 704 + (int)((1 - e) * 340)); else mx_tab();
         draw_footer(!open ? "EDIT DRAWER  EDIT+^v LEVEL  Y MUTE  X SOLO  L1/R1 FREEZE" : mcol < NSLOT ? "EDIT CLOSE  EDIT+^v LEVEL  Y MUTE  X SOLO"
                     : "EDIT ALL PARAMETERS  EDIT+^v VALUE  Y CLOSE  <> UNIT, PADS");
     } else {                              // A23: the pads with a sound, live or frozen; EXPORT last; the DSP load
@@ -424,6 +425,7 @@ static void scene_key(int k, int down) {
         if (k == K_EDIT && !used[K_EDIT]) {
             if (sc_cur >= scn_n) { scene_new(-1); sc_cur = scn_n - 1; }
             else if (sc_cur == scn_cur && scn_next < 0) toast("THIS SCENE IS OPEN");
+            else if (scn_lock) toast("SCENE LOCK IS ON");
             else scene_go(sc_cur); }
         return; }
     if ((k == K_EDIT && held[K_OPT]) || (k == K_OPT && held[K_EDIT])) {   // the scene goes, after YES (2026-11-17: was twice)

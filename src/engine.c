@@ -12,6 +12,7 @@
 
 Song song;
 volatile float tempo_mul = 1.f;
+volatile float eng_sweep; volatile int eng_mbypass, eng_nofollow;
 volatile float out_trim = 1.f;   // PROJECT > PLAY > OUTPUT TRIM, linear
 
 // ---------- scales ----------
@@ -692,6 +693,23 @@ static int follow(int s, Track *t, uint32_t i) {   // at a loop's end: 1 if the 
     t->cur = (int8_t)np; fol_cur[s] = np; anchor[s] = i; return 1;
 }
 // Scenes: the next Song waits here until a launch quantum (tick) or, stopped, the next callback.
+// The quick drawer's FILTER (2026-11-21): held, the master goes through a 12 dB state-variable filter, low-pass below the
+// middle, high-pass above; back at the middle it is out of the path (the sound is bit-identical then).
+static void sweep_run(float *o, int n) {
+    static float cur, z[2][2]; float tg = eng_sweep;
+    if (tg == 0 && fabsf(cur) < 0.002f) { cur = 0; memset(z, 0, sizeof z); return; }
+    for (int b = 0; b < n; b += 16) {
+        cur += (tg - cur) * 0.06f;
+        float a = fabsf(cur), fc = cur < 0 ? 18000.f * powf(2, -9.f * a) : 20.f * powf(2, 9.5f * a);
+        float g = tanf((float)M_PI * fminf(fc, 20000.f) / SR), k = 1 / 1.4f, a1 = 1 / (1 + g * (g + k)), mixw = fminf(a * 12, 1);
+        for (int f = b; f < b + 16 && f < n; f++) for (int c = 0; c < 2; c++) {
+            float x = o[2 * f + c], v3 = x - z[c][1], v1 = a1 * z[c][0] + g * a1 * v3, v2 = z[c][1] + g * v1;
+            z[c][0] = 2 * v1 - z[c][0]; z[c][1] = 2 * v2 - z[c][1];
+            float y = cur < 0 ? v2 : x - k * v1 - v2;
+            o[2 * f + c] = x + (y - x) * mixw;
+        }
+    }
+}
 void scene_carry(Song *d, const Song *s) {
     d->tempo = s->tempo; d->swing = s->swing; d->launch = s->launch; d->metro = s->metro; d->master = s->master; d->key = s->key; d->scale = s->scale;
     d->count_in = s->count_in; d->rec_quant = s->rec_quant; d->beats = s->beats; d->rec_len = s->rec_len; d->len_min = s->len_min; d->len_max = s->len_max; d->snap = s->snap;
@@ -758,7 +776,7 @@ static void tick(uint32_t i, double off, double f32) {
         int d = div32[p->div % 6];
         uint32_t rel = i - anchor[s];      // steps count from where the clip began
         { uint32_t L = (uint32_t)(p->len ? p->len : 16) * d;
-          if (rel > 0 && rel % L == 0 && t->queued < 0 && follow(s, t, i)) {
+          if (rel > 0 && rel % L == 0 && t->queued < 0 && !eng_nofollow && follow(s, t, i)) {
               if (!t->on) continue;
               p = &t->pat[t->cur]; d = div32[p->div % 6]; rel = 0; }
           if (frz_act[s]) {                // frozen: the recording starts again with each loop; the notes below only mark time
@@ -1117,7 +1135,8 @@ static void callback(void *u, Uint8 *stream, int len) {
         float dg = (tg - master_g) / n;
         for (int k = 0; k < n; k++) { float g = master_g + dg * (k + 1); o[2 * k] *= g; o[2 * k + 1] *= g; }
         master_g = tg;
-        master_run(&mst, song.mix.ms, o, n);
+        sweep_run(o, n);
+        if (!eng_mbypass) master_run(&mst, song.mix.ms, o, n);
     }
     float pk = 0;
     for (int k = 0; k < 2 * n; k++) {

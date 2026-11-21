@@ -129,8 +129,8 @@ static int y_back_here(void) {            // windows and sub-pages where Y was t
         || (v2_mixer() && mx_pg && !(mx_pg == 1 && mcol < NSLOT));
 }
 static void draw_ctx(void) {
-    enum { PW = 460 }; int RH = ctx_n > 10 ? 38 : 46, ph = 70 + ctx_n * RH, px = (W - PW) / 2, py = (H - ph) / 2;
-    ui_shade(150); rframe(px, py, PW, ph, 12, 3, C_ORANGE, C_CELL);
+    enum { PW = 460 }; int RH = ctx_n > 10 ? 38 : 46, ph = 70 + ctx_n * RH, px = (W - PW) / 2, py = (H - ph) / 2 + (int)((1 - ctx_e) * 60);   // it rises into place
+    ui_shade((int)(150 * ctx_e)); rframe(px, py, PW, ph, 12, 3, C_ORANGE, C_CELL);
     ftext(px + 24, py + 18, FT_M, C_DIM, "OPTIONS");
     for (int i = 0; i < ctx_n; i++) {
         int y = py + 56 + i * RH, on = i == ctx_cur;
