@@ -160,7 +160,8 @@ static void ui2_footer(const char *h) {  // at most three key chips: the key in 
     int x = 18, y = V2_FOOT + 10, left = 3, lim = ui2_metro();
     if (msg_t && SDL_GetTicks() - msg_t < 1500) { int w = ftext_w(FT_MB, msg) + 24; rrect(x, y, w, 32, 6, C_ORANGE); ftext(x + 12, y + 4, FT_MB, C_BG, msg); return; }
     if (ui_qbar) { qbar_draw(x, y, 32); if (qb_focus) ftext(x + qbar_w() + 20, y + 4, FT_MB, C_WHITE, qb_cur == QB_HANDLE ? "MORE" : qa_tab[qb_top[qb_cur]].name); return; }   // at the bottom: no hints
-    char qh[80]; if (qd_open) h = qd_hint();
+    char qh[80]; if (qpicking) h = "EDIT ON/OFF  EDIT+<> ORDER  OPTION DONE";
+    else if (qd_open) h = qd_hint();
     else if (qb_focus) { snprintf(qh, sizeof qh, "EDIT %s  <> BUTTON  OPTION BACK", qb_cur == QB_HANDLE ? "MORE" : qa_tab[qb_top[qb_cur]].name); h = qh; }
     else if (strip_focus == 1) h = sec_cur == HUB_LOOK ? "EDIT OPEN  <> SECTION  OPTION BACK" : sec_cur == PC_SOUND ? "EDIT(HOLD) ENGINE  <> SECTION  OPTION BACK" : "<> SECTION  ^ UP  OPTION BACK";
     else if (strip_focus == 2) h = "<> PAD  v SECTIONS  OPTION BACK";

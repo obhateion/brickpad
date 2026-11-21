@@ -65,20 +65,38 @@ static const struct { const char *name, *tile; int icon; } qa_tab[QD_N] = {
     {"TEMPO DOWN (HOLD)", "NUDGE-", IC_M_BACK}, {"TEMPO UP (HOLD)", "NUDGE+", IC_M_FWD}, {"SCENE LOCK", "SC LOCK", QI_SLOCK}, {"FOLLOW ACTIONS OFF", "FOL OFF", QI_FOLOFF},
     {"OVERDUB / REPLACE", "OVERDUB", QI_OD}, {"REC QUANT", "REC Q", QI_RECQ}, {"RESAMPLE", "RESAMPL", QI_RESAMPLE}, {"CAPTURE", "CAPTURE", IC_TAPE},
     {"FOLLOW PLAYHEAD", "FOLLOW", IC_EYE}, {"SNAP", "SNAP", IC_M_STEP_SEQ}, {"COPY", "COPY", QI_COPY}, {"PASTE", "PASTE", QI_PASTE}, {"RANDOM", "RANDOM", IC_DICE},
-    {"MASTER FX BYPASS", "FX BYPASS", QI_BYPASS}, {"MUTE ALL", "MUTE ALL", IC_M_MUTE}, {"CLEAR SOLO", "SOLO CLR", QI_SOLOCLR},
-    {"SCENE <", "SCENE <", QI_SCNPREV}, {"SCENE >", "SCENE >", QI_SCNNEXT}, {"KID LOCK", "KID LOCK", IC_LOCK}, {"MIDI LEARN", "MIDI", IC_M_MIDI_PORT},
+    {"MASTER FX BYPASS", "BYPASS", QI_BYPASS}, {"MUTE ALL", "MUTEALL", IC_M_MUTE}, {"CLEAR SOLO", "NO SOLO", QI_SOLOCLR},
+    {"SCENE <", "SCENE <", QI_SCNPREV}, {"SCENE >", "SCENE >", QI_SCNNEXT}, {"KID LOCK", "LOCK", IC_LOCK}, {"MIDI LEARN", "MIDI", IC_M_MIDI_PORT},
     {"MASTER VOLUME", "VOLUME", 0}, {"FILTER (HOLD EDIT)", "FILTER", 0}, {"TEMPO", "TEMPO", 0},
 };
-static const int8_t qb_top[] = {QA_MET, QA_TAP, QA_COUNT, QA_LQ, QA_REC, QA_UNDO, QA_REDO, QA_SAVE, QA_CPU, QA_MON, QA_PADS, QA_KEYS};
-enum { QB_N = sizeof qb_top / sizeof *qb_top, QB_HANDLE = QB_N, QB_IC = 24, QB_W = QB_IC + 12 };
+// The bar's buttons (2026-11-21, user: "the 12 are chosen in SETTINGS"): PROJECT > SETTINGS > BAR BUTTONS, kept in
+// quickbar.cfg by name (one a line), for the device, not the project. Whatever is not on the bar is in the drawer.
+enum { QB_MAX = 12, QB_IC = 24, QB_W = QB_IC + 12 };
+static const int8_t qb_def[QB_MAX] = {QA_MET, QA_TAP, QA_COUNT, QA_LQ, QA_REC, QA_UNDO, QA_REDO, QA_SAVE, QA_CPU, QA_MON, QA_PADS, QA_KEYS};
+static int8_t qb_top[QB_MAX]; static int qb_n = -1;
+#define QB_HANDLE qb_n
+static void qb_defaults(void) { memcpy(qb_top, qb_def, sizeof qb_top); qb_n = QB_MAX; }
+static void qb_save(void) {
+    char b[512]; int n = 0; for (int i = 0; i < qb_n; i++) n += snprintf(b + n, sizeof b - n, "%s\n", qa_tab[qb_top[i]].name);
+    if (!qb_n) n = snprintf(b, sizeof b, "NONE\n");
+    write_whole("quickbar.cfg", b, n);
+}
+static void qb_ready(void) {             // the first time: the saved choice, else the default twelve
+    if (qb_n >= 0) return;
+    FILE *f = fopen("quickbar.cfg", "r"); if (!f) { qb_defaults(); return; }
+    char l[64]; qb_n = 0;
+    while (qb_n < QB_MAX && fgets(l, sizeof l, f)) { l[strcspn(l, "\r\n")] = 0;
+        for (int i = 0; i < QA_N; i++) if (!strcmp(l, qa_tab[i].name)) { int dup = 0; for (int k = 0; k < qb_n; k++) dup |= qb_top[k] == i; if (!dup) qb_top[qb_n++] = (int8_t)i; break; } }
+    fclose(f);
+}
+static int qb_on(int a) { qb_ready(); for (int i = 0; i < qb_n; i++) if (qb_top[i] == a) return i + 1; return 0; }
 static int qb_focus, qb_cur, qd_open, qd_cur, qd_edit, follow_ph;
 static int8_t mute_keep[NSLOT]; static int muted_all;
-static Uint32 tap_t[4]; static int tap_n;
 static int sec_on(void) { return ui_secs && in_pad() && !ui_over() && !picking; }
 static int strips_here(void) { return in_pad() && !ui_over() && !picking && !perform && (sec_on() || strip_on()); }
 static void capture(void); static void metro_save(void); static void undo(void); static void redo(void); static int prj_dirty(void);
 static void prj_save(const char *name); static void naming_open(int then); static void rnd_generate(void); static void export_open(void);
-static void sim_key(int key, int mod); static int v2_sound(void); static void ui_cfg_save(void); static void disc2(int cx, int cy, int r, Col c);
+static void sim_key(int key, int mod); static int tap_bpm(Uint32 *t, int *n); static int v2_sound(void); static void ui_cfg_save(void); static void disc2(int cx, int cy, int r, Col c);
 static int batt_pct(int *charging) {     // the battery, read every 10 s
     static Uint32 at; static int pct = -1, chg; Uint32 now = SDL_GetTicks();
     if (!at || now - at > 10000) { at = now | 1; FILE *f = fopen("/sys/class/power_supply/axp2202-battery/capacity", "r"); if (f) { if (fscanf(f, "%d", &pct) != 1) pct = -1; fclose(f); }
@@ -109,13 +127,9 @@ static void qa_press(int i) {
     case QA_MET: metro.snd = !metro.snd; metro_save(); toast(metro.snd ? "METRONOME SOUND ON" : "METRONOME SOUND OFF"); break;
     case QA_TAP: {
         if (midi_clk_in) { toast("CLOCK IN: THE TEMPO COMES FROM MIDI"); break; }
-        Uint32 now = SDL_GetTicks();
-        if (tap_n && now - tap_t[(tap_n - 1) % 4] > 2000) tap_n = 0;   // a pause starts again
-        tap_t[tap_n % 4] = now; tap_n++;
-        if (tap_n < 2) { toast("TAP AGAIN IN TIME"); break; }
-        int m = tap_n < 4 ? tap_n : 4; float iv = (now - tap_t[(tap_n - m) % 4]) / (float)(m - 1);
-        if (tap_n == 2) push_undo();
-        song.tempo = (int16_t)clampi((int)lrintf(60000.f / iv), 40, 300); snprintf(b, sizeof b, "TAP %d BPM", song.tempo); toast(b); break; }
+        static Uint32 tt[TAP_N]; static int tn; int bpm = tap_bpm(tt, &tn);   // as PROJECT > TEMPO's EDIT
+        if (!bpm) { toast("TAP: GO ON IN TIME"); break; }
+        edit_begin(); song.tempo = (int16_t)clampi(bpm, 40, 300); snprintf(b, sizeof b, "TAP  %d BPM  (%d TAPS)", song.tempo, tn); toast(b); break; }
     case QA_COUNT: { static int last = 4; edit_begin(); if (song.count_in) { last = song.count_in; song.count_in = 0; } else song.count_in = (int8_t)last;
         if (song.count_in) snprintf(b, sizeof b, "COUNT-IN %d BEATS", song.count_in); else snprintf(b, sizeof b, "COUNT-IN OFF"); toast(b); break; }
     case QA_LQ: { static const char *const n[] = {"", "1 BAR", "2 BARS", "4 BARS", "NONE"}; act_launch_step(1); snprintf(b, sizeof b, "LAUNCH QUANT %s", n[song.launch % 5]); toast(b); break; }
@@ -153,7 +167,7 @@ static void qa_press(int i) {
 static void qa_release(int i) { if ((i == QA_SLOW || i == QA_FAST) && !midi_clk_in) tempo_mul = 1.f; }
 
 // ---- the bar ----
-static int qbar_w(void) { return (QB_N + 1) * (QB_W + 5) - 5; }
+static int qbar_w(void) { qb_ready(); return (qb_n + 1) * (QB_W + 5) - 5; }
 static void qb_button(int x, int y, int w, int h, int i, int cur, int sz) {
     int lit = qa_lit(i);
     if (cur) rframe(x - 3, y - 3, w + 6, h + 6, 8, 2, C_WHITE, C_BG);
@@ -164,8 +178,8 @@ static void qb_button(int x, int y, int w, int h, int i, int cur, int sz) {
     if (i == QA_CPU) { int ld = clampi((int)(engine_load() * 100), 0, 100); rect(x + 4, y + h - 5, w - 8, 3, C_LINE, 1); rect(x + 4, y + h - 5, (w - 8) * ld / 100, 3, ld >= 85 ? C_RED : th_cur[TC_SMP], 1); }
 }
 static void qbar_draw(int x, int y, int h) {
-    int sz = h - 8 < QB_IC ? h - 8 : QB_IC;
-    for (int i = 0; i < QB_N; i++) { qb_button(x, y, QB_W, h, qb_top[i], qb_focus && i == qb_cur, sz); x += QB_W + 5; }
+    int sz = h - 8 < QB_IC ? h - 8 : QB_IC; qb_ready();
+    for (int i = 0; i < qb_n; i++) { qb_button(x, y, QB_W, h, qb_top[i], qb_focus && i == qb_cur, sz); x += QB_W + 5; }
     int cur = qb_focus && qb_cur == QB_HANDLE;
     if (cur) rframe(x - 3, y - 3, QB_W + 6, h + 6, 8, 2, C_WHITE, C_BG);
     rrect(x, y, QB_W, h, 6, qd_open ? C_ORANGE : C_SELBG);
@@ -173,14 +187,16 @@ static void qbar_draw(int x, int y, int h) {
     for (int k = 0; k < 6; k++) { int dy = qd_open ? 5 - k : k; rect(cx - 11 + k * 2, cy + dy, 3, 3, c, 1); rect(cx + 8 - k * 2, cy + dy, 3, 3, c, 1); }
 }
 static int qd_item(int i);
-static void qd_toggle(int on) { qd_open = on; qd_edit = 0; eng_sweep = 0; if (on) { qb_focus = 0; if (!qd_item(qd_cur)) qd_cur = QA_SLOW; } }
+static void qd_layout(void);
+static void qd_toggle(int on) { qd_open = on; qd_edit = 0; eng_sweep = 0; if (on) { qb_focus = 0; qd_layout(); if (!qd_item(qd_cur)) { qd_cur = QA_VOL; for (int i = 0; i < QA_N; i++) if (qd_item(i)) { qd_cur = i; break; } } } }
 static int qbar_key(int k, int down) {    // the cursor on the bar: 1 = the key was the bar's
+    qb_ready(); if (qb_cur > QB_HANDLE) qb_cur = QB_HANDLE;
     if (k == K_EDIT) {
         if (qb_cur == QB_HANDLE) { if (down) { qd_toggle(!qd_open); if (!qd_open) qb_focus = 1; } return 1; }
         if (down) qa_press(qb_top[qb_cur]); else qa_release(qb_top[qb_cur]); return 1; }
     if (k == K_PLAY || k == K_SHIFT || k == K_MENU || k == K_F1 || k == K_F2) return 0;
     if (!down) return 1;
-    if (k == K_LEFT || k == K_RIGHT) { if (qb_cur < QB_N) qa_release(qb_top[qb_cur]); qb_cur = clampi(qb_cur + (k == K_RIGHT ? 1 : -1), 0, QB_HANDLE); }
+    if (k == K_LEFT || k == K_RIGHT) { if (qb_cur < qb_n) qa_release(qb_top[qb_cur]); qb_cur = clampi(qb_cur + (k == K_RIGHT ? 1 : -1), 0, QB_HANDLE); }
     else if (!ui_qbar && k == K_DOWN && qb_cur == QB_HANDLE) qd_toggle(1);   // down from the handle pulls the drawer
     else if (k == K_OPT || k == (ui_qbar ? K_UP : K_DOWN)) {   // back: down to the strips at the top, OPTION straight to the page
         qb_focus = 0; if (!midi_clk_in) tempo_mul = 1.f; if (k == K_OPT) used[K_OPT] = 1;
@@ -191,17 +207,37 @@ static int qbar_key(int k, int down) {    // the cursor on the bar: 1 = the key 
 
 // ---- the drawer: where everything lies when it is open (it slides down from under the header) ----
 typedef struct { int16_t x, y, w, h; } QR;
-static const QR qd_at[QD_N] = {
-    [QA_SLOW] = {30, 164, 74, 78}, [QA_FAST] = {111, 164, 74, 78}, [QA_SLOCK] = {192, 164, 74, 78}, [QA_FOLOFF] = {273, 164, 74, 78},
-    [QA_OD] = {382, 84, 74, 78}, [QA_RECQ] = {463, 84, 74, 78}, [QA_RESAMPLE] = {544, 84, 74, 78}, [QA_CAP] = {625, 84, 74, 78},
-    [QA_FOLLOW] = {30, 292, 78, 78}, [QA_SNAP] = {116, 292, 78, 78}, [QA_COPY] = {202, 292, 78, 78}, [QA_PASTE] = {288, 292, 78, 78}, [QA_RND] = {374, 292, 78, 78},
-    [QA_BYPASS] = {30, 422, 96, 78}, [QA_MUTEALL] = {134, 422, 96, 78}, [QA_SOLOCLR] = {238, 422, 96, 78},
-    [QA_SCNPREV] = {382, 422, 74, 78}, [QA_SCNNEXT] = {624, 422, 74, 78},
-    [QA_LOCK] = {30, 552, 96, 78}, [QA_MIDI] = {134, 552, 96, 78},
-    [QA_VOL] = {734, 84, 84, 548}, [QA_FILT] = {826, 84, 84, 548}, [QA_TEMPO] = {918, 84, 84, 548},
-};
+// The cards hold what the bar does not, by topic, laid out in rows from the left (a card that does not fit starts a row);
+// the MASTER column at the right is always there. Recomputed when the bar changes.
+enum { QD_CARDS = 6, QT = 72, QG = 6 };
+static const char *const qd_cname[QD_CARDS] = {"TEMPO", "RECORD", "EDIT", "SOUND", "SCENE", "DEVICE"};
+static const int8_t qd_cat[QD_CARDS][9] = {
+    {QA_MET, QA_TAP, QA_COUNT, QA_LQ, QA_SLOW, QA_FAST, QA_SLOCK, QA_FOLOFF, -1}, {QA_REC, QA_OD, QA_RECQ, QA_RESAMPLE, QA_CAP, -1},
+    {QA_UNDO, QA_REDO, QA_FOLLOW, QA_SNAP, QA_COPY, QA_PASTE, QA_RND, -1}, {QA_MON, QA_BYPASS, QA_MUTEALL, QA_SOLOCLR, -1},
+    {QA_SCNPREV, QA_SCNNEXT, -1}, {QA_SAVE, QA_CPU, QA_LOCK, QA_MIDI, QA_PADS, QA_KEYS, -1}};
+static QR qd_at[QD_N], qd_card_at[QD_CARDS], qd_scn_box;
+static void qd_layout(void) {
+    qb_ready(); memset(qd_at, 0, sizeof qd_at); memset(qd_card_at, 0, sizeof qd_card_at);
+    int x = 18, y = 56;
+    for (int c = 0; c < QD_CARDS; c++) {
+        int ids[9], n = 0; for (int i = 0; qd_cat[c][i] >= 0; i++) if (!qb_on(qd_cat[c][i])) ids[n++] = qd_cat[c][i];
+        int box = c == 4 ? 150 : 0;      // SCENE: its number between < and >
+        if (!n && !box) continue;
+        int w = 24 + n * QT + (n > 0 ? (n - 1) * QG : 0) + (box ? box + (n ? QG : 0) : 0), h = 24 + QT + 12;
+        if (x + w > 710) { x = 18; y += h + 10; }
+        qd_card_at[c] = (QR){x, y, w, h};
+        int tx = x + 12;
+        for (int k = 0; k < n; k++) {
+            if (c == 4 && k == 1) { qd_scn_box = (QR){tx, y + 24, box, QT}; tx += box + QG; }
+            qd_at[ids[k]] = (QR){tx, y + 24, QT, QT}; tx += QT + QG; }
+        if (c == 4 && n < 2) { if (n == 1 && ids[0] == QA_SCNPREV) qd_scn_box = (QR){tx, y + 24, box, QT}; else { qd_scn_box = (QR){x + 12, y + 24, box, QT}; if (n) qd_at[ids[0]].x = x + 12 + box + QG; } }
+        x += w + 12;
+    }
+    qd_at[QA_VOL] = (QR){734, 84, 84, 410}; qd_at[QA_FILT] = (QR){826, 84, 84, 410}; qd_at[QA_TEMPO] = (QR){918, 84, 84, 410};
+}
 static int qd_item(int i) { return qd_at[i].w > 0; }
 static void qd_nav(int dx, int dy) {     // the nearest tile that way
+    qd_layout();
     const QR *c = &qd_at[qd_cur]; int cx = c->x + c->w / 2, cy = c->y + c->h / 2, best = -1; long bs = 0;
     for (int i = 0; i < QD_N; i++) if (qd_item(i) && i != qd_cur) {
         const QR *r = &qd_at[i]; int x = r->x + r->w / 2, y = r->y + r->h / 2;
@@ -242,7 +278,7 @@ static void qd_tile(int i, int oy) {
     const QR *r = &qd_at[i]; int x = r->x, y = r->y + oy, w = r->w, h = r->h, cur = i == qd_cur, lit = qa_lit(i);
     if (cur) rframe(x - 4, y - 4, w + 8, h + 8, 12, 3, C_WHITE, C_BG);
     rrect(x, y, w, h, 10, lit ? C_ORANGE : C_SELBG);
-    icon_fit(qa_tab[i].icon, x + (w - 32) / 2, y + 9, 32, lit ? C_BG : cur ? C_WHITE : C_GREY);
+    icon_fit(qa_tab[i].icon, x + (w - 32) / 2, y + 7, 32, lit ? C_BG : cur ? C_WHITE : C_GREY);
     const char *t = i == QA_OD && rec_replace ? "REPLACE" : qa_tab[i].tile;
     ftext(x + (w - ftext_w(FT_S, t)) / 2, y + h - 26, FT_S, lit ? C_BG : C_DIM, t);
     const char *v = qa_txt(i); if (*v && i != QA_OD) { int tw = ftext_w(FT_S, v) + 8; rrect(x + w - tw - 4, y + 4, tw, 20, 4, C_BG); ftext(x + w - tw, y + 4, FT_S, C_ORANGE, v); }
@@ -261,8 +297,8 @@ static void qd_strip(int i, int oy, const char *val, float v, int bip, int meter
     ftext(x + (w - ftext_w(FT_M, val)) / 2, y + h - 38, FT_M, C_WHITE, val);
 }
 static void qd_meter(int x, int y, int w, int h, const char *name, const char *txt, int pct, int bad) {
-    rrect(x, y, w, h, 10, C_SELBG); ftext(x + 10, y + 6, FT_S, C_DIM, name); ftext(x + 10, y + 26, FT_MB, C_WHITE, txt);
-    rrect(x + 10, y + h - 16, w - 20, 7, 3, C_BG); if (pct > 0) rrect(x + 10, y + h - 16, (w - 20) * clampi(pct, 0, 100) / 100, 7, 3, bad ? C_RED : th_cur[TC_SMP]);
+    rrect(x, y, w, h, 10, C_SELBG); ftext(x + 10, y + 4, FT_S, C_DIM, name); ftext(x + 90, y + 4, FT_S, C_WHITE, txt);
+    rrect(x + 10, y + h - 22, w - 20, 10, 4, C_BG); if (pct > 0) rrect(x + 10, y + h - 22, (w - 20) * clampi(pct, 0, 100) / 100, 10, 4, bad ? C_RED : th_cur[TC_SMP]);
 }
 static Anim qd_anim;
 static void qd_draw(void) {
@@ -272,36 +308,67 @@ static void qd_draw(void) {
     SDL_Rect sh = {0, 48, W, V2_FOOT - 48}; SDL_RenderFillRect(R, &sh); SDL_SetRenderDrawBlendMode(R, SDL_BLENDMODE_NONE);
     SDL_Rect clip = {0, 44, W, V2_FOOT - 44}; SDL_RenderSetClipRect(R, &clip);
     rframe(6, 40 + oy, W - 12, 622, 22, 2, C_LINE, C_BG);
-    char b[64];
-    qd_card(18, 56 + oy, 340, 196, "TEMPO");
-    snprintf(b, sizeof b, "%d", song.tempo); ftext(34, 80 + oy, FT_XB, C_WHITE, b); ftext(34 + ftext_w(FT_XB, b) + 8, 92 + oy, FT_M, C_DIM, "BPM");
-    snprintf(b, sizeof b, "SWING %d%%", song.swing); ftext(200, 80 + oy, FT_S, C_DIM, b);
-    snprintf(b, sizeof b, "%d/4%s", song.beats > 0 ? song.beats : 4, tempo_mul != 1.f ? "  NUDGE" : ""); ftext(200, 104 + oy, FT_S, C_DIM, b);
-    for (int i = QA_SLOW; i <= QA_FOLOFF; i++) qd_tile(i, oy);
-    qd_card(370, 56 + oy, 340, 196, "RECORD");
-    for (int i = QA_OD; i <= QA_CAP; i++) qd_tile(i, oy);
-    ftext(384, 176 + oy, FT_S, C_DIM, rec_replace ? "REPLACE: A TAKE WIPES THE CLIP" : "OVERDUB: NEW NOTES OVER OLD");
-    snprintf(b, sizeof b, "REC QUANT %s", quant_name[song.rec_quant % 5]); ftext(384, 200 + oy, FT_S, C_DIM, b);
-    qd_card(18, 264 + oy, 692, 118, "EDIT");
-    for (int i = QA_FOLLOW; i <= QA_RND; i++) qd_tile(i, oy);
-    ftext(470, 300 + oy, FT_S, C_DIM, follow_ph ? "PAGE: PLAYHEAD" : "PAGE: CURSOR");
-    snprintf(b, sizeof b, "SNAP %s", song.snap ? "ON" : "OFF"); ftext(470, 324 + oy, FT_S, C_DIM, b);
-    qd_card(18, 394 + oy, 340, 118, "SOUND");
-    for (int i = QA_BYPASS; i <= QA_SOLOCLR; i++) qd_tile(i, oy);
-    qd_card(370, 394 + oy, 340, 118, "SCENE");
-    qd_tile(QA_SCNPREV, oy); qd_tile(QA_SCNNEXT, oy);
-    rrect(464, 422 + oy, 152, 78, 10, C_SELBG); snprintf(b, sizeof b, "%d SCENE%s%s", scn_n, scn_n > 1 ? "S" : "", scn_lock ? "  LOCK" : ""); ftext(476, 428 + oy, FT_S, C_DIM, b);
-    snprintf(b, sizeof b, scn_next >= 0 ? "%d > %d" : "SCENE %d", scn_cur + 1, scn_next + 1); ftext(476, 454 + oy, FT_MB, C_WHITE, b);
-    qd_card(18, 524 + oy, 692, 118, "DEVICE");
-    qd_tile(QA_LOCK, oy); qd_tile(QA_MIDI, oy);
-    { int chg, p = batt_pct(&chg); if (p >= 0) snprintf(b, sizeof b, "%d %%%s", p, chg ? "  CHARGING" : ""); else snprintf(b, sizeof b, "?");
-      qd_meter(238, 552 + oy, 222, 78, "BATTERY", b, p, p >= 0 && p < 20); }
-    { int ld = clampi((int)(engine_load() * 100), 0, 100); snprintf(b, sizeof b, "%d %%  %d VOICES", ld, engine_voices()); qd_meter(468, 552 + oy, 230, 78, "CPU", b, ld, ld >= 85); }
+    char b[64]; qd_layout();
+    for (int c = 0; c < QD_CARDS; c++) { const QR *r = &qd_card_at[c]; if (r->w) qd_card(r->x, r->y + oy, r->w, r->h, qd_cname[c]); }
+    for (int i = 0; i < QA_N; i++) if (qd_at[i].w) qd_tile(i, oy);
+    if (qd_card_at[4].w) { const QR *r = &qd_scn_box; rrect(r->x, r->y + oy, r->w, r->h, 10, C_SELBG);
+        snprintf(b, sizeof b, "%d SCENE%s%s", scn_n, scn_n > 1 ? "S" : "", scn_lock ? "  LOCK" : ""); ftext(r->x + 12, r->y + 6 + oy, FT_S, C_DIM, b);
+        snprintf(b, sizeof b, scn_next >= 0 ? "%d > %d" : "SCENE %d", scn_cur + 1, scn_next + 1); ftext(r->x + 12, r->y + 34 + oy, FT_MB, C_WHITE, b); }
     qd_card(722, 56 + oy, 284, 586, "MASTER");
     mx_meters();
     snprintf(b, sizeof b, "%d", song.master); qd_strip(QA_VOL, oy, b, song.master / 100.f, 0, 1);
     float sw = eng_sweep; snprintf(b, sizeof b, sw < 0 ? "LP" : sw > 0 ? "HP" : "OFF"); qd_strip(QA_FILT, oy, b, (sw + 1) / 2, 1, 0);
     snprintf(b, sizeof b, "%d", song.tempo); qd_strip(QA_TEMPO, oy, b, (song.tempo - 40) / 260.f, 0, 0);
+    { int chg, p = batt_pct(&chg); if (p >= 0) snprintf(b, sizeof b, "%d %%%s", p, chg ? "  CHARGING" : ""); else snprintf(b, sizeof b, "?");
+      qd_meter(734, 504 + oy, 268, 62, "BATTERY", b, p, p >= 0 && p < 20); }
+    { int ld = clampi((int)(engine_load() * 100), 0, 100); snprintf(b, sizeof b, "%d %%  %d VOICES", ld, engine_voices()); qd_meter(734, 572 + oy, 268, 62, "CPU", b, ld, ld >= 85); }
     rrect(W / 2 - 40, 650 + oy, 80, 6, 3, C_DIM);   // the handle
+    SDL_RenderSetClipRect(R, NULL);
+}
+
+// ---- PROJECT > SETTINGS > BAR BUTTONS: every button as a tile; EDIT puts it on the bar (at the end) or takes it off,
+// EDIT+<> moves a chosen one along the bar, OPTION is done. The number on a tile is its place on the bar. ----
+static int qpicking, qp_cur; static Anim qp_anim; static void ui_shade(int a);
+static void qp_open(void) { qb_ready(); qpicking = 1; qp_cur = 0; }
+static void qp_toggle(int a) {
+    int at = qb_on(a);
+    if (at) { memmove(qb_top + at - 1, qb_top + at, (size_t)(qb_n - at)); qb_n--; }
+    else if (qb_n >= QB_MAX) { toast("THE BAR HOLDS 12: TAKE ONE OFF FIRST"); return; }
+    else qb_top[qb_n++] = (int8_t)a;
+    qb_save(); qb_cur = 0;
+}
+static void qp_key(int k, int down) {
+    enum { COLS = 8 };
+    if (!down) { if (k == K_EDIT && !used[K_EDIT]) qp_toggle(qp_cur); return; }
+    if (k == K_OPT) { used[K_OPT] = 1; qpicking = 0; return; }
+    int d = k == K_RIGHT ? 1 : k == K_LEFT ? -1 : 0, at = qb_on(qp_cur);
+    if (held[K_EDIT] && d) {             // the chosen one moves along the bar
+        used[K_EDIT] = 1; if (!at) return; int j = at - 1 + d; if (j < 0 || j >= qb_n) return;
+        int8_t t = qb_top[j]; qb_top[j] = qb_top[at - 1]; qb_top[at - 1] = t; qb_save(); return; }
+    if (d) qp_cur = clampi(qp_cur + d, 0, QA_N - 1);
+    else if (k == K_UP && qp_cur >= COLS) qp_cur -= COLS;
+    else if (k == K_DOWN && qp_cur + COLS < QA_N) qp_cur += COLS;
+}
+static void qp_draw(void) {
+    float e = anim(&qp_anim, qpicking, 200); if (e <= 0) return;
+    enum { COLS = 8, TW = 100, TH = 92, GP = 10, X0 = (1024 - COLS * TW - (COLS - 1) * GP) / 2 };
+    int oy = (int)((1 - e) * 700);       // it rises from the bottom
+    ui_shade((int)(150 * e));
+    SDL_Rect clip = {0, 0, W, V2_FOOT}; SDL_RenderSetClipRect(R, &clip);
+    rframe(14, 20 + oy, W - 28, 690, 18, 3, C_ORANGE, C_BG);
+    char b[64]; snprintf(b, sizeof b, "QUICK BAR BUTTONS  %d OF 12", qb_n); ftext(40, 36 + oy, FT_MB, C_WHITE, b);
+    ftext(40, 70 + oy, FT_S, C_DIM, "THE REST ARE IN THE DRAWER (THE HANDLE AT THE END OF THE BAR)");
+    rrect(40, 102 + oy, W - 80, 48, 10, C_CELL);   // the bar as it will be
+    { int x = 52; qb_focus = 0; for (int i = 0; i < qb_n; i++) { qb_button(x, 110 + oy, QB_W, 32, qb_top[i], 0, QB_IC); x += QB_W + 5; } }
+    for (int i = 0; i < QA_N; i++) {
+        int x = X0 + i % COLS * (TW + GP), y = 172 + i / COLS * (TH + GP) + oy, at = qb_on(i), cur = i == qp_cur;
+        if (cur) rframe(x - 4, y - 4, TW + 8, TH + 8, 12, 3, C_WHITE, C_BG);
+        rrect(x, y, TW, TH, 10, at ? C_ORANGE : C_SELBG);
+        icon_fit(qa_tab[i].icon, x + (TW - 32) / 2, y + 12, 32, at ? C_BG : cur ? C_WHITE : C_GREY);
+        ftext(x + (TW - ftext_w(FT_S, qa_tab[i].tile)) / 2, y + TH - 30, FT_S, at ? C_BG : C_DIM, qa_tab[i].tile);
+        if (at) { snprintf(b, sizeof b, "%d", at); rrect(x + 4, y + 4, ftext_w(FT_S, b) + 10, 22, 5, C_BG); ftext(x + 9, y + 4, FT_S, C_ORANGE, b); }
+    }
+    ftext(40, 590 + oy, FT_M, C_WHITE, qa_tab[qp_cur].name);
+    ftext(40, 624 + oy, FT_S, C_DIM, qb_on(qp_cur) ? "ON THE BAR. EDIT TAKES IT OFF, EDIT+<> MOVES IT" : qb_n < QB_MAX ? "IN THE DRAWER. EDIT PUTS IT ON THE BAR" : "IN THE DRAWER. THE BAR IS FULL");
     SDL_RenderSetClipRect(R, NULL);
 }

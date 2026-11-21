@@ -1974,7 +1974,7 @@ static void pat_play(void) {             // PLAY in the window: the pattern unde
 }
 
 // ---------- PROJECT ----------
-enum { J_TEMPO, J_SWING, J_KEY, J_SCALE, J_LAUNCH, J_METRO, J_BEATS, J_COUNT, J_QUANT, J_MASTER, J_THEME, J_LIB, J_NEW, J_SNAP, J_PROJ, J_SAVE, J_SAVEAS, J_EXPORT, J_HINT, J_STRIP, J_VIEW, J_LOCK, J_NAV, J_DRAWER, J_MXFX, J_MXLINK, J_MPORT, J_MCLK, J_MNOTE, J_MCH, J_MCLKIN, J_TRIM, J_ABOUT, J_MSND, J_MVIB, J_MVOL, J_MTONE, J_MWHEN, J_MDIV, J_MVOFF, J_QBAR, J_SECS, J_N };
+enum { J_TEMPO, J_SWING, J_KEY, J_SCALE, J_LAUNCH, J_METRO, J_BEATS, J_COUNT, J_QUANT, J_MASTER, J_THEME, J_LIB, J_NEW, J_SNAP, J_PROJ, J_SAVE, J_SAVEAS, J_EXPORT, J_HINT, J_STRIP, J_VIEW, J_LOCK, J_NAV, J_DRAWER, J_MXFX, J_MXLINK, J_MPORT, J_MCLK, J_MNOTE, J_MCH, J_MCLKIN, J_TRIM, J_ABOUT, J_MSND, J_MVIB, J_MVOL, J_MTONE, J_MWHEN, J_MDIV, J_MVOFF, J_QBAR, J_SECS, J_QBTN, J_N };
 // The sections of PROJECT (2026-11-09): the left column chooses one, the middle shows its settings
 // 2026-11-14 (user): INTERFACE holds how BrickPad looks and moves, ABOUT every key of it by topic (the sheet SHIFT used to show)
 // 2026-11-20 (user: "too many tabs, sort them by what they are for"): eight sections by task, the metronome its own.
@@ -1985,7 +1985,7 @@ static const char *const prj_sec_name[JS_N] = {"FILE", "TEMPO", "METRONOME", "PL
 static const int8_t prj_sec[JS_N][JS_ROWS] = {{J_PROJ, J_SAVE, J_SAVEAS, J_EXPORT, J_NEW, -1}, {J_TEMPO, J_SWING, J_BEATS, J_KEY, J_SCALE, J_SNAP, -1},
                                         {J_MSND, J_MVIB, J_MVOL, J_MTONE, J_MWHEN, J_MDIV, J_MVOFF, -1}, {J_LAUNCH, J_COUNT, J_QUANT, -1},
                                         {J_MASTER, J_TRIM, J_DRAWER, J_MXFX, J_MXLINK, -1}, {J_MPORT, J_MCLKIN, J_MCLK, J_MNOTE, J_MCH, -1},
-                                        {J_VIEW, J_STRIP, J_SECS, J_QBAR, J_HINT, J_LOCK, J_THEME, J_LIB, -1}, {J_ABOUT, -1}};
+                                        {J_VIEW, J_STRIP, J_SECS, J_QBAR, J_QBTN, J_HINT, J_LOCK, J_THEME, J_LIB, -1}, {J_ABOUT, -1}};
 static const char *const prj_help[J_N] = {"THE PROJECT'S SPEED. EDIT TAPS IT, L1/R1 HELD NUDGE WHILE PLAYING", "LATE EVEN 1/16 STEPS: A SHUFFLE",
     "THE TONIC EVERY PAD PLAYS IN (A PAD CAN HAVE ITS OWN)", "WHICH NOTES THE DEGREES, KEYS AND RANDOM USE",
     "A CLIP STARTS OR STOPS ON THIS GRID, AS IN ABLETON", "A CLICK ON EVERY BEAT WHILE PLAYING", "BEATS IN A BAR: LAUNCH AND RECORDING COUNT THEM",
@@ -2006,8 +2006,8 @@ static const char *const prj_help[J_N] = {"THE PROJECT'S SPEED. EDIT TAPS IT, L1
     "ALWAYS WHILE PLAYING, OR ONLY WHILE RECORDING AND ITS COUNT-IN", "A CLICK ON EVERY BEAT, EVERY 1/8 OR EVERY 1/16 (THE BEAT IS LOUDER)",
     "THE BUZZ EARLIER (-) OR LATER (+) IN MS, UNTIL IT LANDS WITH THE CLICK",
     "WHERE THE QUICK BAR SITS: AT THE TOP OR THE BOTTOM. ARROW PAST THE EDGE OF A PAGE REACHES IT",
-    "THE PAD'S SECTIONS UNDER THE PADS: PATTERN SOUND FX MOD MIX LOOK"};
-static const char *prj_name[J_N] = {"TEMPO", "SWING", "KEY", "SCALE", "CLIP LAUNCH", "METRONOME", "BEATS/BAR", "COUNT-IN", "REC QUANT", "MASTER VOL", "THEME", "CHECK LIBRARY", "NEW PROJECT", "SCALE SNAP", "PROJECT", "SAVE", "SAVE AS", "EXPORT WAV", "FOOTER HINTS", "PAD STRIP", "VIEW", "KID LOCK", "PAD MENU", "MIXER DRAWER", "STRIP EFFECTS", "SCENE MIX", "MIDI PORT", "CLOCK OUT", "MIDI NOTES", "MIDI CHANNEL", "CLOCK IN", "OUTPUT TRIM", "ALL THE KEYS", "SOUND", "VIBRATION", "VOLUME", "SOUND OF IT", "WHEN", "EVERY", "VIBRATION TIMING", "QUICK BAR", "SECTION STRIP"};
+    "THE PAD'S SECTIONS UNDER THE PADS: PATTERN SOUND FX MOD MIX LOOK", "EDIT: PICK UP TO 12 BUTTONS FOR THE QUICK BAR. THE REST ARE IN ITS DRAWER"};
+static const char *prj_name[J_N] = {"TEMPO", "SWING", "KEY", "SCALE", "CLIP LAUNCH", "METRONOME", "BEATS/BAR", "COUNT-IN", "REC QUANT", "MASTER VOL", "THEME", "CHECK LIBRARY", "NEW PROJECT", "SCALE SNAP", "PROJECT", "SAVE", "SAVE AS", "EXPORT WAV", "FOOTER HINTS", "PAD STRIP", "VIEW", "KID LOCK", "PAD MENU", "MIXER DRAWER", "STRIP EFFECTS", "SCENE MIX", "MIDI PORT", "CLOCK OUT", "MIDI NOTES", "MIDI CHANNEL", "CLOCK IN", "OUTPUT TRIM", "ALL THE KEYS", "SOUND", "VIBRATION", "VOLUME", "SOUND OF IT", "WHEN", "EVERY", "VIBRATION TIMING", "QUICK BAR", "SECTION STRIP", "BAR BUTTONS"};
 static int ui_strip = 1, ui_simple, ui_lock, ui_qbar, ui_secs = 1;   // v3: ui_qbar the quick bar 0 top 1 bottom, ui_secs the section strip on
 // PROJECT > INTERFACE: the pad strip (0 hidden, 1 thin, 2 big), the simple view, its kid lock (ui.cfg beside the binary)
 static int ui_tree, ui_drawer_left;          // the pad menu as a tree (A23) instead of the list; the mixer's drawer on the left
@@ -2425,6 +2425,7 @@ static int prj_dirty(void); static int prj_changed(void); static void prj_browse
 // up to 12 taps, the tempo is the straight line through all of them (least squares), so one late tap moves it little.
 // A pause over 2 s, or a gap far off the others (under half or over twice the mean), starts again from that tap.
 #define TAP_N 12
+static void qp_open(void); static void qb_ready(void); static void qb_defaults(void); static void qb_save(void); static int qb_n;
 static int tap_bpm(Uint32 *t, int *n) {
     Uint32 now = SDL_GetTicks();
     if (*n) { Uint32 g = now - t[*n - 1]; double mean = *n > 1 ? (double)(t[*n - 1] - t[0]) / (*n - 1) : g;
@@ -2446,6 +2447,7 @@ static void prj_tap(void) {
     if (jcur == J_PROJ) { prj_browse(); return; }
     if (jcur == J_SAVE) { if (prj_cur[0]) prj_save(prj_cur); else naming_open(0); return; }
     if (jcur == J_SAVEAS) { naming_open(0); return; }
+    if (jcur == J_QBTN) { qp_open(); return; }
     if (jcur == J_EXPORT) { export_open(); return; }
     if (jcur == J_LIB) { lib_toggle(); return; }
     if (jcur == J_THEME) { theming = 1; ted_armed = 0; return; }
@@ -2663,7 +2665,7 @@ static void prj_reset_row(int j) {       // one PROJECT setting back to its defa
     case J_SNAP: song.snap = dz->snap; break; case J_BEATS: song.beats = dz->beats; break;
     case J_LAUNCH: song.launch = dz->launch; break; case J_METRO: song.metro = dz->metro; break; case J_MASTER: song.master = dz->master; break;
     case J_COUNT: song.count_in = dz->count_in; break; case J_QUANT: song.rec_quant = dz->rec_quant; song.rec_len = dz->rec_len; break;
-    case J_VIEW: ui_simple = 0; break; case J_STRIP: ui_strip = 1; break; case J_QBAR: ui_qbar = 0; break; case J_SECS: ui_secs = 1; break; case J_NAV: ui_tree = 0; break; case J_LOCK: ui_lock = 0; break;
+    case J_VIEW: ui_simple = 0; break; case J_STRIP: ui_strip = 1; break; case J_QBAR: ui_qbar = 0; break; case J_QBTN: qb_defaults(); qb_save(); break; case J_SECS: ui_secs = 1; break; case J_NAV: ui_tree = 0; break; case J_LOCK: ui_lock = 0; break;
     case J_HINT: if (!hint_on) hint_set(1); break;
     case J_DRAWER: ui_drawer_left = 0; break; case J_MXFX: ui_mxfx = 1; break; case J_MXLINK: ui_mxlink = 1; break;
     case J_MPORT: midi_want[0] = 0; midi_close(); midi_cfg_save(); break; case J_MCLK: midi_clk_out = 0; midi_cfg_save(); break;
@@ -3699,6 +3701,7 @@ static void key_event1(int k, int down) {
     if (k == K_PLAY && held[K_SHIFT]) { if (down) { quit_down = SDL_GetTicks() | 1; used[K_SHIFT] = 1; } return; }   // v3: SHIFT+PLAY held 3 s quits
     if (x_latch_key(k, down)) return;
     if (ctxing) { ctx_key(k, down); return; }
+    if (qpicking) { qp_key(k, down); return; }   // PROJECT > SETTINGS > BAR BUTTONS
     if (held[K_MENU] && k == K_UP && y_back_here()) { if (down) { used[K_MENU] = 1; sim_key(K_Y, -1); } return; }   // v3: Y's way back
     if ((k == K_L1 || k == K_R1 || k == K_L2 || k == K_R2) && !sim_on && !perform && !ui_simple && !ui_over() && !naming && !exporting && !asking && !cfm && !learning) {
         if (down) { int d = k == K_R1 || k == K_R2 ? 1 : -1; qb_focus = strip_focus = tab_focus = 0;   // v3: L/R page as F1/F2 do
@@ -4216,6 +4219,7 @@ static void prj_value(int i, char *b) {
     case J_HINT: snprintf(b, 32, hint_on ? "ON" : "OFF"); break;
     case J_STRIP: snprintf(b, 32, "%s", ui_strip == 2 ? "BIG" : ui_strip ? "THIN" : "HIDDEN"); break;
     case J_QBAR: snprintf(b, 32, ui_qbar ? "BOTTOM" : "TOP"); break;
+    case J_QBTN: qb_ready(); snprintf(b, 32, "%d OF 12", qb_n); break;
     case J_SECS: snprintf(b, 32, ui_secs ? "ON" : "HIDDEN"); break;
     case J_VIEW: snprintf(b, 32, ui_simple ? "SIMPLE" : "ADVANCED"); break;
     case J_LOCK: snprintf(b, 32, ui_lock ? "ON" : "OFF"); break;
@@ -4849,7 +4853,7 @@ static void draw(void) {
         if (bigs) ui2_header(); else { int st = ui_strip; if (strip_on()) ui_strip = STRIP_THIN; ui2_header(); ui_strip = st; }
         if (secs) ui2_secs(sy); }
     else if (tab_focus) tabs_frame();
-    qd_draw();
+    qd_draw(); qp_draw();
     ui_popup();
     if (asking) draw_ask2();
     ctx_e = anim(&ctx_anim, ctxing, 160); if (ctxing || ctx_e > 0) draw_ctx();
