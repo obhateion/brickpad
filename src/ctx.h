@@ -139,3 +139,24 @@ static void draw_ctx(void) {
         if (ctx_it[i].latch) ftext(px + PW - 28 - ftext_w(FT_S, "ARROWS"), y + (RH - 6 - fv2[FT_S].h) / 2, FT_S, C_DIM, "ARROWS");
     }
 }
+
+// 2026-11-21 (user): Y is the way back everywhere, X reaches the quick bar, X again its drawer, X once more closes it.
+// The old jobs of X and Y stay in OPTION's menu; PADS, KEYS and the simple view keep their own X and Y.
+static void xy_key(int k) {
+    if (k == K_Y) {
+        if (qpicking) { qpicking = 0; return; }
+        if (ctxing) { ctxing = 0; return; }
+        if (x_latch || v_latch) { x_latch = v_latch = 0; return; }
+        if (qd_open) { qd_toggle(0); return; }
+        if (qb_focus || strip_focus || tab_focus) { qb_focus = strip_focus = tab_focus = 0; if (!midi_clk_in) tempo_mul = 1.f; return; }
+        if (learning || y_back_here()) { sim_key(K_Y, -1); return; }   // windows and sub-pages: the old way back
+        if (tab == T_PRJ) { menu_nav(K_DOWN); return; }   // back where PROJECT was opened
+        if (in_pad()) { menu_nav(K_UP); return; }        // a pad's section: HOME
+        return;
+    }
+    if (naming || exporting || asking || cfm || learning || qpicking || ui_over()) return;   // a window is open: it answers first
+    if (ctxing) ctxing = 0;
+    if (qd_open) { qd_toggle(0); return; }
+    if (qb_focus) { qd_toggle(1); return; }
+    strip_focus = tab_focus = 0; qb_focus = 1; qb_ready(); if (qb_cur > QB_HANDLE) qb_cur = QB_HANDLE;
+}

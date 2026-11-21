@@ -3683,9 +3683,10 @@ static float mx_show[NSLOT + 3]; static void mx_meters(void); static void meter_
 #include "pages.h"
 #include "simple.h"
 #include "ctx.h"
+static void xy_key(int k);
 static void key_event1(int k, int down) {
     if (k < 0) return;
-    if ((k == K_X || k == K_Y) && !sim_on && !perform && !ui_simple) return;   // v3: X and Y are gone (OPTION's menu)
+    if ((k == K_X || k == K_Y) && !sim_on && !perform && !ui_simple) { if (down) xy_key(k); return; }   // 2026-11-21 (user): Y back everywhere, X the quick bar and its drawer
     if (k == K_PLAY && !down) play_release();
     input_key(k, down);
     if (k == K_OPT && !down && opt_gate) { opt_gate = 0; engine_release(); }

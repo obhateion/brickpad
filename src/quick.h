@@ -270,7 +270,7 @@ static int qd_key(int k, int down) {     // the drawer open: 1 = the key was its
     return 1;
 }
 static const char *qd_hint(void) {
-    return qd_cur == QA_FILT ? "EDIT+^v SWEEP  ARROWS MOVE  OPTION CLOSE" : qd_cur >= QA_N ? "EDIT+^v VALUE  ARROWS MOVE  OPTION CLOSE" : "EDIT PRESS  ARROWS MOVE  OPTION CLOSE";
+    return qd_cur == QA_FILT ? "EDIT+^v SWEEP  ARROWS MOVE  Y CLOSE" : qd_cur >= QA_N ? "EDIT+^v VALUE  ARROWS MOVE  Y CLOSE" : "EDIT PRESS  ARROWS MOVE  Y CLOSE";
 }
 static void mx_meters(void); static void meter_bar(int x, int y, int w, int h, float v); static float mx_show[NSLOT + 3];
 static void qd_card(int x, int y, int w, int h, const char *t) { rrect(x, y, w, h, 14, C_CELL); ftext(x + 14, y + 6, FT_S, C_DIM, t); }
