@@ -108,18 +108,18 @@ static int fx2_cols(int n) { return n <= 10 ? 5 : n <= 12 ? 6 : 8; }   // two ro
 static void draw_fx2(void) {
     PadMix *pm = &song.mix.pad[fx_unit]; Col ec = C_CAT(PC_FX); fx2_sync();
     for (int s = 0; s < 2; s++) {        // the inserts as tabs
-        const FxSlot *f = &pm->ins[s]; char b[32]; int x = 26 + s * 492, on = s == fx2_slot;
+        const FxSlot *f = &pm->ins[s]; char b[32]; int hw = (ww - 13) / 2, x = wx0 + s * (hw + 13), on = s == fx2_slot;
         if (fx_is_mod(f->type)) snprintf(b, sizeof b, "%d \003 MODULATION \003 %s", s + 1, fx_name[f->type]);
         else snprintf(b, sizeof b, "%d \003 %s", s + 1, f->type ? fx_name[f->type] : "EMPTY");
-        rrect(x, 76, 479, 56, 6, on ? ec : C_CELL);
-        ftext(x + 240 - ftext_w(FT_MB, b) / 2, 92, FT_MB, on ? C_BG : f->type && f->on ? C_WHITE : C_DIM, b);
+        rrect(x, 76, hw, 56, 6, on ? ec : C_CELL);
+        ftext(x + hw / 2 - ftext_w(FT_MB, b) / 2, 92, FT_MB, on ? C_BG : f->type && f->on ? C_WHITE : C_DIM, b);
     }
     const FxSlot *f = &pm->ins[fx2_slot]; FxCard c[16]; int n = fx2_cards(c);
-    int ph = 186, cols = fx2_cols(n), kw = 970 / cols, h = 166, y0 = 153 + ph + 16;   // v3: every knob at once
-    if (fx2_cur < 0) rframe(26, 153, 971, ph, 8, 4, ec, C_CELL); else rrect(26, 153, 971, ph, 8, C_CELL);
-    fx2_picture(46, 153, 931, ph, f, ec);
-    fx2_live(46, 153, 931, ph, f, ec);
-    for (int i = 0; i < n; i++) fx2_card(30 + (i % cols) * kw, y0 + (i / cols) * (h + 8), kw - 8, h, f, c[i], i == fx2_cur, ec);
+    int ph = 186, cols = fx2_cols(n), kw = (ww + 8) / cols, h = 166, y0 = 153 + ph + 16;   // v3: every knob at once
+    if (fx2_cur < 0) rframe(wx0, 153, ww, ph, 8, 4, ec, C_CELL); else rrect(wx0, 153, ww, ph, 8, C_CELL);
+    fx2_picture(wx0 + 20, 153, ww - 40, ph, f, ec);
+    fx2_live(wx0 + 20, 153, ww - 40, ph, f, ec);
+    for (int i = 0; i < n; i++) fx2_card(wx0 + (i % cols) * kw, y0 + (i / cols) * (h + 8), kw - 8, h, f, c[i], i == fx2_cur, ec);
     if (fx2_cur < 0) draw_footer("EDIT CHANGE  L1/R1 SLOT  Y BACK  EDIT+<> TYPE  X ON/OFF  OPT+EDIT REMOVE");
     else draw_footer("EDIT+ARROWS VALUE  L1/R1 SLOT  Y BACK  X ON/OFF  OPT+EDIT DEFAULT");
 }
@@ -152,24 +152,25 @@ static float lfo2_shape(int sh, float t, unsigned *rng) {   // one period, -1..1
 }
 static void draw_lfo2(void) {
     Col ec = C_CAT(PC_MOD); const Lfo *L = &song.lfo[fx_unit][lcol]; char b[32];
-    for (int j = 0; j < NLFO; j++) { int x = 26 + j * 243, on = j == lcol; const Lfo *M = &song.lfo[fx_unit][j]; snprintf(b, sizeof b, "LFO %d", j + 1);
-        if (on) rrect(x, 76, 233, 38, 8, ec);
-        ftext(x + 116 - ftext_w(FT_MB, b) / 2, 83, FT_MB, on ? C_BG : M->target && M->depth ? C_WHITE : C_DIM, b); }
-    rrect(26, 127, 971, 200, 8, C_CELL);
+    for (int j = 0; j < NLFO; j++) { int tp = (ww + 10) / NLFO, x = wx0 + j * tp, on = j == lcol; const Lfo *M = &song.lfo[fx_unit][j]; snprintf(b, sizeof b, "LFO %d", j + 1);
+        if (on) rrect(x, 76, tp - 10, 38, 8, ec);
+        ftext(x + (tp - 10) / 2 - ftext_w(FT_MB, b) / 2, 83, FT_MB, on ? C_BG : M->target && M->depth ? C_WHITE : C_DIM, b); }
+    rrect(wx0, 127, ww, 200, 8, C_CELL);
     { int px = 0, py = 0; unsigned rng = 7u + lcol; float hold = 0; int act = L->target && L->depth;
-      for (int i = 0; i <= 931; i += 3) { float t = fmodf(i / 465.5f + L->phase / 100.f, 1.f), v;
+      int gw = ww - 40;                    // the shape across the work area (side slots)
+      for (int i = 0; i <= gw; i += 3) { float t = fmodf(i * 2.f / gw + L->phase / 100.f, 1.f), v;
           if (L->shape % LS_N == 5) { if (i % 117 < 3) hold = lfo2_shape(5, t, &rng); v = hold; } else v = lfo2_shape(L->shape, t, &rng);
-          int x = 46 + i, y = 227 - (int)(v * 80);
+          int x = wx0 + 20 + i, y = 227 - (int)(v * 80);
           if (i) line(px, py, x, y, 3, act ? ec : C_DIM);
           px = x; py = y; }
-      if (act) { float v = engine_lfo(fx_unit, lcol); disc2(986, 227 - (int)(v * 80), 6, C_WHITE); }   // where it is now
-      else if (!L->target) ui_empty(206, 160, 611, 134, "NO TARGET YET", "TARGET: EDIT, then EDIT on a SOUND card"); }   // empty state (TZ)
+      if (act) { float v = engine_lfo(fx_unit, lcol); disc2(wx0 + ww - 11, 227 - (int)(v * 80), 6, C_WHITE); }   // where it is now
+      else if (!L->target) ui_empty(wx0 + ww / 2 - 305, 160, 611, 134, "NO TARGET YET", "TARGET: EDIT, then EDIT on a SOUND card"); }   // empty state (TZ)
     for (int i = 0; i < LR_N; i++) {     // v3: every setting as a knob at once
-        int r = lfo2_ord[i], x = 30 + (i % 4) * 242, y = 343 + (i / 4) * 178, on = r == lrow, lo = 0, hi = 0, v = 0, cx, cy, kr;
+        int kp = (ww + 8) / 4, r = lfo2_ord[i], x = wx0 + (i % 4) * kp, y = 343 + (i / 4) * 178, on = r == lrow, lo = 0, hi = 0, v = 0, cx, cy, kr;
         lfo_str(fx_unit, lcol, r, b);
         if (r == LR_DEPTH) { lo = -100; hi = 100; v = L->depth; } else if (r == LR_PHASE) { hi = 100; v = L->phase; } else if (r == LR_RATE && !L->sync) { hi = 100; v = L->rate; }
         if (on) ui_focus(lr_name[r], b, hi > lo ? (v - lo) * 100 / (hi - lo) : -1, ec);
-        knob_draw(x, y, 234, 170, lr_name[r], b, hi > lo ? (float)(v - lo) / (hi - lo) : 0, lo < 0 ? 0.5f : 0, on, ec, &cx, &cy, &kr);
+        knob_draw(x, y, kp - 8, 170, lr_name[r], b, hi > lo ? (float)(v - lo) / (hi - lo) : 0, lo < 0 ? 0.5f : 0, on, ec, &cx, &cy, &kr);
     }
     draw_footer(lrow == LR_TARGET ? "EDIT PICK ON SOUND  EDIT+<> TARGET  L1/R1 LFO  Y BACK  OPT+EDIT UNLINK" : "EDIT+ARROWS VALUE  L1/R1 LFO  Y BACK  OPT+EDIT LFO OFF");
 }
@@ -184,11 +185,11 @@ static void auto2_move(int k) {
 }
 static void draw_auto2(void) {
     Col ec = C_CAT(PC_MOD); const Pattern *p = cur_pat(sel); int len = p->len ? p->len : 16, cur = lane - L_A1;
-    for (int a = 0; a < NAUTO; a++) { const AutoLane *al = &song.aut[sel][song.t[sel].cur][a]; char t[24], b[40]; int x = 26 + a * 243, on = a == cur;
+    for (int a = 0; a < NAUTO; a++) { const AutoLane *al = &song.aut[sel][song.t[sel].cur][a]; char t[24], b[40]; int tp = (ww + 10) / NAUTO, x = wx0 + a * tp, on = a == cur;
         lfo_tname(sel, al->target, t); snprintf(b, sizeof b, "A%d %.12s", a + 1, al->target ? t : "-");
-        if (on) { rrect(x, 76, 233, 38, 8, ec); if (srow == 0) rframe(x - 4, 72, 241, 46, 10, 3, C_WHITE, ec); }
-        ftext(x + 116 - ftext_w(FT_MB, b) / 2, 83, FT_MB, on ? C_BG : al->target ? C_WHITE : C_DIM, b); }
-    enum { PX = 26, PY = 130, PW = 971, PH = 520, IX = PX + 14, IW = PW - 28, TOP = PY + 30, BOT = PY + PH - 30 };
+        if (on) { rrect(x, 76, tp - 10, 38, 8, ec); if (srow == 0) rframe(x - 4, 72, tp - 2, 46, 10, 3, C_WHITE, ec); }
+        ftext(x + (tp - 10) / 2 - ftext_w(FT_MB, b) / 2, 83, FT_MB, on ? C_BG : al->target ? C_WHITE : C_DIM, b); }
+    enum { PY = 130, PH = 520, TOP = PY + 30, BOT = PY + PH - 30 }; const int PX = wx0, PW = ww, IX = PX + 14, IW = PW - 28;   // the work area (side slots)
     rrect(PX, PY, PW, PH, 8, C_CELL);
     const AutoLane *al = cur_aut(); const int8_t *bc = aut_bend(); int st = srow >= 1 ? cur_step() : -1, any = 0;
     for (int i = 0; i <= len; i++) { int x = IX + i * IW / len; rect(x, PY + 8, 1, PH - 16, i % 4 ? mix(C_LINE, C_CELL, 100) : C_LINE, 1); }
@@ -206,12 +207,12 @@ static void draw_auto2(void) {
             double mf = (i + j) / 2.0; disc2(IX + (int)(mf * IW / len), BOT - (int)(auto_value(al, bc, len, mf) * (BOT - TOP) / 100), held[K_X] && i == aut_point_back() ? 7 : 5, bc[i] ? C_ORANGE : C_GREY); }
         for (int i = 0; i < len; i++) if (al->v[i] != AUTO_EMPTY) { int cx = IX + i * IW / len, cy = BOT - al->v[i] * (BOT - TOP) / 100;
             if (i == st) disc2(cx, cy, 12, C_WHITE); else { disc2(cx, cy, 10, ec); disc2(cx, cy, 6, C_CELL); } } }
-    else { const char *m = al->target ? "no points: EDIT puts one on the step" : "no target: UP, then EDIT+<> picks one"; ftext(512 - ftext_w(FT_M, m) / 2, PY + PH / 2 - 12, FT_M, C_DIM, m); }
+    else { const char *m = al->target ? "no points: EDIT puts one on the step" : "no target: UP, then EDIT+<> picks one"; ftext(PX + PW / 2 - ftext_w(FT_M, m) / 2, PY + PH / 2 - 12, FT_M, C_DIM, m); }
     char b[48]; int back = aut_point_back();
     if (back >= 0) snprintf(b, sizeof b, "bend %+d%%", bc[back]); else snprintf(b, sizeof b, "bend -");
-    ftext(26, 664, FT_M, C_DIM, b);
+    ftext(wx0, 664, FT_M, C_DIM, b);
     if (st >= 0) { if (al->v[st] != AUTO_EMPTY) snprintf(b, sizeof b, "step %d \004 %d%%", st + 1, al->v[st]); else snprintf(b, sizeof b, "step %d", st + 1);
-        ftext(997 - ftext_w(FT_M, b), 664, FT_M, C_WHITE, b); }
+        ftext(wx0 + ww - ftext_w(FT_M, b), 664, FT_M, C_WHITE, b); }
     draw_footer(srow == 0 ? "EDIT+<> TARGET  EDIT PICK ON SOUND  Y BACK" : "EDIT POINT  X+^v BEND  Y BACK  EDIT+^v VALUE  L1/R1 LANE  OPT+EDIT CLEAR");
 }
 

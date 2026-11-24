@@ -13,6 +13,8 @@ static int tab_focus;                    // v3: the cursor on the page's own tab
 static void pad_step(int d); static void cat_open(int c);
 static void draw_footer(const char *hint);
 static char ui_hint[256];                // this frame's whole footer hint
+static int wx0 = 26, ww = 971;           // the page's work area across (side.h makes it narrower by the slot columns)
+static int side_foc;                     // side.h: the cursor on a side slot (1..8)
 
 // ---- the kit of the mockups: text in their sizes, rounded cards, the header and the footer ----
 enum { V2_HEAD = 60, V2_FOOT = 718 };    // the header ends, the footer starts
@@ -354,34 +356,34 @@ static void draw_steps2(void) {
     const Pattern *p = cur_pat(sel); Col ec = C_ENG(song.t[sel].type); int nsl = track_nslices(sel);
     int l[L_N], n = lane_list(l), nt = 0;
     for (int i = 0; i < n; i++) if (!is_auto(l[i])) {   // the tabs; A1-A4 follow them on L1/R1 (their own page comes with MOD)
-        int cx = 90 + nt++ * 138, on = l[i] == lane; const char *nm = lane_full(l[i]);
+        int cx = wx0 + 64 + nt++ * 138, on = l[i] == lane; const char *nm = lane_full(l[i]);
         if (on) rrect(cx - 65, 74, 130, 38, 8, ec);
         ftext(cx - ftext_w(FT_MB, nm) / 2, 81, FT_MB, on ? C_BG : C_DIM, nm);
     }
     int cs = cur_step(), play = song.t[sel].on ? engine_step(sel) : -1, page = follow_ph && play >= 0 ? play / 16 : cs / 16; char b[64];
     for (int v = 0; v < 16; v++) {
-        int i = page * 16 + v, x = 29 + (v % 8) * 243 / 2, y = 127 + (v / 8) * 265, on = i < p->len && p->trig[i];
-        if (i >= p->len) { rframe(x, y, 108, 252, 8, 2, C_CELL, C_BG); continue; }   // past the end of the pattern
-        if (i == cs) rframe(x - 4, y - 4, 116, 260, 11, 3, C_WHITE, C_BG);
+        // 2026-11-24: eight a row inside the work area (the side slots take the edges)
+        int cp = (ww + 10) / 8, cw = cp - 10, i = page * 16 + v, x = wx0 + (v % 8) * cp, y = 127 + (v / 8) * 265, on = i < p->len && p->trig[i];
+        if (i >= p->len) { rframe(x, y, cw, 252, 8, 2, C_CELL, C_BG); continue; }   // past the end of the pattern
+        if (i == cs && !side_foc) rframe(x - 4, y - 4, cw + 8, 260, 11, 3, C_WHITE, C_BG);
         int flag = on && (lane == L_ACC || lane == L_SLD) && p->slice[i] >= 0 && (p->slice[i] & (lane == L_ACC ? ACID_ACCENT : ACID_SLIDE));
-        rrect(x, y, 108, 252, 8, flag ? mix(C_BG, ec, 130) : on ? mix(C_BG, ec, 46) : C_CELL);
+        rrect(x, y, cw, 252, 8, flag ? mix(C_BG, ec, 130) : on ? mix(C_BG, ec, 46) : C_CELL);
         snprintf(b, sizeof b, "%d", i + 1); ftext(x + 10, y + 6, FT_S, C_DIM, b);
         if (on) step_value(p, i, lane, nsl, b); else snprintf(b, sizeof b, "\3");
-        ftext(x + 54 - ftext_w(FT_LB, b) / 2, y + 126 - fv2[FT_LB].h / 2, FT_LB, on ? ec : C_DIM, b);
+        int f = ftext_w(FT_LB, b) <= cw - 8 ? FT_LB : FT_MB;
+        ftext(x + cw / 2 - ftext_w(f, b) / 2, y + 126 - fv2[f].h / 2, f, on ? ec : C_DIM, b);
         if (on && lane == L_REP && p->rep[i] > 1) {   // SUB (2026-11-20): the cells under the number, the ones off dim
-            const SubStep *e = sub_find(sel, song.t[sel].cur, i); int nc = p->rep[i], cw = 92 / nc;
-            for (int k = 0; k < nc; k++) rect(x + 8 + k * cw, y + 180, cw - 3, 30, e && (e->off >> k & 1) ? C_LINE : ec, 1); }
-        if (i == play) rect(x, y + 244, 108, 8, C_WHITE, 1);   // the step that plays
+            const SubStep *e = sub_find(sel, song.t[sel].cur, i); int nc = p->rep[i], sw = (cw - 16) / nc;
+            for (int k = 0; k < nc; k++) rect(x + 8 + k * sw, y + 180, sw - 3, 30, e && (e->off >> k & 1) ? C_LINE : ec, 1); }
+        if (i == play) rect(x, y + 244, cw, 8, C_WHITE, 1);   // the step that plays
     }
-    int pages = (p->len + 15) / 16;
-    if (pages > 1) snprintf(b, sizeof b, "%d steps \3 %s \3 page %d/%d", p->len, div_name[p->div % 6], page + 1, pages);
-    else snprintf(b, sizeof b, "%d steps \3 %s", p->len, div_name[p->div % 6]);
-    ftext(26, 660, FT_M, C_DIM, b);
-    if (!pat_used(p)) { const char *m = "empty: EDIT puts a note on the step"; ftext(512 - ftext_w(FT_M, m) / 2, 660, FT_M, C_ORANGE, m); }
+    int pages = (p->len + 15) / 16;   // the length and the grid are on the LEN/GRID slot now: only the bar
+    if (pages > 1) { snprintf(b, sizeof b, "bar %d/%d", page + 1, pages); ftext(wx0, 660, FT_M, C_DIM, b); }
+    if (!pat_used(p)) { const char *m = "empty: EDIT puts a note on the step"; ftext(wx0 + ww / 2 - ftext_w(FT_M, m) / 2, 660, FT_M, C_ORANGE, m); }
     if (cs < p->len && p->trig[cs]) { char nb[12], ln[24]; step_value(p, cs, lane, nsl, nb); snprintf(ln, sizeof ln, "STEP %d %s", cs + 1, lane_full(lane)); ui_focus(ln, nb, -1, C_ENG(song.t[sel].type));
         step_value(p, cs, L_TRIG, nsl, nb); snprintf(b, sizeof b, "step %d \3 %s \3 vel %d", cs + 1, nb, p->vel[cs]); }
     else snprintf(b, sizeof b, "step %d", cs + 1);
-    ftext(W - 28 - ftext_w(FT_M, b), 660, FT_M, C_WHITE, b);
+    ftext(wx0 + ww - ftext_w(FT_M, b), 660, FT_M, C_WHITE, b);
     if (ui_qbar) draw_phones(850, 16);   // v3: MON on the quick bar at the top
     draw_footer(lane == L_TRIG || lane == L_SLICE ? "EDIT NOTE  L1/R1 LANE  Y BACK  R2 HEAR  EDIT+ARROWS VALUE  OPT LISTEN  OPT+<> WALK AND LISTEN  X+<> PAD  OPT+EDIT DELETE  XX DOUBLE CLIP  SHIFT+X RANDOM"
                                                   : "EDIT+ARROWS VALUE  L1/R1 LANE  Y BACK  OPT LISTEN  X+<> PAD  OPT+EDIT DEFAULT  XX DOUBLE CLIP  SHIFT+X RANDOM");

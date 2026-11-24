@@ -284,10 +284,12 @@ static const char *pt_name(int j, char *b) {   // the label: the outputs without
     if (l > 4 && !strcmp(b + l - 4, " OUT")) b[l - 4] = 0;
     return b;
 }
+#define PT_XO (wx0 + 146)                // the jacks' columns in the work area (side slots)
+#define PT_XI (wx0 + ww - 197)
 static void pt_curve(int y0, int y1, Col c) {   // a cable from the left dot to the right one, an S as on A14
-    int px = 172, py = y0;
+    int px = PT_XO, py = y0, xm = (PT_XO + PT_XI) / 2;
     for (int i = 1; i <= 32; i++) { float t = i / 32.f, u = 1 - t;
-        int x = (int)(u * u * u * 172 + 3 * u * u * t * 500 + 3 * u * t * t * 500 + t * t * t * 800), y = (int)(u * u * u * y0 + 3 * u * u * t * y0 + 3 * u * t * t * y1 + t * t * t * y1);
+        int x = (int)(u * u * u * PT_XO + 3 * u * u * t * xm + 3 * u * t * t * xm + t * t * t * PT_XI), y = (int)(u * u * u * y0 + 3 * u * u * t * y0 + 3 * u * t * t * y1 + t * t * t * y1);
         line(px, py, x, y, 5, c); px = x; py = y; }
 }
 static void draw_patch2(Col ec) {
@@ -296,18 +298,18 @@ static void draw_patch2(Col ec) {
     for (int k = 0; k < NCABLE; k++) if (gp[k][0] && gp[k][1]) pt_curve(pt_y(gp[k][0]), pt_y(16 + gp[k][1]), cc[k % 6]);
     if (pt_pick) pt_curve(pt_y(pt_pick), cj >= 16 ? pt_y(cj) : pt_y(pt_pick), C_WHITE);   // the carried cable reaches for the cursor
     for (int j = 1; j < JO_N; j++) { int y = pt_y(j), on = j == cj;
-        if (on) gb_ring(172, y, 20, 4, ec); if (pt_pick == j) gb_ring(172, y, 26, 3, C_WHITE);
-        disc2(172, y, 12, out); ftext(38, y - 12, FT_MB, on ? ec : C_WHITE, pt_name(j, b)); }
+        if (on) gb_ring(PT_XO, y, 20, 4, ec); if (pt_pick == j) gb_ring(PT_XO, y, 26, 3, C_WHITE);
+        disc2(PT_XO, y, 12, out); ftext(wx0 + 12, y - 12, FT_MB, on ? ec : C_WHITE, pt_name(j, b)); }
     for (int i = 1; i < JI_N; i++) { int j = 16 + i, y = pt_y(j), on = j == cj;
-        if (on) gb_ring(800, y, 20, 4, ec);
-        disc2(800, y, 12, in); pt_name(j, b); ftext(984 - ftext_w(FT_MB, b), y - 12, FT_MB, on ? ec : C_WHITE, b); }
+        if (on) gb_ring(PT_XI, y, 20, 4, ec);
+        disc2(PT_XI, y, 12, in); pt_name(j, b); ftext(wx0 + ww - 13 - ftext_w(FT_MB, b), y - 12, FT_MB, on ? ec : C_WHITE, b); }
     s[0] = 0;                            // under the bay: the cursor's jack and where its cables go
     if (pt_pick) snprintf(s, sizeof s, "%s \004 ...", pt_name(pt_pick, b));
     else for (int k = 0, l; k < NCABLE; k++) { if (!gp[k][0] || !gp[k][1] || (cj < 16 ? gp[k][0] != cj : gp[k][1] != cj - 16)) continue;
         char o[16], d[16]; l = (int)strlen(s); snprintf(s + l, sizeof s - l, "%s%s \004 %s", l ? "   " : "", pt_name(gp[k][0], o), pt_name(16 + gp[k][1], d));
         if (gp[k][0] == JO_ATT || gp[k][1] == JI_ATT) { l = (int)strlen(s); snprintf(s + l, sizeof s - l, " \003 %d%%", song.gx[sel][GX_ATTEN]); } }
     if (!s[0]) snprintf(s, sizeof s, "%s: no cable", pt_name(cj, b));
-    ftext(512 - ftext_w(FT_MB, s) / 2, 672, FT_MB, ec, s);
+    ftext(wx0 + ww / 2 - ftext_w(FT_MB, s) / 2, 672, FT_MB, ec, s);
     draw_footer(pt_pick ? "EDIT ON AN INPUT PLUG  Y DROP THE CABLE" : cj >= 16 ? "EDIT TAKE ITS CABLE  OPT+EDIT PULL IT  L1/R1 PAGE  Y BACK"
                 : "EDIT CABLE  OPT+EDIT PULL ITS CABLES  L1/R1 PAGE  Y BACK");
 }
@@ -316,20 +318,21 @@ static void draw_sound2(void) {
     int n; const SndPage *pgs = snd_pages(song.t[sel].type, &n), *pg = snd_page(); int cur = (int)(pg - pgs);
     Col ec = C_ENG(song.t[sel].type); int l[20], c = snd_cards(pg, l);
     for (int i = 0; i < n; i++) {        // the pages as tabs
-        int tw = 971 / n, cx = 26 + tw * i + tw / 2;
-        if (i == cur) rrect(26 + tw * i, 73, tw - 10 > 184 ? 184 : tw - 10, 38, 8, ec);
-        int px = i == cur ? 26 + tw * i + (tw - 10 > 184 ? 184 : tw - 10) / 2 : cx - 5;
+        int tw = ww / n, cx = wx0 + tw * i + tw / 2;
+        if (i == cur) rrect(wx0 + tw * i, 73, tw - 10 > 184 ? 184 : tw - 10, 38, 8, ec);
+        int px = i == cur ? wx0 + tw * i + (tw - 10 > 184 ? 184 : tw - 10) / 2 : cx - 5;
         ftext(px - ftext_w(FT_MB, pgs[i].name) / 2, 80, FT_MB, i == cur ? C_BG : C_DIM, pgs[i].name);
     }
     if (pg->gfx == GF_PATCH) { draw_patch2(ec); return; }
     int y0 = 127;
     if (pg->gfx != GF_NONE) {            // the picture; the cursor on it: the file (the sampler, CLOUD) or the presets
-        if (sp_cur < 0) rframe(26, 127, 971, 210, 8, 4, ec, C_CELL); else rrect(26, 127, 971, 210, 8, C_CELL);
-        snd_picture(pg, 26, 127, 971, 210, ec); snd_live(pg, 26, 127, 971, 210);
+        if (sp_cur < 0) rframe(wx0, 127, ww, 210, 8, 4, ec, C_CELL); else rrect(wx0, 127, ww, 210, 8, C_CELL);
+        snd_picture(pg, wx0, 127, ww, 210, ec); snd_live(pg, wx0, 127, ww, 210);
         y0 = 352;
     }
     int kh = pic_h(pg) ? 158 : 200; if (!pic_h(pg)) y0 = 150;   // v3: every knob of the page at once, five a row
-    for (int i = 0; i < c; i++) snd_knob(32 + (i % 5) * 194, y0 + (i / 5) * (kh + 8), 186, kh, l[i], i == sp_cur, ec);
+    int kp = (ww + 8) / 5;                // five a row in the work area (side slots)
+    for (int i = 0; i < c; i++) snd_knob(wx0 + (i % 5) * kp, y0 + (i / 5) * (kh + 8), kp - 8, kh, l[i], i == sp_cur, ec);
     if (learning) draw_footer("EDIT TAKE THIS PARAMETER  L1/R1 PAGE  Y CANCEL");
     else if (sp_cur < 0) draw_footer(pg->gfx == GF_SLICES ? "EDIT SLICE EDITOR  L1/R1 PAGE  Y BACK  EDIT+ARROWS SLICES  OPT LISTEN"
                               : is_synth(sel) && song.t[sel].type != 3 ? "EDIT PRESETS  L1/R1 PAGE  Y BACK  OPT LISTEN"

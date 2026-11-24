@@ -81,29 +81,30 @@ static void chord_key(int k, int down) {
     if (k == K_R2) { ch_inv = (ch_inv + 1) % 3; ch_hear(ch_row, ch_col); return; }
     if (k == K_L1 || k == K_R1) { int n = ch_nslots(p); ch_slot = (ch_slot + (k == K_R1 ? 1 : n - 1)) % n; return; }
     if (held[K_EDIT] && (k == K_UP || k == K_DOWN)) { ch_oct = clampi(ch_oct + (k == K_UP ? 1 : -1), -2, 2); ch_hear(ch_row, ch_col); return; }
-    if (k == K_LEFT) ch_col = (ch_col + CH_COLS - 1) % CH_COLS; else if (k == K_RIGHT) ch_col = (ch_col + 1) % CH_COLS;
+    int r0 = ch_row, c0 = ch_col;          // 2026-11-24: no wrap across, the edges lead to the side slots
+    if (k == K_LEFT) { if (ch_col) ch_col--; } else if (k == K_RIGHT) { if (ch_col < CH_COLS - 1) ch_col++; }
     else if (k == K_UP) ch_row = (ch_row + CH_ROWS - 1) % CH_ROWS; else if (k == K_DOWN) ch_row = (ch_row + 1) % CH_ROWS;
     else return;
-    if (hear_on) { ch_hear(ch_row, ch_col); }
+    if (lst_on && (r0 != ch_row || c0 != ch_col)) { ch_hear(ch_row, ch_col); }   // the LISTEN slot
 }
 static void draw_chords(void) {
     Pattern *p = cur_pat(sel); Col ec = C_CAT(PC_PATTERN); char b[32];
     static const char *const rn[7] = {"I", "II", "III", "IV", "V", "VI", "VII"}, *const rown[CH_ROWS] = {"TRIADS", "SEVENTHS", "SUS4"};
     int sc = ch_scale();
     for (int r = 0; r < CH_ROWS; r++) {
-        ftext(32, 80 + r * 118, FT_S, C_DIM, rown[r]);
+        ftext(wx0 + 6, 80 + r * 118, FT_S, C_DIM, rown[r]);
         for (int c = 0; c < CH_COLS; c++) {
-            int x = 26 + c * 140, y = 100 + r * 118, on = r == ch_row && c == ch_col;
+            int cp = (ww + 10) / CH_COLS, cw = cp - 10, x = wx0 + c * cp, y = 100 + r * 118, on = r == ch_row && c == ch_col;
             int t = deg_semis(sc, c + 2) - deg_semis(sc, c); char rb[8]; snprintf(rb, sizeof rb, "%s", rn[c]);
             if (t == 3) for (char *q = rb; *q; q++) *q += 32;   // minor and diminished in small numerals
-            if (on) rframe(x, y, 130, 92, 8, 4, ec, C_SELBG); else rrect(x, y, 130, 92, 8, C_CELL);
+            if (on) rframe(x, y, cw, 92, 8, 4, ec, C_SELBG); else rrect(x, y, cw, 92, 8, C_CELL);
             ftext(x + 12, y + 8, FT_S, on ? ec : C_DIM, rb);
-            ch_name(r, c, b, sizeof b); int f = ftext_w(FT_MB, b) <= 112 ? FT_MB : FT_M;
-            ftext(x + 65 - ftext_w(f, b) / 2, y + 44, f, on ? C_WHITE : C_GREY, b);
+            ch_name(r, c, b, sizeof b); int f = ftext_w(FT_MB, b) <= cw - 14 ? FT_MB : ftext_w(FT_M, b) <= cw - 8 ? FT_M : FT_S;
+            ftext(x + cw / 2 - ftext_w(f, b) / 2, y + 44, f, on ? C_WHITE : C_GREY, b);
         }
     }
-    int n = ch_nslots(p), tx = 26, tw = 971, ty = 470, th = 92, sw = tw / n;   // the clip: a block per slot, the chord in it
-    ftext(32, ty - 22, FT_S, C_DIM, "CLIP");
+    int n = ch_nslots(p), tx = wx0, tw = ww, ty = 470, th = 92, sw = tw / n;   // the clip: a block per slot, the chord in it
+    ftext(wx0 + 6, ty - 22, FT_S, C_DIM, "CLIP");
     for (int i = 0; i < n; i++) { int x = tx + i * sw, r, c, m = ch_slot_match(p, i, &r, &c), on = i == ch_slot;
         if (on) rframe(x + 2, ty, sw - 4, th, 8, 4, C_WHITE, m ? mix(C_CELL, ec, 90) : C_CELL); else rrect(x + 2, ty, sw - 4, th, 8, m ? mix(C_CELL, ec, 60) : C_CELL);
         if (m > 0) ch_name(r, c, b, sizeof b); else snprintf(b, sizeof b, "%s", m < 0 ? "NOTES" : "-");
@@ -111,8 +112,8 @@ static void draw_chords(void) {
     { int st = engine_playing() && song.t[sel].on ? (int)((engine_posf() - 0) * RT) % roll_ticks(p) : -1;   // where the clip plays
       if (st >= 0) rect(tx + (int)((int64_t)st * tw / roll_ticks(p)), ty - 6, 3, th + 12, C_WHITE, 1); }
     snprintf(b, sizeof b, "%s %s", note_name[track_key(sel)], scale_name[track_scale(sel)]);
-    char info[96]; snprintf(info, sizeof info, "LENGTH %s   INVERSION %d   OCTAVE %+d   %s", ch_len_name[ch_len], ch_inv, ch_oct, b);
-    ftext(32, ty + th + 24, FT_M, C_GREY, info);
+    char info[96]; snprintf(info, sizeof info, "INVERSION %d   OCTAVE %+d   %s", ch_inv, ch_oct, b);   // LENGTH: its side slot
+    ftext(wx0 + 6, ty + th + 24, FT_M, C_GREY, info);
     { char nn[24], vv[32]; ch_name(ch_row, ch_col, vv, sizeof vv); snprintf(nn, sizeof nn, "SLOT %d/%d", ch_slot + 1, n); ui_focus(nn, vv, -1, ec); }
     draw_footer("EDIT PUT  OPT HEAR  L1/R1 SLOT  X LENGTH  R2 INVERSION  EDIT+^v OCTAVE  OPT+EDIT CLEAR SLOT  Y BACK");
 }

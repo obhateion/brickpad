@@ -69,6 +69,16 @@ static const struct { const char *name, *tile; int icon; } qa_tab[QD_N] = {
     {"SCENE <", "SCENE <", QI_SCNPREV}, {"SCENE >", "SCENE >", QI_SCNNEXT}, {"KID LOCK", "LOCK", IC_LOCK}, {"MIDI LEARN", "MIDI", IC_M_MIDI_PORT},
     {"MASTER VOLUME", "VOLUME", 0}, {"FILTER (HOLD EDIT)", "FILTER", 0}, {"TEMPO", "TEMPO", 0},
 };
+static const char *const qa_desc[QA_N] = {   // one line under the name in the picker (2026-11-24, user's words where there were some)
+    "metronome click on or off", "tap the tempo in time", "count-in before a take, on or off", "where clips start: 1, 2, 4 bars or at once",
+    "record notes in real time", "undo the last change", "bring back what undo took", "save the project",
+    "show the sound load and the voices", "hear notes while you put them", "play the pads with the buttons", "play notes like a keyboard",
+    "slow the tempo while held", "speed the tempo up while held", "the scene stays: launches do not change it", "pause follow actions: clips loop",
+    "new notes over the old, or wipe the clip first", "snap recorded notes to the grid", "render the mix into an empty pad", "keep what you just played as a clip",
+    "the page follows the playhead", "notes snap to the grid", "copy the current block", "paste into the current block", "fill steps randomly",
+    "bypass the master compressor and limiter", "mute every pad, again brings them back", "turn every solo off",
+    "the scene before", "the next scene", "lock the controls (kid lock)", "map a parameter to a MIDI controller",
+};
 // The bar's buttons (2026-11-21, user: "the 12 are chosen in SETTINGS"): PROJECT > SETTINGS > BAR BUTTONS, kept in
 // quickbar.cfg by name (one a line), for the device, not the project. Whatever is not on the bar is in the drawer.
 enum { QB_MAX = 12, QB_IC = 24, QB_W = QB_IC + 12 };
@@ -368,7 +378,8 @@ static void qp_draw(void) {
         ftext(x + (TW - ftext_w(FT_S, qa_tab[i].tile)) / 2, y + TH - 30, FT_S, at ? C_BG : C_DIM, qa_tab[i].tile);
         if (at) { snprintf(b, sizeof b, "%d", at); rrect(x + 4, y + 4, ftext_w(FT_S, b) + 10, 22, 5, C_BG); ftext(x + 9, y + 4, FT_S, C_ORANGE, b); }
     }
-    ftext(40, 590 + oy, FT_M, C_WHITE, qa_tab[qp_cur].name);
-    ftext(40, 624 + oy, FT_S, C_DIM, qb_on(qp_cur) ? "ON THE BAR. EDIT TAKES IT OFF, EDIT+<> MOVES IT" : qb_n < QB_MAX ? "IN THE DRAWER. EDIT PUTS IT ON THE BAR" : "IN THE DRAWER. THE BAR IS FULL");
+    ftext(40, 584 + oy, FT_M, C_WHITE, qa_tab[qp_cur].name);
+    ftext(40, 614 + oy, FT_M, mix(C_WHITE, C_DIM, 90), qa_desc[qp_cur]);
+    ftext(40, 648 + oy, FT_S, C_DIM, qb_on(qp_cur) ? "ON THE BAR. EDIT TAKES IT OFF, EDIT+<> MOVES IT" : qb_n < QB_MAX ? "IN THE DRAWER. EDIT PUTS IT ON THE BAR" : "IN THE DRAWER. THE BAR IS FULL");
     SDL_RenderSetClipRect(R, NULL);
 }

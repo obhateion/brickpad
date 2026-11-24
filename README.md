@@ -149,6 +149,11 @@ themes. To update, replace the launcher and `brickpad-1.1/brickpad` only.
 
 ![Button map](docs/images/buttons.svg)
 
+**Side slots.** A pad's pages (PATTERN, SOUND, FX, MOD) have up to four buttons on each side: LAYOUT, LEN/GRID,
+PATTERN, RECORD, LISTEN, DOUBLE, RANDOM and so on. Go past the page's left or right edge to reach them, up/down to walk
+them, the arrow back to return. EDIT presses a slot, EDIT+arrows change its value. OPTION tapped alone opens the
+rest (UNDO, COPY, PASTE, CLEAR).
+
 Every screen shows its keys in the footer; PROJECT > ABOUT lists all of them by topic, and the
 [manual](docs/MANUAL.md) explains every screen.
 

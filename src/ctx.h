@@ -51,28 +51,24 @@ static int ctx_ok(void) {
         && (!ui_window() || ((rolling || chording || ducking) && !randing && !presetting)) && tab != T_PRJ && !hubbing && !patmenu && !modmenu && !recpage;
 }
 static void ctx_open(void) {
+    // 2026-11-24 (user): what should be at hand went onto the side slots (side.h); OPTION keeps UNDO COPY PASTE CLEAR and
+    // the rare items. ctx_layout and the moved items stay in the code until the user's check.
     ctx_n = ctx_cur = 0;
-    if (chording) { ctx_layout(); ctx_add("CHORD LENGTH", K_X, -1, 0, NULL); }
-    else if (rolling) { ctx_layout(); ctx_add("TRIAD", K_EDIT, K_X, 0, NULL); ctx_add("VELOCITY / CHANCE", 0, 0, 1, NULL); ctx_add("RANDOM", K_X, K_SHIFT, 0, NULL); }
+    if (chording || rolling) ;          // LAYOUT, LENGTH, GRID, PATTERNS, RECORD, CHORD LENGTH, TRIAD, VELOCITY / CHANCE, RANDOM: slots
     else if (ducking) { ctx_add("NEW POINT", K_X, -1, 0, NULL); ctx_add("BEND", 0, 0, 1, NULL); }
     else if (scening) ctx_add("NEW COPY", K_X, -1, 0, NULL);
     else if (tab == T_GRID && ui_cat < 0) {
         ctx_add("CLIP START / STOP", K_X, -1, 0, NULL); ctx_add("LISTEN", 0, 0, 0, cx_listen); ctx_add("MUTE", 0, 0, 0, cx_mute);
         ctx_add("SOLO", 0, 0, 0, cx_solo); ctx_add("NAME", K_X, K_SHIFT, 0, NULL); ctx_add("FREEZE", K_Y, K_SHIFT, 0, NULL); ctx_common();
     } else if (v2_steps()) {
-        if (!is_auto(lane)) ctx_layout();
         if (is_auto(lane)) ctx_add("BEND", 0, 0, 1, NULL);
-        else { ctx_add("LISTEN STEP", 0, 0, 0, cx_step); ctx_add("SELECT STEPS", 0, 0, 1, NULL); }
-        ctx_add("DOUBLE CLIP", 0, 0, 0, clip_double); ctx_add("RANDOM", K_X, K_SHIFT, 0, NULL); ctx_common();
-    } else if (v2_fx()) { ctx_add("INSERT ON / OFF", K_X, -1, 0, NULL); ctx_common(); }
-    else if (tab == T_MIX && mcol < NSLOT) { ctx_add("MUTE", 0, 0, 0, cx_mute); ctx_add("SOLO", 0, 0, 0, cx_solo); ctx_common(); }
-    else if (v2_lfo() || v2_auto()) {    // MOD: its three kinds (the list that was MOD's menu)
-        if (!v2_lfo()) ctx_add("LFO", 0, 0, 0, cx_lfo);
-        if (!v2_auto()) ctx_add("AUTOMATION", 0, 0, 0, cx_auto);
-        ctx_add("DUCK", 0, 0, 0, cx_duck);
+        ctx_common();
+    } else if (v2_fx()) ctx_common();
+    else if (tab == T_MIX && mcol < NSLOT) ctx_common();   // MUTE and SOLO: the M and S buttons on the page
+    else if (v2_lfo() || v2_auto()) {    // LFO, AUTOMATION, DUCK: slots
         if (v2_auto()) ctx_add("BEND", 0, 0, 0, NULL), ctx_it[ctx_n - 1].latch = 1;
         ctx_common(); }
-    else if (v2_sound()) { ctx_add("LISTEN", 0, 0, 0, cx_listen); ctx_add("MIDI LEARN", K_R2, -1, 0, NULL); ctx_common(); }
+    else if (v2_sound()) ctx_common();   // LISTEN, MIDI LEARN: slots
     else { ctx_add("LISTEN", 0, 0, 0, cx_listen); ctx_common(); }
     ctxing = ctx_n > 0;
 }

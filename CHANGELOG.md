@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+- Side slots: four buttons on each side of a pad's page, the page narrower by them. The arrow that reaches the page's
+  left or right edge goes onto the slot at that height, ^v walk a side, the arrow back returns where the cursor was.
+  EDIT presses, EDIT+arrows turn. PATTERN (STEPS, PIANO ROLL, CHORDS): LAYOUT, LEN/GRID (EDIT+^v a bar, EDIT+<> the
+  grid, EDIT the fine length), PATTERN / FOLLOW, SELECT (TRIAD or ACCENT on the roll, CHORD LENGTH on CHORDS), RECORD
+  (arm / stop, as MENU+PLAY), LISTEN (a step or a note sounds when the cursor lands on it; kept in ui.cfg), DOUBLE
+  (VELOCITY / CHANCE on the roll), RANDOM. SOUND: LISTEN, MIDI LEARN. FX: INSERT on/off. MOD: AUTOMATION or LFO, DUCK.
+  OPTION's menu keeps UNDO, COPY, PASTE, CLEAR and the rare items; MIX lost MUTE and SOLO (its M and S buttons).
+- STEPS: <> stay in the row of eight (its ends lead to the slots); v from the bottom row is the next bar and grows the
+  clip a whole bar past its end, ^ from the top row the bar before. The "16 steps / 1/16" line went onto LEN/GRID.
+- CHORDS: <> no longer wrap round the row.
+- Quick bar picker: a line under each button saying what it does.
 - METRONOME: its own PROJECT section. SOUND and VIBRATION apart (vibration alone is a silent metronome: the bar's first
   buzzes longer), VOLUME, the SOUND OF IT (CLICK, WOOD, BEEP), WHEN (always or only recording and its count-in), EVERY
   (1/4, 1/8, 1/16), VIBRATION TIMING (ms). MENU+X anywhere: OFF, SOUND, SOUND + VIBRATION, VIBRATION. A device setting

@@ -1746,9 +1746,13 @@ static void seq_move(int k) {
     if (v2_sound()) { sound_move(k); return; }
     if (v2_auto()) { auto2_move(k); return; }
     if (v2_steps()) {                    // STEPS (UI v2): two rows of eight, the pages follow the cursor
-        Pattern *p = cur_pat(sel); int len = p->len, d = k == K_RIGHT ? 1 : k == K_LEFT ? -1 : k == K_DOWN ? 8 : -8, n = cur_step() + d;
-        if (k == K_RIGHT && n == len && len < GROW_MAX) {   // v3 (user): past the last step the clip grows a whole bar
+        // 2026-11-24 (user): <> stay in the row of eight, their edges lead to the side slots; v from the bottom row is the
+        // next bar (past the end the clip grows a whole bar), ^ from the top row the bar before
+        Pattern *p = cur_pat(sel); int len = p->len, c = cur_step(), d = k == K_RIGHT ? 1 : k == K_LEFT ? -1 : k == K_DOWN ? 8 : -8, n = c + d;
+        if ((k == K_LEFT && c % 8 == 0) || (k == K_RIGHT && c % 8 == 7)) return;
+        if (k == K_DOWN && n >= len && c % 16 >= 8 && len < GROW_MAX) {
             edit_begin(); p->len = (uint8_t)(len / 16 * 16 + 16 > GROW_MAX ? GROW_MAX : len / 16 * 16 + 16); toast_length("LENGTH", p->len);
+            if (n >= p->len) n = p->len - 1;
         }
         int bar = (len - 1) / 16 * 16;   // leaving an empty last bar backwards: it goes again
         if (len > 16 && cur_step() >= bar && n >= 0 && n < bar) { int used_ = 0; for (int i = bar; i < len; i++) used_ |= p->trig[i];
@@ -2013,9 +2017,10 @@ static int ui_strip = 1, ui_simple, ui_lock, ui_qbar, ui_secs = 1;   // v3: ui_q
 static int ui_tree, ui_drawer_left;          // the pad menu as a tree (A23) instead of the list; the mixer's drawer on the left
 static int ui_mxlink = 1;                    // PROJECT > MIXER > SCENE MIX (2026-11-15, user): one mix for the same sound in every scene
 static int ui_mxfx = 1;                      // PROJECT > MIXER > STRIP EFFECTS (2026-11-14, user): the strips show their effects and sends too
-static void ui_cfg_save(void) { char b[48]; int n = snprintf(b, sizeof b, "%d %d %d %d %d %d %d %d %d\n", ui_strip, ui_simple, ui_lock, ui_tree, ui_drawer_left, ui_mxfx, ui_mxlink, ui_qbar, ui_secs); write_whole("ui.cfg", b, n); }
-static void ui_cfg_load(void) { FILE *f = fopen("ui.cfg", "r"); if (f) { int a = 1, b = 0, c = 0, d = 0, e = 0, g = 1, l = 1, q = 0, sc = 1;
-    if (fscanf(f, "%d %d %d %d %d %d %d %d %d", &a, &b, &c, &d, &e, &g, &l, &q, &sc) >= 1) { ui_qbar = q != 0; ui_secs = sc != 0; ui_strip = clampi(a, 0, 2); ui_simple = b != 0; ui_lock = c != 0; ui_tree = d != 0; ui_drawer_left = e != 0; ui_mxfx = g != 0; ui_mxlink = l != 0; } fclose(f); } }
+static int lst_on;                        // LISTEN STEP (side slot, 2026-11-24): a step or a roll note sounds when the cursor lands on it
+static void ui_cfg_save(void) { char b[64]; int n = snprintf(b, sizeof b, "%d %d %d %d %d %d %d %d %d %d\n", ui_strip, ui_simple, ui_lock, ui_tree, ui_drawer_left, ui_mxfx, ui_mxlink, ui_qbar, ui_secs, lst_on); write_whole("ui.cfg", b, n); }
+static void ui_cfg_load(void) { FILE *f = fopen("ui.cfg", "r"); if (f) { int a = 1, b = 0, c = 0, d = 0, e = 0, g = 1, l = 1, q = 0, sc = 1, ls = 0;
+    if (fscanf(f, "%d %d %d %d %d %d %d %d %d %d", &a, &b, &c, &d, &e, &g, &l, &q, &sc, &ls) >= 1) { lst_on = ls != 0; ui_qbar = q != 0; ui_secs = sc != 0; ui_strip = clampi(a, 0, 2); ui_simple = b != 0; ui_lock = c != 0; ui_tree = d != 0; ui_drawer_left = e != 0; ui_mxfx = g != 0; ui_mxlink = l != 0; } fclose(f); } }
 static int trim_db;                        // OUTPUT TRIM 0..24 dB (trim.cfg beside the binary: a device setting, not the project's)
 static void trim_apply(void) { out_trim = powf(10, trim_db / 20.f); }
 static void trim_save(void) { char b[16]; int n = snprintf(b, sizeof b, "%d\n", trim_db); write_whole("trim.cfg", b, n); trim_apply(); }
@@ -3921,7 +3926,25 @@ static void cur_snap(int *a) {
                recpage, scening, spage, sl_r, sl_c, ted_row, ted_col, pcur, ab_pg, cl_deep, rolling, rl_t, rl_n, rl_v0, rl_n0, sp_cur, sp_pg[0], sp_pg[1], sp_pg[2], sp_pg[3], fx2_cur, mx_fz};
     memcpy(a, v, sizeof v); a[63] = (int)(sizeof v / sizeof *v);
 }
-static void key_event(int k, int down) {
+static int side_key(int k, int down); static int side_page(void); static int side_enter(int k); static int side_land_mark(void); static void side_land(int before);   // side.h
+static int ch_row, ch_col, ch_slot;      // chords.h
+static void key_event2(int k, int down);
+static int side_edge(int k, int down) {   // a plain arrow across on a page with slots: its edge may lead onto them
+    if (!down || (k != K_LEFT && k != K_RIGHT) || !side_page() || x_latch || v_latch || ctxing || qb_focus || qd_open || qpicking || strip_focus || tab_focus
+        || ui_over() || perform || ui_simple || learning || cfm || asking || naming || exporting) return 0;   // a window or the drawer keeps its arrows
+    for (int i = K_OPT; i < K_N; i++) if (held[i] && i != k) return 0;
+    return 1;
+}
+static void key_event(int k, int down) {   // 2026-11-24: the side slots first, then the page; LISTEN STEP after
+    if (side_key(k, down)) return;
+    int lm = side_land_mark();
+    if (side_edge(k, down)) {
+        int a[64], b[64], c0[3] = {ch_row, ch_col, ch_slot}; cur_snap(a); key_event2(k, down); cur_snap(b);
+        if (!memcmp(a, b, a[63] * sizeof *a) && c0[0] == ch_row && c0[1] == ch_col && c0[2] == ch_slot) side_enter(k);
+    } else key_event2(k, down);
+    side_land(lm);
+}
+static void key_event2(int k, int down) {
     if (k == K_OPT && !down && !used[K_OPT] && ctx_ok()) { key_event1(k, down); ctx_open(); return; }   // v3: OPTION tapped alone
     if (!qb_edge(k, down)) { key_event1(k, down); return; }
     int a[64], b[64]; cur_snap(a); key_event1(k, down); cur_snap(b);
@@ -3971,7 +3994,9 @@ static int slot_icon(int i) {            // the type comes from the path: asked 
     if (strncmp(seen[i], p, 255)) { snprintf(seen[i], 256, "%s", p); cat[i] = file_cat(p); }
     return cat[i];
 }
+static const char *side_hint(void);
 static void draw_footer(const char *hint) {
+    if (side_hint()) hint = side_hint();   // the cursor on a side slot: its keys
     snprintf(ui_hint, sizeof ui_hint, "%s", hint);
     ui2_footer(hint);
 }
@@ -4072,7 +4097,7 @@ static void draw_roll_mini(const Pattern *p, int x, int y, int w, int h, int st,
 // PATTERN > ROLL (UI v2, mockup A06): piano keys on the left, fourteen rows, the notes in the engine's colour.
 static void draw_roll(void) {
     Pattern *p = cur_pat(sel); int T = roll_ticks(p), st = song.t[sel].on ? engine_step(sel) : -1;
-    enum { KX = 26, KW = 64, GX = 96, GY = 76, CW = 28, RH = 44 };
+    enum { KW = 64, GY = 76, RH = 44 }; const int KX = wx0, GX = wx0 + 70, CW = (ww - 70) / RL_COLS;   // the work area (side slots)
     int beat = 8 * RT, bar = beat * (song.beats > 0 ? song.beats : 4), i = roll_find(p, rl_t, rl_n);
     Col ec = C_ENG(song.t[sel].type), key_w = mix(C_WHITE, C_BG, 30), key_b = C_LINE;
     roll_view();
@@ -4103,11 +4128,11 @@ static void draw_roll(void) {
     if (st >= 0) { int t = st * rl_d32[p->div % 6] * RT - rl_v0; if (t >= 0 && t < RL_COLS * rl_snap) rect(GX + t * CW / rl_snap, GY, 2, RL_ROWS * RH, C_WHITE, 1); }
     if (i < 0) { int cx = GX + (rl_t - rl_v0) * CW / rl_snap, cy = GY + (rl_n0 + RL_ROWS - 1 - rl_n) * RH;   // the cursor on an empty place
         rect(cx, cy + 2, CW, 2, C_WHITE, 1); rect(cx, cy + RH - 5, CW, 2, C_WHITE, 1); rect(cx, cy + 2, 2, RH - 5, C_WHITE, 1); rect(cx + CW - 2, cy + 2, 2, RH - 5, C_WHITE, 1); }
-    snprintf(b, sizeof b, "grid 1/%d \3 bar %d.%d", 128 / rl_snap, rl_t / bar + 1, rl_t % bar / beat + 1); ftext(26, 694, FT_S, C_DIM, b);
+    snprintf(b, sizeof b, "grid 1/%d \3 bar %d.%d", 128 / rl_snap, rl_t / bar + 1, rl_t % bar / beat + 1); ftext(wx0, 694, FT_S, C_DIM, b);
     roll_name(nm, rl_n);
     if (i >= 0) { const Note *n = &p->roll[i]; snprintf(b, sizeof b, "%s \3 len %d/128 \3 vel %d \3 chance %d%s", nm, n->len, n->vel, n->prob, n->flags & NF_ACC ? " \3 acc" : ""); }
     else snprintf(b, sizeof b, "%s", nm);
-    ftext(W - 28 - ftext_w(FT_S, b), 694, FT_S, C_WHITE, b);
+    ftext(wx0 + ww - ftext_w(FT_S, b), 694, FT_S, C_WHITE, b);
     if (ui_qbar) draw_phones(850, 16);   // v3: MON on the quick bar at the top
     draw_footer(i >= 0 ? "EDIT DELETE  EDIT+ARROWS LENGTH/PITCH  Y BACK  R2 HEAR  X+ARROWS VEL/CHANCE  L1/R1 GRID  OPT+<> NEXT  SHIFT+X RANDOM"
                        : "EDIT NOTE  L1/R1 GRID  Y BACK  OPT+<> NEXT  X+EDIT CHORD  SHIFT+ARROWS PAGE  SHIFT+X RANDOM");
@@ -4115,6 +4140,7 @@ static void draw_roll(void) {
 #include "chords.h"
 #include "sub.h"
 #include "prb.h"
+#include "side.h"
 static void slice_card(int x, int y, int w, const char *lb, const char *v, Col ec, int on) {   // UI v2: a name and a value, as on the SOUND cards
     if (on) rframe(x, y, w, 96, 8, 4, ec, C_CELL); else rrect(x, y, w, 96, 8, C_CELL);
     ftext(x + 20, y + 12, FT_M, C_DIM, lb); ftext(x + w - 20 - ftext_w(FT_XB, v), y + 10, FT_XB, C_WHITE, v);
@@ -4810,7 +4836,7 @@ static void draw(void) {
     SDL_RenderClear(R);
     uf_name[0] = 0;                      // the pages tell ui_popup their card
     if (ui_simple && !exporting && !naming && !asking) { draw_simple(); goto shown; }
-    v2_normalize();
+    v2_normalize(); side_area();
     // PAD STRIP BIG: the page is drawn into a texture, then set a little smaller under the big strip; the footer stays 1:1
     static SDL_Texture *body; int big = ui_strip == STRIP_BIG && strip_on(), secs = sec_on();   // v3: the sections push the page down the same way
     int bigs = big; big = big || secs;
@@ -4845,6 +4871,7 @@ static void draw(void) {
     case T_GRID: draw_grid(); break; case T_PAT: draw_pat(); break; case T_PRJ: draw_prj2(); break;
     default: draw_grid(); break;      // not reached: v2_normalize gives every state a screen
     }
+    side_draw();                          // the slots beside the page (side.h), scaled with it
     if (big && tab_focus) tabs_frame();   // on the page, before it is set under the strips
     if (big) { SDL_SetRenderTarget(R, NULL);
         int SY = strip_on() ? 69 : V2_HEAD, sy = bigs ? 122 : SY + 4, DY = secs ? sy + 36 : sy, sh = V2_FOOT - SY, dh = V2_FOOT - DY, dw = W * dh / sh;
