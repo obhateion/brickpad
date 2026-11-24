@@ -32,7 +32,7 @@ static void prb_key(int k, int down) {
     int d = k == K_RIGHT || k == K_UP ? 1 : -1, big = k == K_UP || k == K_DOWN;
     edit_begin();
     if (pr_row == PR_CHANCE) { p->prob[pr_step] = (int8_t)clampi(p->prob[pr_step] + d * (big ? 10 : 1), 0, 100); return; }
-    if (pr_row == PR_MODE) { int m = ((j ? j->mode : PM_NOTE) + d + PM_N) % PM_N;
+    if (pr_row == PR_MODE) { int m = (j ? j->mode : PM_NOTE) == PM_JUMP ? PM_NOTE : PM_JUMP;   // 2026-11-24: NOTE or JUMP (SUB is gone)
         if (m == PM_NOTE) { if (j) j->slot = 0; return; }
         if (!j && !(j = jmp_get(sel, q, pr_step))) { toast("256 PRB STEPS: THE MOST"); return; }
         j->mode = (uint8_t)m; if (m == PM_SUB && p->rep[pr_step] < 2) toast("SET THE CELLS ON THE SUB LANE"); return; }

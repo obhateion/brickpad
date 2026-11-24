@@ -22,17 +22,23 @@ static int side_page(void) {              // the page under the slots: the order
     return 0;
 }
 static int side_pat(int pg) { return pg == SD_STEPS || pg == SD_ROLL || pg == SD_CHORDS; }
+static int lay_at(void) { int m = cur_pat(sel)->mode; return m == 2 ? 3 : m == 1 ? 1 + rl_rhythm : 0; }   // STEPS ROLL RHYTHM CHORDS
+static void lay_to(int i) {               // RHYTHM is the roll drawn on one line (2026-11-24)
+    if (i == 1 || i == 2) { rl_rhythm = i == 2; if (cur_pat(sel)->mode != 1) lay_go(1); }
+    else { rl_rhythm = 0; lay_go(i == 3 ? 2 : 0); }
+}
 
 // ---- what each place holds on this page ----
 static int side_fill(int pg, int i, SideSlot *s) {   // 0: the place is empty
     memset(s, 0, sizeof *s); s->vc = C_WHITE;
     const Pattern *p = cur_pat(sel);
     if (side_pat(pg)) switch (i) {        // 2026-11-24 (user): left the clip's build, right what is done with its notes
-    case 0: s->name = "LAYOUT"; snprintf(s->v1, 16, "%s", p->mode == 1 ? "ROLL" : p->mode == 2 ? "CHORDS" : "STEPS"); s->vc = C_CAT(PC_PATTERN);
-        s->hint = "EDIT NEXT  EDIT+^v PICK"; return 1;
+    case 0: s->name = "LAYOUT"; snprintf(s->v1, 16, "%s", p->mode == 1 ? (rl_rhythm ? "RHYTHM" : "ROLL") : p->mode == 2 ? "CHORDS" : "STEPS"); s->vc = C_CAT(PC_PATTERN);
+        s->hint = "EDIT NEXT  EDIT+^v PICK"; return 1;   // STEPS ROLL RHYTHM CHORDS
     case 1: s->name = "LEN/GRID"; snprintf(s->v1, 16, "%d", p->len); snprintf(s->v2, 16, "%s", div_name[p->div % 6]);
         s->hint = pg == SD_ROLL ? "EDIT+^v LENGTH  EDIT+<> SNAP  EDIT FINE" : "EDIT+^v LENGTH  EDIT+<> GRID  EDIT FINE"; return 1;
     case 2: if (pg == SD_CHORDS) { s->name = "CHORD LEN"; snprintf(s->v1, 16, "%s", ch_len_name[ch_len]); s->hint = "EDIT NEXT LENGTH"; return 1; }
+        if (pg == SD_ROLL) { s->name = "GRID"; snprintf(s->v1, 16, "%s", rg_name[rl_gtype]); s->vc = rl_gtype ? C_ORANGE : C_WHITE; s->hint = "EDIT STRAIGHT/TRIPLET/DOTTED/FREE"; return 1; }
         s->name = "DOUBLE"; snprintf(s->v1, 16, "x2"); s->hint = "EDIT DOUBLE THE CLIP"; return 1;
     case 3: { const Track *t = &song.t[sel]; s->name = "PATTERN"; snprintf(s->v1, 16, "P%d", t->cur + 1);
         if (t->queued >= 0) snprintf(s->v2, 16, "\177 P%d", t->queued + 1); else snprintf(s->v2, 16, "%s", eng_nofollow ? "FOL OFF" : "FOLLOW");
@@ -106,9 +112,12 @@ static int side_enter(int k) {            // an arrow that moved nothing at the 
 static void side_press(int pg, int i) {   // EDIT on a slot
     Pattern *p = cur_pat(sel);
     if (side_pat(pg)) switch (i) {
-    case 0: lay_go((p->mode + 1) % 3); return;
+    case 0: lay_to((lay_at() + 1) % 4); return;
     case 1: v_latch = 1; side_foc = 0; toast("ARROWS: LENGTH (^v A BAR)"); return;   // the fine length, as OPTION's LENGTH was
-    case 2: if (pg == SD_CHORDS) sim_key(K_X, -1); else { clip_double(); toast_length("LENGTH", cur_pat(sel)->len); } return;
+    case 2: if (pg == SD_CHORDS) sim_key(K_X, -1);
+            else if (pg == SD_ROLL) { rl_gtype = (rl_gtype + 1) % RG_N; if (rl_gtype == RG_DOTTED && !rl_gi) rl_gi = 1; rl_snap = rl_snap_of(rl_gtype, rl_gi);
+                rl_t = rl_t / rl_snap * rl_snap; rl_v0 = rl_v0 / rl_snap * rl_snap; toast(rg_name[rl_gtype]); }
+            else { clip_double(); toast_length("LENGTH", cur_pat(sel)->len); } return;
     case 3: side_foc = 0; cx_patterns(); return;
     case 4: rec_toggle(engine_posf(), SDL_GetTicks() | 1); return;
     case 5: if (!hear_on) { hear_on = 1; lst_on = 0; } else if (!lst_on) lst_on = 1; else hear_on = lst_on = 0;
@@ -131,7 +140,7 @@ static void side_turn(int pg, int i, int k) {   // EDIT+arrows on a slot
         if (k == K_UP || k == K_DOWN) { rec_replace = !rec_replace; toast(rec_replace ? "REPLACE: A TAKE WIPES THE CLIP FIRST" : "OVERDUB: NEW NOTES OVER THE OLD"); }
         else { act_rec_quant_step(k == K_RIGHT ? 1 : -1); snprintf(b, sizeof b, "REC QUANT %s", quant_name[song.rec_quant % 5]); toast(b); }
         return; }
-    if (i == 0 && (k == K_UP || k == K_DOWN)) lay_go((p->mode + (k == K_DOWN ? 1 : 2)) % 3);
+    if (i == 0 && (k == K_UP || k == K_DOWN)) lay_to((lay_at() + (k == K_DOWN ? 1 : 3)) % 4);
     else if (i == 6 && pg == SD_CHORDS && (k == K_LEFT || k == K_RIGHT)) { int n = ch_nslots(p); ch_slot = (ch_slot + (k == K_RIGHT ? 1 : n - 1)) % n; }
     else if (i == 1 && pg == SD_ROLL && (k == K_LEFT || k == K_RIGHT)) sim_key(k == K_RIGHT ? K_R1 : K_L1, -1);   // the roll's own grid (snap)
     else if (i == 1) {

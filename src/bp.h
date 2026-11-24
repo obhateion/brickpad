@@ -11,9 +11,9 @@
 #define NSTEP 128
 #define NPAT 16
 #define NOTE_NONE (-128)
-#define STATE_MAGIC 0xB2B20011   // 0xB2B20010 = without the PRB modes (2026-11-20), 0xB2B2000F = without the SUB cells (2026-11-20), 0xB2B2000E = without pname/smx/dkx/dkc (2026-11-11),  0xB2B2000D = automation without bends, 0xB2B2000C = step notes as scale degrees, 0xB2B2000B = without lnote/gx/gp, 0xB2B2000A = without ACID DEEP, 0xB2B20009 = without automation, 0xB2B20008 = without LFOs, 0xB2B20007 = without follow actions, 0xB2B20006 = without the mixer (prefixes of this layout), 0xB2B20005 = without the piano roll
+#define STATE_MAGIC 0xB2B20012   // 0xB2B20011 = roll ticks of 1/128 (RT 4; 2026-11-24 the roll is 1/384 for triplets), 0xB2B20010 = without the PRB modes (2026-11-20), 0xB2B2000F = without the SUB cells (2026-11-20), 0xB2B2000E = without pname/smx/dkx/dkc (2026-11-11),  0xB2B2000D = automation without bends, 0xB2B2000C = step notes as scale degrees, 0xB2B2000B = without lnote/gx/gp, 0xB2B2000A = without ACID DEEP, 0xB2B20009 = without automation, 0xB2B20008 = without LFOs, 0xB2B20007 = without follow actions, 0xB2B20006 = without the mixer (prefixes of this layout), 0xB2B20005 = without the piano roll
 #define NNOTE 96                 // piano-roll notes per pattern
-#define RT 4                     // roll ticks per 1/32: note start and length are in 1/128 notes
+#define RT 12                    // roll ticks per 1/32: note start and length are in 1/384 notes (2026-11-24: was 4, 1/128; 12 holds triplets and dotted)
 
 typedef struct Sample {
     float *d;      // stereo interleaved, SR
@@ -30,7 +30,7 @@ typedef struct Sample {
     float npk, nld;    // NORMALIZE gains: PEAK (the loudest point to -1 dB), LOUD (the loud parts to one level, never past PEAK); 0 = not measured
 } Sample;
 
-// A piano-roll note. start/len in 1/128 notes (RT per 1/32) from the clip's step one; note = MIDI pitch (60 = C4).
+// A piano-roll note. start/len in 1/384 notes (RT per 1/32) from the clip's step one; note = MIDI pitch (60 = C4).
 // Slots never move: the UI writes len last when it adds a note and clears len first when it removes one.
 typedef struct { uint16_t start, len; uint8_t note, vel, prob, flags; } Note;
 #define NF_ACC 1                 // ACID accent

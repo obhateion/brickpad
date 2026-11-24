@@ -461,6 +461,10 @@ static void convert_old(const OldSong *o, size_t got) {
 }
 // Whatever is in the file, every value the code indexes with or divides by ends up in range.
 #define KEEP(v, lo, hi) do { if ((v) < (lo)) (v) = (lo); else if ((v) > (hi)) (v) = (hi); } while (0)
+static void roll_x3(Song *s) {           // 2026-11-24: a file from before 0x12 counts roll time in 1/128 notes; now 1/384
+    for (int k = 0; k < NSLOT; k++) for (int q = 0; q < NPAT; q++) for (int i = 0; i < NNOTE; i++) { Note *n = &s->t[k].pat[q].roll[i];
+        if (!n->len) continue; n->start = (uint16_t)(n->start * 3 > 65535 ? 65535 : n->start * 3); n->len = (uint16_t)(n->len * 3 > 65535 ? 65535 : n->len * 3); }
+}
 static void song_sanitize(void) {
     KEEP(song.tempo, 40, 300); KEEP(song.swing, 0, 75); KEEP(song.launch, 0, 4); KEEP(song.metro, 0, 1); KEEP(song.master, 0, 100);
     KEEP(song.key, 0, 11); KEEP(song.scale, 0, NSCALE - 1); KEEP(song.count_in, 0, 8); song.len_min = song.len_max = 0;   /* MIN/MAX LENGTH are gone (2026-11-09): no limits */ KEEP(song.rec_quant, 0, 4); KEEP(song.snap, 0, 1); KEEP(song.rec_len, 0, 3);
@@ -481,8 +485,8 @@ static void song_sanitize(void) {
         for (int c = 0; c < NCABLE; c++) if (song.gp[s][c][0] >= JO_N || song.gp[s][c][1] >= JI_N) song.gp[s][c][0] = song.gp[s][c][1] = 0;
         KEEP(song.lnote[s], -48, 48);
         for (int k = 0; k < AX_N; k++) { int lo, hi; ax_range(k, &lo, &hi); KEEP(song.ax[s][k], lo, hi); }
-        if (s == 0) { mix_sanitize(&song.mix); for (int i = 0; i < NSUB; i++) { SubStep *e = &song.sub[i]; if (e->slot > NSLOT || e->pat >= NPAT || e->step >= NSTEP) e->slot = 0; }
-            for (int i = 0; i < NJMP; i++) { JumpStep *j = &song.jmp[i]; if (j->slot > NSLOT || j->pat >= NPAT || j->step >= NSTEP || j->mode >= PM_N || j->kind > 1 || j->form > 1) j->slot = 0; } }
+        if (s == 0) { mix_sanitize(&song.mix); memset(song.sub, 0, sizeof song.sub);   // 2026-11-24: SUB is gone, its cells with it (user: not kept)
+            for (int i = 0; i < NJMP; i++) { JumpStep *j = &song.jmp[i]; if (j->slot > NSLOT || j->pat >= NPAT || j->step >= NSTEP || j->mode >= PM_N || j->mode == PM_SUB || j->kind > 1 || j->form > 1) j->slot = 0; } }
         for (int q = 0; q < NPAT; q++) { uint8_t *fo = song.fol[s][q]; if (fo[FO_AFTER] > 64) fo[FO_AFTER] = 64; if (fo[FO_A] >= FA_N) fo[FO_A] = 0; if (fo[FO_B] >= FA_N) fo[FO_B] = 0;
             if (fo[FO_BCH] > 100) fo[FO_BCH] = 100; if (fo[FO_JUMP] >= NPAT) fo[FO_JUMP] = 0; fo[FO_SPARE] = 0; }
         for (int j = 0; j < NLFO; j++) { Lfo *L = &song.lfo[s][j];
@@ -520,7 +524,7 @@ static void song_sanitize(void) {
                 if (n->len) { KEEP(n->note, 0, 127); KEEP(n->vel, 1, 127); KEEP(n->prob, 0, 100); n->flags &= NF_ACC; }   // an empty slot is left as it is (it made a saved project differ after each load)
             }
             for (int i = 0; i < NSTEP; i++) {
-                KEEP(p->trig[i], 0, 1); KEEP(p->vel[i], 0, 127); KEEP(p->prob[i], 0, 100); KEEP(p->rep[i], 1, NCELL); KEEP(p->slice[i], -1, 127);
+                KEEP(p->trig[i], 0, 1); KEEP(p->vel[i], 0, 127); KEEP(p->prob[i], 0, 100); p->rep[i] = 1; KEEP(p->slice[i], -1, 127);   // rep: SUB is gone
             }
         }
     }
@@ -530,10 +534,10 @@ static void load_from(const char *path) {   // state.bin or a project file
     song_defaults();
     FILE *f = fopen(path, "rb");
     static Song tmp; memset(&tmp, 0, sizeof tmp);    // zero: fields a shorter file does not have
-    size_t got = f ? fread(&tmp, 1, sizeof tmp, f) : 0;
+    size_t got = f ? fread(&tmp, 1, sizeof tmp, f) : 0; uint32_t m0 = tmp.magic;   // the file's own format, before it is brought up to date
     file_song_sz = tmp.magic == 0xB2B2000F ? offsetof(Song, sub) : tmp.magic == 0xB2B20010 ? offsetof(Song, jmp) : sizeof(Song);   // where a project file's scenes begin
     {   // a file from before the mixer (6) or before follow actions (7): the same layout, shorter; the rest starts at zero
-        size_t end = tmp.magic == 0xB2B20006 ? offsetof(Song, mix) : tmp.magic == 0xB2B20007 ? offsetof(Song, fol) : tmp.magic == 0xB2B20008 ? offsetof(Song, lfo) : tmp.magic == 0xB2B20009 ? offsetof(Song, aut) : tmp.magic == 0xB2B2000A ? offsetof(Song, ax) : tmp.magic == 0xB2B2000B ? offsetof(Song, lnote) : tmp.magic == 0xB2B2000C ? offsetof(Song, acurve) : tmp.magic == 0xB2B2000D ? offsetof(Song, acurve) : tmp.magic == 0xB2B2000E ? offsetof(Song, pname) : tmp.magic == 0xB2B2000F ? offsetof(Song, sub) : tmp.magic == 0xB2B20010 ? offsetof(Song, jmp) : 0;   // 0E: before pad names, SAMPLER DEEP and the DUCK window (only appended)
+        size_t end = tmp.magic == 0xB2B20006 ? offsetof(Song, mix) : tmp.magic == 0xB2B20007 ? offsetof(Song, fol) : tmp.magic == 0xB2B20008 ? offsetof(Song, lfo) : tmp.magic == 0xB2B20009 ? offsetof(Song, aut) : tmp.magic == 0xB2B2000A ? offsetof(Song, ax) : tmp.magic == 0xB2B2000B ? offsetof(Song, lnote) : tmp.magic == 0xB2B2000C ? offsetof(Song, acurve) : tmp.magic == 0xB2B2000D ? offsetof(Song, acurve) : tmp.magic == 0xB2B2000E ? offsetof(Song, pname) : tmp.magic == 0xB2B2000F ? offsetof(Song, sub) : tmp.magic == 0xB2B20010 ? offsetof(Song, jmp) : tmp.magic == 0xB2B20011 ? sizeof(Song) : 0;   // 0E: before pad names, SAMPLER DEEP and the DUCK window (only appended)
         if (end && got >= offsetof(Song, t) && (got <= end || tmp.magic >= 0xB2B2000F)) {   // (a 0F project file goes on with its scenes after the song) notes_deg = tmp.magic <= 0xB2B2000C;   // files before 0x0D have degrees in their steps
             memset((char *)&tmp + end, 0, sizeof tmp - end);
             if (tmp.magic < 0xB2B2000E)     // (a 0E file has its bends; it only lacks what was appended, and stays where it is)
@@ -554,6 +558,7 @@ static void load_from(const char *path) {   // state.bin or a project file
     if (f) { fclose(f); f = NULL; }
     if (old || (got >= offsetof(Song, t) && tmp.magic == song.magic)) {
         if (!old) song = tmp;
+        if (m0 < 0xB2B20012) roll_x3(&song);   // roll notes from 1/128 to 1/384 ticks
         song_sanitize();
         if (short_file && !strcmp(path, STATE)) keep_damaged();        // an older format or a cut file: load what is there, keep the original too
         if (short_file && got < offsetof(Song, cut)) toast("PROJECT FILE WAS CUT, COPY KEPT");
@@ -1201,9 +1206,10 @@ enum { L_TRIG, L_NOTE, L_VEL, L_PROB, L_REP, L_SLICE, L_ACC, L_SLD, L_A1, L_A2, 
 static const char *lane_name[L_N] = {"NOTE", "NOT", "VEL", "PRB", "SUB", "SLC", "ACC", "SLD", "A1", "A2", "A3", "A4"};   // short: PAGE, MODE and the lanes share the row
 static int is_synth(int s);
 static int lane_list(int *l) {           // the lanes this pad has: a sampler slices, a synth does not, ACID has ACCENT and SLIDE
-    static const int smp_l[] = {L_TRIG, L_VEL, L_PROB, L_REP, L_SLICE}, gb_l[] = {L_TRIG, L_VEL, L_PROB, L_REP},   // TRIG holds the note too (2026-11-09)
-                     ab_l[] = {L_TRIG, L_VEL, L_PROB, L_REP, L_ACC, L_SLD};
-    static const int sls_l[] = {L_SLICE, L_TRIG, L_VEL, L_PROB, L_REP};   // a sliced sample: SLC first (2026-11-12, user)
+    // 2026-11-24 (user): no SUB lane any more; the roll (TRIPLET / DOTTED / FREE grids) places notes anywhere
+    static const int smp_l[] = {L_TRIG, L_VEL, L_PROB, L_SLICE}, gb_l[] = {L_TRIG, L_VEL, L_PROB},   // TRIG holds the note too (2026-11-09)
+                     ab_l[] = {L_TRIG, L_VEL, L_PROB, L_ACC, L_SLD};
+    static const int sls_l[] = {L_SLICE, L_TRIG, L_VEL, L_PROB};   // a sliced sample: SLC first (2026-11-12, user)
     int ty = song.t[sel].type; const int *src = ty == 2 ? ab_l : ty ? gb_l : track_nslices(sel) > 1 ? sls_l : smp_l; int n = ty == 2 ? 6 : ty ? 4 : track_nslices(sel) > 1 ? 5 : 4;   // UI v2: no SLICE lane without slices
     if (song.t[sel].pat[song.t[sel].cur].mode) n = 1;   // ROLL: the roll itself (NOTE) and the automation lanes   // CLOUD: as GRAND
     for (int i = 0; i < n; i++) l[i] = src[i];
@@ -2209,6 +2215,11 @@ static void scene_save(void) {            // only what changed: every scene has 
     if (fflush(f) || fsync(fileno(f))) ok = 0; fclose(f);
     if (ok) { memset(scn_dirty, 0, sizeof scn_dirty); scn_hdr = 0; }
 }
+static int scene_up(Song *g, long one) {   // a scene of an older file brought up to date (0F: shorter; 11: roll ticks x3); always 0
+    uint32_t m = g->magic;
+    if (m >= 0xB2B2000F && m < STATE_MAGIC && (one < (long)sizeof(Song) || m == 0xB2B20011)) { g->magic = STATE_MAGIC; roll_x3(g); }
+    return 0;
+}
 static void scenes_read(const char *path, long off) {   // after the playing scene was loaded: the others, from this file
     scenes_clear();
     FILE *f = fopen(path, "rb"); if (!f) return;
@@ -2220,7 +2231,7 @@ static void scenes_read(const char *path, long off) {   // after the playing sce
     for (; n < h.n; n++) {
         if (!(scn[n] = calloc(1, sizeof(Song)))) break;
         if (n == h.cur) continue;
-        if (fseek(f, off + (long)sizeof h + (long)n * one, SEEK_SET) || fread(scn[n], (size_t)one, 1, f) != 1 || (scn[n]->magic >= 0xB2B2000F && scn[n]->magic < STATE_MAGIC && one < (long)sizeof(Song) && (scn[n]->magic = STATE_MAGIC, 0)) || scn[n]->magic != song.magic) {
+        if (fseek(f, off + (long)sizeof h + (long)n * one, SEEK_SET) || fread(scn[n], (size_t)one, 1, f) != 1 || scene_up(scn[n], one) || scn[n]->magic != song.magic) {
             if (n > h.cur) { free(scn[n]); scn[n] = NULL; } else { h.cur = n; n++; }   // a cut file: the scenes before it stay
             break; }
         scene_carry(scn[n], &song); scn_rest(scn[n]);
@@ -3012,8 +3023,14 @@ static void rec_release(int tag) {       // a held key let go: the note it start
 
 // ---------- piano roll (Pattern.mode 1): notes with a length, chords; the step lanes are kept but silent ----------
 static int rolling;                      // the note editor of the pad's current pattern is open
-static int rl_t, rl_n = 60, rl_v0, rl_n0 = 50, rl_snap = 8, rl_len = 8, rl_heard, rl_chord;   // cursor (tick, pitch), view, grid and last length in ticks
-static const int rl_snaps[6] = {1, 2, 4, 8, 16, 32};   // 1/128 .. 1/4
+static int rl_t, rl_n = 60, rl_v0, rl_n0 = 50, rl_snap = 24, rl_len = 24, rl_heard, rl_chord;   // cursor (tick, pitch), view, grid and last length in ticks
+static const int rl_snaps[6] = {3, 6, 12, 24, 48, 96};   // 1/128 .. 1/4 in 1/384 ticks
+// 2026-11-24 (user, instead of SUB): the roll's GRID is STRAIGHT, TRIPLET (2/3), DOTTED (3/2) or FREE (the cursor walks the
+// straight grid, OPT+EDIT+<> moves a note one tick, 1/384). RHYTHM: the same notes on one line, the height their velocity.
+enum { RG_STRAIGHT, RG_TRIPLET, RG_DOTTED, RG_FREE, RG_N };
+static const char *const rg_name[RG_N] = {"STRAIGHT", "TRIPLET", "DOTTED", "FREE"};
+static int rl_gtype, rl_gi = 3, rl_rhythm;
+static int rl_snap_of(int t, int g) { int s = rl_snaps[g]; return t == RG_TRIPLET ? s * 2 / 3 : t == RG_DOTTED ? s * 3 / 2 : s; }
 static const int rl_d32[6] = {1, 2, 4, 8, 16, 32};
 enum { RL_COLS = 32, RL_ROWS = 14, RL_TAG = 301, RL_CHORD_TAG = 310 };
 static int rl_snap; static int roll_ticks(const Pattern *p);
@@ -3050,7 +3067,8 @@ static void roll_view(void) {            // the cursor stays on screen
 }
 static void roll_open(void) {
     Pattern *p = cur_pat(sel); int d = rl_d32[p->div % 6] * RT;
-    rl_snap = d > 32 ? 32 : d; rl_len = d; rl_t = 0; rl_v0 = 0; rl_n = roll_base(sel);
+    rl_gi = 0; while (rl_gi < 5 && rl_snaps[rl_gi] < d) rl_gi++; if (rl_gtype == RG_DOTTED && !rl_gi) rl_gi = 1;
+    rl_snap = rl_snap_of(rl_gtype, rl_gi); rl_len = d; rl_t = 0; rl_v0 = 0; rl_n = roll_base(sel);
     for (int i = 0; i < NNOTE; i++) if (p->roll[i].len) { rl_n = p->roll[i].note; break; }
     rl_n0 = clampi(rl_n - RL_ROWS / 2, 0, 128 - RL_ROWS); rolling = 1;
 }
@@ -3098,7 +3116,7 @@ static void roll_leave(void) {           // out of the editor: no note it starte
     roll_chord_off(); rolling = 0;
 }
 static void rnd_open(void);
-static int rl_odel;                      // OPT+EDIT went down on the roll: delete on release
+static int rl_odel, rl_nudge = -1;       // OPT+EDIT went down on the roll: delete on release; the note being nudged
 static void roll_triad(Pattern *p, int i) {   // a triad on the cursor, in the scale (ACID: the note's ACCENT)
     used[K_EDIT] = 1;
     if (song.t[sel].type == 2) { if (i >= 0) { push_undo(); p->roll[i].flags ^= NF_ACC; } return; }
@@ -3107,9 +3125,18 @@ static void roll_triad(Pattern *p, int i) {   // a triad on the cursor, in the s
     if (i < 0) roll_add(p, st, ln, rl_n, v);
     for (int s2 = 2; s2 <= 4; s2 += 2) { int n = roll_up(rl_n, s2); if (n <= 127 && roll_find(p, st, n) < 0) roll_add(p, st, ln, n, v); }
 }
+static void rhythm_sync(const Pattern *p) {   // RHYTHM: the pitch under the cursor is that of the note at its time, else the pad's own
+    int best = -1; for (int j = 0; j < NNOTE; j++) { const Note *x = &p->roll[j]; if (x->len && x->start <= rl_t && rl_t < x->start + x->len && (best < 0 || x->start > p->roll[best].start)) best = j; }
+    rl_n = best >= 0 ? p->roll[best].note : roll_base(sel);
+}
 static void roll_key(int k, int down) {
     Pattern *p = cur_pat(sel); int T = roll_ticks(p);
+    if (rl_rhythm) { rhythm_sync(p);       // one line: no pitch to walk; EDIT+^v is the velocity
+        if (down && (k == K_UP || k == K_DOWN) && !held[K_OPT] && !held[K_SHIFT]) {
+            if (held[K_EDIT]) { int i = roll_find(p, rl_t, rl_n); used[K_EDIT] = 1; if (i >= 0) { edit_begin(); p->roll[i].vel = (uint8_t)clampi(p->roll[i].vel + (k == K_UP ? 8 : -8), 1, 127); } }
+            return; } }
     if (k == K_R2) { if (down && !held[K_SHIFT]) { hear_on = !hear_on; toast(hear_on ? "HEAR NOTES ON" : "HEAR NOTES OFF"); } return; }
+    if (!down && (k == K_EDIT || k == K_OPT)) rl_nudge = -1;
     if (!down && rl_odel && (k == K_EDIT || k == K_OPT)) { int j = roll_find(p, rl_t, rl_n); rl_odel = 0; if (j >= 0) { push_undo(); roll_del(p, j); } return; }
     if (!down) {
         if (k == K_EDIT) {
@@ -3129,15 +3156,19 @@ static void roll_key(int k, int down) {
         if (!p->mode) { roll_leave(); return; }   // the undo took the roll away
         rl_t = clampi(rl_t, 0, (roll_ticks(p) - 1) / rl_snap * rl_snap); return;
     }
-    if (k == K_L1 || k == K_R1) {        // the grid: 1/128 .. 1/4
-        int g = 0; while (g < 5 && rl_snaps[g] < rl_snap) g++;
-        g = clampi(g + (k == K_R1 ? 1 : -1), 0, 5); rl_snap = rl_snaps[g]; rl_t = rl_t / rl_snap * rl_snap; rl_v0 = rl_v0 / rl_snap * rl_snap; roll_view(); return;
+    if (k == K_L1 || k == K_R1) {        // the grid's size: 1/128 .. 1/4 (of its kind; DOTTED from 1/64)
+        rl_gi = clampi(rl_gi + (k == K_R1 ? 1 : -1), rl_gtype == RG_DOTTED ? 1 : 0, 5); rl_snap = rl_snap_of(rl_gtype, rl_gi);
+        rl_t = rl_t / rl_snap * rl_snap; rl_v0 = rl_v0 / rl_snap * rl_snap; roll_view(); return;
     }
     int i = roll_find(p, rl_t, rl_n);
     if ((k == K_EDIT && held[K_OPT]) || (k == K_OPT && held[K_EDIT])) {   // OPT+EDIT: the note goes when they are let go, unless UP made a triad
         used[K_EDIT] = used[K_OPT] = 1; roll_chord_off(); rl_odel = 1; return;
     }
-    if (k == K_UP && held[K_OPT] && held[K_EDIT]) { rl_odel = 0; roll_triad(p, i); return; }   // 2026-11-24: OPT+EDIT+UP a triad (ACID: ACCENT); was X+EDIT
+    if (k == K_UP && held[K_OPT] && held[K_EDIT]) { rl_odel = 0; roll_triad(p, i); return; }
+    if ((k == K_LEFT || k == K_RIGHT) && held[K_OPT] && held[K_EDIT]) {   // OPT+EDIT+<>: the note moves (FREE: a tick, else the grid)
+        rl_odel = 0; if (i < 0 && rl_nudge >= 0 && p->roll[rl_nudge].len && p->roll[rl_nudge].note == rl_n) i = rl_nudge;   // FREE: the cursor stayed on the grid
+        if (i < 0) return; int st = rl_gtype == RG_FREE ? 1 : rl_snap, ns = p->roll[i].start + (k == K_RIGHT ? st : -st);
+        if (ns < 0 || ns >= roll_ticks(p)) return; push_undo(); p->roll[i].start = (uint16_t)ns; rl_nudge = i; if (rl_gtype != RG_FREE) rl_t = ns; roll_view(); return; }   // 2026-11-24: OPT+EDIT+UP a triad (ACID: ACCENT); was X+EDIT
     if (k == K_EDIT && held[K_X]) { used[K_X] = 1; roll_triad(p, i); return; }
     if (k == K_EDIT) { roll_hear(i >= 0 ? p->roll[i].note : rl_n); return; }
     if (k == K_OPT) {                    // the chord under the cursor's time, while held
@@ -4142,7 +4173,45 @@ static void draw_roll_mini(const Pattern *p, int x, int y, int w, int h, int st,
     if (on) { frame(x - 1, y - 1, w + 2, h + 2, 3, C_ORANGE); }
 }
 // PATTERN > ROLL (UI v2, mockup A06): piano keys on the left, fourteen rows, the notes in the engine's colour.
+static void draw_rhythm(void) {          // RHYTHM (2026-11-24, user's mockup): the clip's notes on one line, the height their velocity
+    Pattern *p = cur_pat(sel); int T = roll_ticks(p), st = song.t[sel].on ? engine_step(sel) : -1; Col ec = C_ENG(song.t[sel].type); char b[80];
+    int beat = 8 * RT, bar = beat * (song.beats > 0 ? song.beats : 4), cols = rl_cols(), w = cols * rl_snap;
+    roll_view(); if (follow_ph && st >= 0) { int pt = st * rl_d32[p->div % 6] * RT; rl_v0 = pt / w * w; }
+    rhythm_sync(p); int cur = roll_find(p, rl_t, rl_n);
+    const int X0 = wx0, X1 = wx0 + ww, Y0 = 118, Y1 = 520, IX = X0 + 10, IW = X1 - X0 - 20, TY = Y0 + 44, BY = Y1 - 12;
+    rrect(X0, Y0, X1 - X0, Y1 - Y0, 8, C_CELL);
+    for (int c = 0; c <= cols; c++) { int t = rl_v0 + c * rl_snap, x = IX + (int)((int64_t)(t - rl_v0) * IW / w);   // the grid, bars bright
+        if (t > T) break;
+        if (t % bar == 0) { rect(x, TY - 6, 2, BY - TY + 6, C_GREY, 1); snprintf(b, sizeof b, "%d", t / bar + 1); ftext(x + 4, Y0 + 8, FT_MB, C_WHITE, b); }
+        else if (t % beat == 0) { rect(x, TY, 1, BY - TY, C_LINE, 1); snprintf(b, sizeof b, "%d.%d", t / bar + 1, t % bar / beat + 1); ftext(x + 3, Y0 + 10, FT_S, C_DIM, b); }
+        else rect(x, TY + (BY - TY) / 2, 1, (BY - TY) / 2, mix(C_LINE, C_CELL, 120), 1); }
+    if (T < rl_v0 + w) { int ex = IX + (int)((int64_t)(T - rl_v0) * IW / w); rect(ex, TY - 6, IX + IW - ex, BY - TY + 6, C_BG, 1); }   // past the clip's end
+    for (int j = 0; j < NNOTE; j++) { const Note *n = &p->roll[j]; if (!n->len) continue;
+        int a = n->start - rl_v0, e = a + n->len; if (e <= 0 || a >= w) continue;
+        int x0 = IX + (int)((int64_t)(a < 0 ? 0 : a) * IW / w), x1 = IX + (int)((int64_t)(e > w ? w : e) * IW / w) - 2; if (x1 - x0 < 6) x1 = x0 + 6;
+        int top = BY - (BY - TY) * n->vel / 127; Col c = n->start >= T ? C_GREY : mix(mix(ec, C_BG, 110), ec, n->vel * 2);
+        rrect(x0, top, x1 - x0, BY - top, 4, c);
+        if (j == cur) rframe(x0 - 3, top - 3, x1 - x0 + 6, BY - top + 6, 6, 3, C_WHITE, c);
+        if (n->start % rl_snap) ftext(x0, top - 22, FT_S, C_ORANGE, "");   // off the grid
+    }
+    { int cx = IX + (int)((int64_t)(rl_t - rl_v0) * IW / w); rect(cx, TY - 8, 2, BY - TY + 8, C_WHITE, 1); }
+    if (st >= 0) { int t = st * rl_d32[p->div % 6] * RT - rl_v0; if (t >= 0 && t < w) rect(IX + (int)((int64_t)t * IW / w), TY, 2, BY - TY, C_PLAY, 1); }
+    // the whole clip, small: the view's frame on it
+    rrect(X0, 536, X1 - X0, 64, 8, C_CELL);
+    for (int j = 0; j < NNOTE; j++) { const Note *n = &p->roll[j]; if (!n->len || n->start >= T) continue;
+        int x = IX + (int)((int64_t)n->start * IW / T); rect(x, 592 - 44 * n->vel / 127, 3, 44 * n->vel / 127, ec, 1); }
+    { int vx0 = IX + (int)((int64_t)rl_v0 * IW / T), vx1 = IX + (int)((int64_t)(rl_v0 + w < T ? rl_v0 + w : T) * IW / T); rframe(vx0, 540, vx1 - vx0, 56, 4, 2, C_WHITE, C_CELL);
+      for (int j = 0; j < NNOTE; j++) { const Note *n = &p->roll[j]; if (!n->len || n->start >= T) continue;   // the notes again, over the frame's inside
+        int x = IX + (int)((int64_t)n->start * IW / T); rect(x, 592 - 44 * n->vel / 127, 3, 44 * n->vel / 127, ec, 1); } }
+    snprintf(b, sizeof b, "%s 1/%d%s \3 bar %d.%d", rl_gtype == RG_FREE ? "FREE" : "grid", 384 / rl_snaps[rl_gi], rl_gtype == RG_TRIPLET ? "T" : rl_gtype == RG_DOTTED ? "D" : "", rl_t / bar + 1, rl_t % bar / beat + 1);
+    ftext(wx0, 612, FT_M, C_GREY, b);
+    if (cur >= 0) { const Note *n = &p->roll[cur]; int spn = rl_d32[p->div % 6] * RT; snprintf(b, sizeof b, "len %g st \3 vel %d \3 chc %d", (double)((int)(n->len * 10.f / spn + 0.5f)) / 10, n->vel, n->prob); }
+    else snprintf(b, sizeof b, "EDIT puts a note");
+    ftext(wx0 + ww - ftext_w(FT_M, b), 612, FT_M, C_WHITE, b);
+    draw_footer(cur >= 0 ? "EDIT DELETE  EDIT+^v VELOCITY  EDIT+<> LENGTH" : "EDIT NOTE  OPT+EDIT+<> MOVE  SHIFT+<> PAGE");
+}
 static void draw_roll(void) {
+    if (rl_rhythm) { draw_rhythm(); return; }
     Pattern *p = cur_pat(sel); int T = roll_ticks(p), st = song.t[sel].on ? engine_step(sel) : -1;
     enum { KW = 64, GY = 76, RH = 44 }; const int KX = wx0, GX = wx0 + 70, CW = (ww - 70) / rl_cols();   // the work area (side slots)
     int beat = 8 * RT, bar = beat * (song.beats > 0 ? song.beats : 4), i = roll_find(p, rl_t, rl_n);
@@ -4176,7 +4245,7 @@ static void draw_roll(void) {
     if (st >= 0) { int t = st * rl_d32[p->div % 6] * RT - rl_v0; if (t >= 0 && t < rl_cols() * rl_snap) rect(GX + t * CW / rl_snap, GY, 2, RL_ROWS * RH, C_WHITE, 1); }
     if (i < 0) { int cx = GX + (rl_t - rl_v0) * CW / rl_snap, cy = GY + (rl_n0 + RL_ROWS - 1 - rl_n) * RH;   // the cursor on an empty place
         rect(cx, cy + 2, CW, 2, C_WHITE, 1); rect(cx, cy + RH - 5, CW, 2, C_WHITE, 1); rect(cx, cy + 2, 2, RH - 5, C_WHITE, 1); rect(cx + CW - 2, cy + 2, 2, RH - 5, C_WHITE, 1); }
-    snprintf(b, sizeof b, "grid 1/%d \3 bar %d.%d", 128 / rl_snap, rl_t / bar + 1, rl_t % bar / beat + 1); ftext(wx0, 694, FT_S, C_GREY, b);
+    snprintf(b, sizeof b, "grid 1/%d%s \3 bar %d.%d", 384 / rl_snaps[rl_gi], rl_gtype == RG_TRIPLET ? "T" : rl_gtype == RG_DOTTED ? "D" : rl_gtype == RG_FREE ? " FREE" : "", rl_t / bar + 1, rl_t % bar / beat + 1); ftext(wx0, 694, FT_S, C_GREY, b);
     roll_name(nm, rl_n);
     if (i >= 0) { const Note *n = &p->roll[i]; int sp = rl_d32[p->div % 6] * RT;   // the length in the clip's steps
         snprintf(b, sizeof b, "%s \3 len %g st \3 vel %d \3 chc %d%s", nm, (double)((int)(n->len * 10.f / sp + 0.5f)) / 10, n->vel, n->prob, n->flags & NF_ACC ? " \3 acc" : ""); }
@@ -5072,7 +5141,7 @@ int main(int argc, char **argv) {
             song.t[2].pat[0].trig[i] = i % 8 == 4; song.t[9].pat[0].trig[i] = i % 3 == 0;
             song.t[9].pat[0].note[i] = (int8_t)deg_midi(9, (i * 3) % 8);
         }
-        song.t[5].pat[0].rep[6] = 3; song.t[9].pat[0].len = 12;
+        song.t[9].pat[0].len = 12;
         if (loop_arg) { set_slot_file(11, loop_arg); auto_setup(11); song.t[11].warp = 3; song.tempo = 100; }
         transport_toggle(); sel = loop_arg ? 11 : 9; lane = loop_arg ? L_SLICE : L_NOTE; tab = T_SEQ; srow = 4;
     }
