@@ -11,7 +11,7 @@ enum { SD_N = 8, SD_W = 112, SD_GAP = 12, SD_LX = 16, SD_RX = W - 16 - SD_W, SD_
 typedef struct { const char *name; char v1[16], v2[16]; Col vc; int lamp; Col lc; const char *hint; } SideSlot;
 
 static int side_page(void) {              // the page under the slots: the order of draw()'s chain
-    if (exporting || naming || browsing || slicing || randing || prbing || subbing || picking || presetting || theming || iconing || ducking || scening || recpage) return 0;
+    if (exporting || naming || browsing || slicing || randing || prbing || picking || presetting || theming || iconing || ducking || scening) return 0;
     if (chording) return SD_CHORDS;
     if (rolling) return SD_ROLL;
     if (v2_steps()) return SD_STEPS;
@@ -152,7 +152,7 @@ static void side_turn(int pg, int i, int k) {   // EDIT+arrows on a slot
 static int side_key(int k, int down) {    // 1: the key was the slot's
     side_sync(); int pg = side_page();
     if (!side_foc) return 0;
-    if (!pg || ui_over() || ctxing || cfm || asking) { if (!pg) side_foc = 0; return 0; }
+    if (!pg || ui_over() || cfm || asking) { if (!pg) side_foc = 0; return 0; }
     int i = side_foc - 1, right = i >= 4;
     if (qb_focus || strip_focus || tab_focus) { side_foc = 0; return 0; }
     if (k == K_PLAY || k == K_SHIFT || k == K_MENU || k == K_F1 || k == K_F2 || k == K_L1 || k == K_R1 || k == K_L2 || k == K_R2 || k == K_X || k == K_OPT) return 0;

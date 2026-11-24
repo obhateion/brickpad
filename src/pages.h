@@ -122,10 +122,9 @@ static void draw_fx2(void) {
 }
 
 // ---- MOD: its list (LFO, AUTOMATION, DUCK), as PATTERN's ----
-static void modmenu_open(void) { set_tab(T_SEQ); ui_cat = hub_cur = PC_MOD; modmenu = 1; }
 
 // ---- MOD > LFO (A18): LFO 1-4 as tabs (L1/R1), its shape, seven cards (the 1.2 rows: lrow) ----
-static int v2_lfo(void) { return ui_cat == PC_MOD && tab == T_FX && fx_unit < NSLOT && fx_page && !modmenu; }
+static int v2_lfo(void) { return ui_cat == PC_MOD && tab == T_FX && fx_unit < NSLOT && fx_page; }
 static const int8_t lfo2_ord[LR_N] = {LR_TARGET, LR_SHAPE, LR_RATE, LR_DEPTH, LR_SYNC, LR_TRIG, LR_PHASE};   // A18's four first
 static int lfo2_pos(void) { for (int i = 0; i < LR_N; i++) if (lfo2_ord[i] == lrow) return i; return 0; }
 static void lfo2_move(int k) {
@@ -172,7 +171,7 @@ static void draw_lfo2(void) {
 }
 
 // ---- MOD > AUTOMATION (A19): A1-A4 as tabs (L1/R1; UP: the tab, EDIT+<> its target), the lane over the whole pattern ----
-static int v2_auto(void) { return ui_cat == PC_MOD && tab == T_SEQ && is_auto(lane) && !modmenu && !hubbing && !perform; }
+static int v2_auto(void) { return ui_cat == PC_MOD && tab == T_SEQ && is_auto(lane) && !perform; }
 static void auto2_move(int k) {
     int len = cur_pat(sel)->len ? cur_pat(sel)->len : 16;
     if (srow == 0) { if (k == K_DOWN) { srow = 1; scol = 0; } return; }
@@ -464,26 +463,16 @@ static void draw_scenes(void) {
             int u = has && pat_used(&g->t[s].pat[clampi(g->t[s].cur, 0, NPAT - 1)]);
             if (has) disc2(x, cy, u ? 9 : 6, C_ENG(g->t[s].type)); else { disc2(x, cy, 6, C_GREY); disc2(x, cy, 4, C_CELL); } } }   // an empty pad: a ring
     if (rows > 6) { int th = 6 * 104 - 14, tw = th * 6 / rows; rect(1004, 80, 4, th, C_CELL, 1); rect(1004, 80 + (th - tw) * top / (rows - 6), 4, tw, C_DIM, 1); }
+    if (rows <= 4) {                      // 2026-11-24 (audit): room below: the scene under the cursor, its twelve pads named
+        int q = sc_cur < n ? sc_cur : scn_cur; const Song *g = q == scn_cur ? &song : scn[q]; int y0 = 80 + rows * 104 + 8, ch = (700 - y0 - 8) / 2 - 6;
+        if (g && ch >= 60) for (int s2 = 0; s2 < NSLOT; s2++) { int x = 26 + s2 % 6 * 163, y = y0 + s2 / 6 * (ch + 8), has = q == scn_cur ? has_sound(s2) : g->t[s2].type || g->t[s2].path[0];
+            rrect(x, y, 155, ch, 8, C_CELL); if (!has) { ftext(x + 12, y + 8, FT_S, C_DIM, "--"); continue; }
+            rect(x, y, 6, ch, C_ENG(g->t[s2].type), 1); char b[40], nm[40];
+            const char *pth = g->t[s2].path, *bn = strrchr(pth, '/'); static const char *const en[4] = {"SAMPLER", "GRAND", "ACID", "CLOUD"};
+            snprintf(nm, sizeof nm, "%s", g->t[s2].type ? en[g->t[s2].type & 3] : bn ? bn + 1 : pth); fit(nm, FT_MB, 135);
+            snprintf(b, sizeof b, "%02d", s2 + 1); ftext(x + 14, y + 6, FT_S, C_DIM, b); ftext(x + 14, y + 30, FT_MB, C_WHITE, nm);
+            snprintf(b, sizeof b, "P%d", g->t[s2].cur + 1); ftext(x + 14, y + ch - 26, FT_S, C_GREY, b); } }
     draw_footer(sc_cur >= n ? (sc_cur == n + 1 ? "EDIT COPY THE OPEN ONE  Y BACK" : "EDIT NEW EMPTY  Y BACK") : "EDIT LAUNCH  OPT+EDIT DELETE  Y BACK");
-}
-
-// ---- PROJECT > INTERFACE > PAD MENU = TREE (the mockup's map, A-04): the hub drawn as the whole app: HOME's screens, the pad,
-// its categories, the pages of each, joined by curves. <> change the level, ^v choose on it, EDIT opens what the cursor is on:
-// a page of level 3 opens straight, without its list. tr_lv: 0 HOME, 1 the pad, 2 the category (hub_cur), 3 its pages (tr_pg).
-static const char *const tr_home[4] = {"PADS", "MIXER", "SCENES", "PROJECT"};
-static void tree_open(int c, int i) {
-    switch (c) {
-    case PC_PATTERN: pm_cur = i; cat_open(PC_PATTERN); break;
-    case PC_SOUND: cat_open(PC_SOUND); snd_page_go(i); break;
-    case PC_FX: cat_open(PC_FX); fx2_slot = i; fx2_cur = -1; fx2_sync(); break;
-    case PC_MOD: mm_cur = i;
-        if (i == 0) { set_tab(T_FX); ui_cat = hub_cur = PC_MOD; fx_unit = sel; fx_page = 1; }
-        else if (i == 1) { set_tab(T_SEQ); ui_cat = hub_cur = PC_MOD; if (!is_auto(lane)) lane = L_A1; set_step(0); seq_clamp(); }
-        else { cat_open(PC_MOD); duck_open(sel); }
-        break;
-    case PC_MIX: cat_open(PC_MIX); mix2_cur = i; mrow = mix2_rows[i]; break;
-    default: icon_open(); if (i) ic_pal = track_icol(&song.t[sel]); break;
-    }
 }
 
 // ---- PROJECT (A24): the sections on the left, the settings of the one chosen as cards (the 1.2 page's jsec/jcol/jcur) ----
@@ -574,7 +563,7 @@ static void draw_unit2(void) {
     int gr = u == NSLOT + 2, rows[2] = {half, n - half + gr};   // MASTER: a meter of the gain reduction under LIMITER
     int rm = rows[0] > rows[1] ? rows[0] : rows[1], hh = (700 - 126 - (rm - 1) * 12) / rm; if (hh > 136) hh = 136;   // both columns one height: the rows line up
     for (int k = 0; k < n; k++) { int c = k >= half, r = c ? k - half : k, x = c ? 518 : 32, h = hh, y = 126 + r * (h + 12), on = !tab_focus && fcol == c && frow == r, lo, hi, def; char b[16];
-        int v = *unit_param(u, k, &lo, &hi, &def); unit_pstr(u, k, v, b);
+        int v = *unit_param(u, k, &lo, &hi, &def); unit_pstr(u, k, v, b); units(b);
         const char *nm = u == NSLOT ? rv_name[k] : u == NSLOT + 1 ? dl_name[k] : ms_name[k];
         if (on) { rframe(x, y, 473, h, 8, 4, ec, C_CELL); ui_focus(nm, b, hi - lo > 1 ? (v - lo) * 100 / (hi - lo) : -1, ec); } else rrect(x, y, 473, h, 8, C_CELL);
         ftext(x + 20, y + 12, FT_M, C_DIM, nm);
@@ -583,7 +572,7 @@ static void draw_unit2(void) {
         ftext(x + 453 - ftext_w(FT_XB, b), y + 10, FT_XB, C_WHITE, b);
         if (hi - lo > 1) { rect(x + 20, y + h - 26, 433, 8, C_LINE, 1); rect(x + 20, y + h - 26, 433 * clampi(v - lo, 0, hi - lo) / (hi - lo), 8, ec, 1); } }
     if (gr) { int h = hh, y = 126 + (rows[1] - 1) * (h + 12); float g = engine_master_gr(); char b[24];
-        rrect(518, y, 473, h, 8, C_CELL); ftext(538, y + 12, FT_M, C_DIM, "GAIN REDUCTION"); snprintf(b, sizeof b, "%.1f DB", g > 0.05f ? -g : 0.f);
+        rrect(518, y, 473, h, 8, C_CELL); ftext(538, y + 12, FT_M, C_DIM, "GAIN REDUCTION"); snprintf(b, sizeof b, "%.1f dB", g > 0.05f ? -g : 0.f);
         ftext(971 - ftext_w(FT_XB, b), y + 10, FT_XB, g > 0.1f ? C_ORANGE : C_WHITE, b);
         rect(538, y + h - 26, 433, 8, C_LINE, 1); rect(538 + 433 - (int)(433 * fminf(g, 24) / 24), y + h - 26, (int)(433 * fminf(g, 24) / 24), 8, C_ORANGE, 1); }
     draw_footer("EDIT+ARROWS VALUE  ^ PAGES  Y BACK  EDIT ON/OFF  OPT+EDIT DEFAULT");

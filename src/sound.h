@@ -15,8 +15,8 @@ enum { GF_NONE, GF_WAVE, GF_SLICES, GF_OSC, GF_FILTER, GF_ENV, GF_CLOUD, GF_PATC
 typedef struct { const char *name; int8_t n, gfx; int16_t p[10]; } SndPage;
 static const SndPage snd_smp[] = {
     {"SAMPLE", 7, GF_WAVE, {P_PITCH, P_ROOT, P_VOICE, P_DIR, P_START, P_END, P_FINE}},
-    {"SLICES", 2, GF_SLICES, {P_SLICES, P_SLWAY}},   // A09: how many, and how
-    {"WARP", 6, GF_WAVE, {P_WARP, P_BARS, P_BPM, P_NORM, P_GRAIN, P_FLUX}},
+    // 2026-11-24 (audit): SLICES had 2 cards, WARP often 2 shown: one page for both, the cut and the time
+    {"SLICE/WARP", 8, GF_SLICES, {P_SLICES, P_SLWAY, P_WARP, P_NORM, P_BARS, P_BPM, P_GRAIN, P_FLUX}},
     {"AMP", 5, GF_WAVE, {P_SX + SX_FIN, P_SX + SX_FOUT, P_SX + SX_XFADE, P_VOL, P_PAN}},
 };
 static const SndPage snd_grd[] = {
@@ -62,7 +62,7 @@ static int snd_cards(const SndPage *pg, int *out) {   // the cards on show: what
     int c = 0; for (int i = 0; i < pg->n; i++) if (par_visible(pg->p[i])) out[c++] = pg->p[i];
     return c;
 }
-static int v2_sound(void) { return ui_cat == PC_SOUND && tab == T_SEQ && !hubbing && !patmenu && !perform && srow >= 3; }
+static int v2_sound(void) { return ui_cat == PC_SOUND && tab == T_SEQ && !perform && srow >= 3; }
 // PATCH (A14): the outputs down the left, the inputs down the right; sp_cur 0..12 an output (JO_LFO..), 13..26 an input (JI_P1..)
 #define PT_NO (JO_N - 1)
 #define PT_NI (JI_N - 1)
@@ -248,7 +248,7 @@ static float knob_draw(int x, int y, int w, int h, const char *lb, char *v, floa
     disc2(cx, cy, r - 12 > 4 ? r - 12 : 4, mix(C_CELL, C_BG, 128));
     line(cx + (int)((r - 26) * cosf(a * 0.0174533f) * 0.2f), cy + (int)((r - 26) * sinf(a * 0.0174533f) * 0.2f),
          cx + (int)((r - 14) * cosf(a * 0.0174533f)), cy + (int)((r - 14) * sinf(a * 0.0174533f)), 4, C_WHITE);
-    int fw = ftext_w(FT_MB, v) <= w - 12 ? FT_MB : FT_S; if (ftext_w(fw, v) > w - 12) v[(w - 12) / fv2[fw].w] = 0;
+    units(v); int fw = ftext_w(FT_MB, v) <= w - 12 ? FT_MB : FT_S; fit(v, fw, w - 12);
     ftext(cx - ftext_w(fw, v) / 2, y + h - 30, fw, C_WHITE, v);
     *kcx = cx; *kcy = cy; *kr = r; return a;
 }

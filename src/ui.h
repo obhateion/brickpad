@@ -214,24 +214,23 @@ static void ui2_footer(const char *h) {  // at most three key chips: the key in 
 }
 
 static int ui_window(void) {             // a window over the screens: no popup, the path names it
-    return exporting || naming || browsing || slicing || rolling || chording || subbing || prbing || randing || picking || presetting || theming || iconing || ducking;
+    return exporting || naming || browsing || slicing || rolling || chording || prbing || randing || picking || presetting || theming || iconing || ducking;
 }
 static int ui_over(void) { return ui_window() && !((rolling || chording) && !randing && !presetting && !naming && !exporting); }   // v3: a real popup; the roll and the chords are PATTERN's pages
 static void ui_path(char *b, int n) {    // NEON > INSTRUMENT > 06 GRAND > DEEP
     int l = snprintf(b, n, "%s", prj_cur[0] ? prj_cur : "UNTITLED");
 #define UI_ADD(...) (l += snprintf(b + l, l < n ? n - l : 0, " > " __VA_ARGS__))
     if (picking) { snprintf(b + l, l < n ? n - l : 0, " > %02d -", sel + 1); return; }   // the empty pad (A03)
-    int inpad = hubbing || ui_cat >= 0;
+    int inpad = ui_cat >= 0;
     if (perform) UI_ADD("%s", perform == 2 ? "KEYS" : "PADS");
     else if (!inpad) UI_ADD("%s", tab == T_GRID ? (scening ? "SCENES" : "PADS") : tab == T_FX ? "MIXER" : tab_name[tab == T_PAT ? T_SEQ : tab]);
     int pad = inpad || perform || tab == T_SEQ || tab == T_PAT || (browsing && !bmode) || presetting || slicing || iconing ? sel : tab == T_FX && fx_unit < NSLOT ? fx_unit : -1;
     if (pad >= 0) { char nb[40]; snprintf(nb, sizeof nb, "%s", slot_name(pad) ? slot_name(pad) : "EMPTY"); fit(nb, FT_MB, 170); UI_ADD("%02d %s", pad + 1, nb); }
     else if (tab == T_FX) UI_ADD("%s", fx_unit == NSLOT ? "RETURN A" : fx_unit == NSLOT + 1 ? "RETURN B" : "MASTER");
     if (exporting) UI_ADD("EXPORT"); else if (naming) UI_ADD("NAME"); else if (browsing) UI_ADD("%s", bmode ? "FILES" : "SOUND > FILE");
-    else if (slicing) UI_ADD("SOUND > SLICES > EDIT"); else if (prbing) UI_ADD("PATTERN > PRB"); else if (subbing) UI_ADD("PATTERN > SUB"); else if (chording) UI_ADD("PATTERN > CHORDS"); else if (rolling) UI_ADD("PATTERN > ROLL"); else if (randing) UI_ADD("RANDOM");
+    else if (slicing) UI_ADD("SOUND > SLICES > EDIT"); else if (prbing) UI_ADD("PATTERN > PRB"); else if (chording) UI_ADD("PATTERN > CHORDS"); else if (rolling) UI_ADD("PATTERN > ROLL"); else if (randing) UI_ADD("RANDOM");
     else if (picking) UI_ADD("ENGINE"); else if (presetting) UI_ADD("SOUND > PRESETS"); else if (theming) UI_ADD("THEME");
     else if (iconing) UI_ADD("LOOK"); else if (ducking) UI_ADD("MOD > DUCK");
-    else if (recpage) UI_ADD("PATTERN > RECORD");
     else if (v2_sound()) UI_ADD("SOUND > %s", snd_page_name());
     else if (v2_steps()) UI_ADD("PATTERN > STEPS");
     else if (tab == T_PRJ && !theming) UI_ADD("%s", prj_sec_name[jsec]);
@@ -296,8 +295,6 @@ static void ui_quit_hold(void) {          // SHIFT+PLAY held: how long until the
 
 // The pad hub (UI v2): PATTERN SOUND FX MOD MIX of the selected pad. EDIT opens one, Y goes back up (category -> hub ->
 // HOME), F1/F2 the next pad on the same page. LOOK, the last card, is the pad's icon and its colour.
-static void hub_open(void) { set_tab(T_GRID); hubbing = 1; }
-static void patmenu_open(void) { set_tab(T_SEQ); ui_cat = hub_cur = PC_PATTERN; patmenu = 1; if (is_auto(lane)) lane = lane_first(); }
 static void cat_open(int c) {
     set_tab(c == PC_PATTERN || c == PC_SOUND ? T_SEQ : c == PC_MIX ? T_MIX : T_FX);
     hub_cur = c; ui_cat = c;
@@ -309,9 +306,9 @@ static void cat_open(int c) {
     if (c == PC_MIX) mcol = sel;
     seq_clamp();
 }
-static int in_pad(void) { return hubbing || ui_cat >= 0; }
+static int in_pad(void) { return ui_cat >= 0; }
 static void pat_sync(void) {              // another pad on PATTERN's first page: its steps or its roll
-    if (ui_cat != PC_PATTERN || tab != T_SEQ || patmenu || recpage) return;
+    if (ui_cat != PC_PATTERN || tab != T_SEQ) return;
     int m = cur_pat(sel)->mode;
     if (m) roll_open(); else if (rolling) roll_leave();
 }
@@ -322,7 +319,7 @@ static void pad_step(int d) {             // SHIFT+LEFT/RIGHT inside a pad (v3):
 }
 // v3 (2026-11-20): MENU+arrows are the screen map, as on M8. UP/DOWN: PROJECT - HOME - the pad; LEFT/RIGHT: the pad's
 // sections. F1/F2 page the sections inside a pad too; SHIFT+LEFT/RIGHT is the next pad.
-static void cat_step(int d) { int c = hubbing ? hub_cur : ui_cat; cat_open(((c < 0 ? 0 : c) + d + PC_N) % PC_N); }
+static void cat_step(int d) { int c = ui_cat; cat_open(((c < 0 ? 0 : c) + d + PC_N) % PC_N); }
 static void tab_project(void); static void pick_open(void);
 static void menu_nav(int k) {
     if (tab == T_PRJ) { if (k == K_DOWN) tab_project(); return; }   // back where PROJECT was opened
@@ -397,9 +394,6 @@ static void draw_steps2(void) {
         if (on) step_value(p, i, lane, nsl, b); else snprintf(b, sizeof b, "\3");
         int f = ftext_w(FT_LB, b) <= cw - 8 ? FT_LB : FT_MB;
         ftext(x + cw / 2 - ftext_w(f, b) / 2, y + 126 - fv2[f].h / 2, f, on ? ec : C_DIM, b);
-        if (on && lane == L_REP && p->rep[i] > 1) {   // SUB (2026-11-20): the cells under the number, the ones off dim
-            const SubStep *e = sub_find(sel, song.t[sel].cur, i); int nc = p->rep[i], sw = (cw - 16) / nc;
-            for (int k = 0; k < nc; k++) rect(x + 8 + k * sw, y + 180, sw - 3, 30, e && (e->off >> k & 1) ? C_LINE : ec, 1); }
         if (i == play) rect(x, y + 244, cw, 8, C_WHITE, 1);   // the step that plays
     }
     int pages = (p->len + 15) / 16;   // the length and the grid are on the LEN/GRID slot now: only the bar
@@ -412,40 +406,7 @@ static void draw_steps2(void) {
     if (ui_qbar) draw_phones(850, 16);   // v3: MON on the quick bar at the top
     draw_footer(lane == L_TRIG || lane == L_SLICE ? "EDIT NOTE  EDIT+ARROWS VALUE  ^ TABS" : "EDIT+ARROWS VALUE  ^ TABS  OPT+EDIT DEFAULT");   // 2026-11-24: keys that still work
 }
-
-// PATTERN > RECORD (UI v2, mockup A04): the take's state as one big circle. The logic is the one of MENU+PLAY: EDIT arms
-// (or ends the take), the count-in runs, the first note starts it; notes come from KEYS or PADS (MENU) or OPTION here.
-static void fdig(int cx, int cy, Col c, const char *s) {   // big digits, centred on cx, the figures' middle on cy
-    int n = (int)strlen(s), x = cx - n * FD_W / 2, y = cy - FD_TOP - FD_CAP / 2;
-    SDL_SetTextureColorMod(font_dig, c.r, c.g, c.b);
-    for (; *s; s++, x += FD_W) { int g = *s == '.' ? 10 : *s >= '0' && *s <= '9' ? *s - '0' : -1; if (g < 0) continue;
-        SDL_Rect src = {g * FD_W, 0, FD_W, FD_H}, dst = {x, y, FD_W, FD_H}; SDL_RenderCopy(R, font_dig, &src, &dst); }
-}
-static void disc2(int cx, int cy, int r, Col c) {
+static void disc2(int cx, int cy, int r, Col c) {   // a filled circle
     SDL_SetRenderDrawColor(R, c.r, c.g, c.b, 255);
     for (int dy = -r; dy <= r; dy++) { int dx = (int)(sqrtf((float)(r * r - dy * dy)) + 0.5f); SDL_RenderDrawLine(R, cx - dx, cy + dy, cx + dx, cy + dy); }
-}
-static void record_key(int k, int down) {
-    if (!down) { if (k == K_EDIT && !used[K_EDIT]) rec_toggle(engine_posf(), SDL_GetTicks() | 1); return; }
-    if (k == K_Y) {                      // the count or the wait: cancel; else back to the list (a running take goes on)
-        if (rec && (engine_counting() >= 0 || rec_wait)) rec_toggle(engine_posf(), SDL_GetTicks() | 1);
-        else { recpage = 0; cat_open(PC_PATTERN); }
-        return;
-    }
-    if (k == K_PLAY) { play_key(); return; }
-    if (k == K_OPT) { listen(sel); rec_hit(sel, -1, NOTE_NONE); return; }   // a hit of the pad: it starts an armed take
-}
-static void draw_record(void) {
-    enum { CX = W / 2, CY = 300, RR = 169 };
-    int cnt = rec ? engine_counting() : -1, wait = rec && rec_wait && cnt < 0, run = rec && !wait && cnt < 0; char b[96], v[16];
-    const char *line;
-    if (!rec) { disc2(CX, CY, RR, mix(C_RED, C_BG, 200)); disc2(CX, CY, RR - 6, C_BG); ftext(CX - ftext_w(FT_XB, "REC") / 2, CY - 18, FT_XB, mix(C_RED, C_BG, 90), "REC"); line = "ready to record"; }
-    else if (wait) { int on = SDL_GetTicks() / 400 % 2; disc2(CX, CY, RR, C_RED); disc2(CX, CY, RR - 6, on ? mix(C_RED, C_BG, 190) : C_BG); ftext(CX - ftext_w(FT_XB, "PLAY") / 2, CY - 18, FT_XB, C_RED, "PLAY"); line = "play a note: the take starts with it"; }
-    else if (cnt >= 0) { disc2(CX, CY, RR, C_RED); snprintf(v, sizeof v, "%d", cnt > 0 ? cnt : 1); fdig(CX, CY, C_BG, v); line = "count-in before recording"; }
-    else { disc2(CX, CY, RR, C_RED); int q = (int)((engine_posf() - rec_from) * 10 / bar32()); snprintf(v, sizeof v, "%d.%d", q / 10, q % 10); fdig(CX, CY, C_BG, v); line = "recording: bars"; }
-    ftext(CX - ftext_w(FT_LB, line) / 2, 524, FT_LB, C_WHITE, line);
-    snprintf(b, sizeof b, "into %02d %.14s \3 P%02d \3 quantize %s", sel + 1, slot_name(sel) ? slot_name(sel) : "EMPTY", song.t[sel].cur + 1, quant_name[song.rec_quant % 5]);
-    ftext(CX - ftext_w(FT_M, b) / 2, 566, FT_M, C_DIM, b);
-    draw_footer(run ? "EDIT STOP  OPT HIT  Y BACK  MENU KEYS / PADS  PLAY TRANSPORT" : rec ? "PLAY STOP  Y CANCEL  OPT HIT  MENU KEYS / PADS"
-                    : "EDIT ARM  OPT HIT  Y BACK  MENU KEYS / PADS  MENU+PLAY ARM FROM ANYWHERE");
 }

@@ -18,7 +18,7 @@ static void sv_knobs(int s, SvKnob *k) {
     }
 }
 static void simple_sync(void) {          // the state under the simple screens: HOME for PLAY and SOUND, the pad's steps for NOTES
-    hubbing = patmenu = modmenu = scening = recpage = 0; perform = 0; if (rolling) roll_leave();
+    scening = perform = 0; if (rolling) roll_leave();
     if (sv_mode && !has_sound(sel)) for (int i = 1; i < NSLOT; i++) if (has_sound((sel + i) % NSLOT)) { sel = (sel + i) % NSLOT; break; }   // NOTES, SOUND: a pad with a sound
     if (sv_mode == 1) { tab = T_SEQ; ui_cat = PC_PATTERN; lane = lane_first(); if (srow < 1 || srow > 2) { srow = 1; scol = 0; } }
     else { tab = T_GRID; ui_cat = -1; }

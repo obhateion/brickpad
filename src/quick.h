@@ -10,7 +10,7 @@
 // ---- the slide of every drawer: 0 closed .. 1 open, eased; any value between keeps the frame rate up ----
 typedef struct { float v; Uint32 t; } Anim;
 static Uint32 anim_busy;
-static Anim ctx_anim, mx_anim; static float ctx_e;   // the OPTION menu and the mixer's drawer slide too
+static Anim mx_anim;                     // the mixer's drawer slides
 static float anim(Anim *a, int on, int ms) {
     Uint32 now = SDL_GetTicks(), dt = a->t ? now - a->t : 0; a->t = now;
     if (dt > 34) dt = 34;                 // after a quiet spell the first frame does not jump to the end

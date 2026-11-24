@@ -96,14 +96,10 @@ static int ducking;                      // the DUCK window is open (below, with
 static int tap_bpm(Uint32 *t, int *n);
 static void naming_pad(void);
 static int tab = T_GRID, browsing, slicing, theming, perform, sel = 5, undo_armed;
-static int hubbing, hub_cur, ui_cat = -1;   // UI v2: the pad hub is on screen; the category opened from it (-1 none), ui.h
-static int tr_lv = 2, tr_0, tr_pg;       // the hub as a tree (PROJECT > INTERFACE > PAD MENU): the level of the cursor, HOME's screen on level 0, the page on level 3
+static int hub_cur, ui_cat = -1;   // UI v2: the pad hub is on screen; the category opened from it (-1 none), ui.h
 enum { PC_PATTERN, PC_SOUND, PC_FX, PC_MOD, PC_MIX, PC_N };   // the categories inside a pad
 static void cat_open(int c);              // ui.h: a pad's section (v3: the only way into a pad)
 static int scening;                      // HOME > SCENES (A02) is on screen, over the pads
-static int modmenu, mm_cur;              // MOD's own list (LFO, AUTOMATION, DUCK), as PATTERN's
-static int patmenu, pm_cur;              // PATTERN's own list (STEPS or ROLL, SELECT, RECORD) is on screen; its cursor, kept
-static int recpage;                      // PATTERN > RECORD is on screen
 static int v2_unit(void), v2_mix(void), v2_mixer(void), v2_fx(void), v2_lfo(void), v2_auto(void), mixer2_tap(void); static void mixer2_arrow(int k);   // UI v2 step 5 pages (pages.h)
 static int v2_steps(void);               // the rebuilt STEPS page is the screen now (below, before seq_clamp)
 static Uint32 quit_down, flash[NSLOT];   // quit_down: SHIFT+PLAY held since then, 3 s quits (v3, 2026-11-20)
@@ -134,6 +130,14 @@ static int ftext_w(int f, const char *s);
 static void fit(char *b, int f, int maxw) {   // 2026-11-24 (audit): too long for its place: cut, and say so with ".."
     if (ftext_w(f, b) <= maxw) return; int l = (int)strlen(b);
     while (l > 2 && ftext_w(f, b) > maxw) { b[--l] = 0; if (l >= 2) { b[l - 2] = '.'; b[l - 1] = '.'; } }
+}
+static void units(char *s) {             // 2026-11-24 (audit): "12 DB" "0.02HZ" "300MS" read as dB, Hz, ms
+    for (char *q = s; *q; q++) { int num = q > s && ((q[-1] >= '0' && q[-1] <= '9') || q[-1] == ' ');
+        if (!num) continue;
+        if (!strncmp(q, "DB", 2) && !(q[2] >= 'A' && q[2] <= 'Z')) { q[1] = 'B'; q[0] = 'd'; }
+        else if (!strncmp(q, "KHZ", 3)) { q[0] = 'k'; q[1] = 'H'; q[2] = 'z'; }
+        else if (!strncmp(q, "HZ", 2)) { q[1] = 'z'; }
+        else if (!strncmp(q, "MS", 2) && !(q[2] >= 'A' && q[2] <= 'Z')) { q[0] = 'm'; q[1] = 's'; } }
 }
 static void toast(const char *s) { snprintf(msg, sizeof msg, "%s", s); arrows(msg, 0); msg_t = SDL_GetTicks(); }
 static int clampi(int v, int lo, int hi) { return v < lo ? lo : v > hi ? hi : v; }
@@ -1269,7 +1273,6 @@ static void set_step(int st) { spage = st / 32; srow = 1 + (st % 32) / 16; scol 
 static int last_page(void) { int l = song.t[sel].pat[song.t[sel].cur].len; return (l > 0 ? l - 1 : 0) / 32; }
 static int last_page(void);
 static int prbing; static void prb_open(int st); static void prb_key(int k, int down); static void draw_prb(void);   // PRB modes (prb.h)
-static int subbing; static void sub_open(int st); static void sub_key(int k, int down); static void draw_sub(void);   // SUB cells (sub.h)
 static int chording; static void chord_open(void); static void chord_key(int k, int down); static void draw_chords(void); static void chord_leave(void);   // CHORDS (chords.h)
 static int rolling; static const int rl_d32[6];   // the piano roll (below, before key_event)
 static int picking; static void pick_open(void); static void pick_close(void); static void draw_pick(void); static void pick_key(int k, int down);
@@ -1472,9 +1475,9 @@ static void par_focus(int p) {
     { int i = gb_find(p); if (i >= 0) { if (par_visible(p)) { gb_cur = i; srow = 3; scol = 0; } return; } }   // every pad has a panel; a hidden control keeps the cursor where it is
     for (int c = 0; c < 2; c++) for (int r = 0; r < PROWS; r++) if (par_col[c][r] == p) { scol = c; srow = 3 + par_row_near(c, r); return; }
 }
-static int v2_steps(void) { return ui_cat == PC_PATTERN && tab == T_SEQ && !hubbing && !patmenu && !perform && !cur_pat(sel)->mode && !is_auto(lane); }
+static int v2_steps(void) { return ui_cat == PC_PATTERN && tab == T_SEQ && !perform && !cur_pat(sel)->mode && !is_auto(lane); }
 static void seq_clamp(void) {            // slot change or undo may hide the parameter under the cursor
-    if (ui_cat == PC_SOUND && tab == T_SEQ && !hubbing && !patmenu) sound_sync();   // SOUND (UI v2): its page and card exist
+    if (ui_cat == PC_SOUND && tab == T_SEQ) sound_sync();   // SOUND (UI v2): its page and card exist
     if (spage > last_page()) spage = last_page();   // first: the panel returns early below
     if (v2_steps() && (srow < 1 || srow > 2)) { srow = 1; scol = 0; }   // STEPS (UI v2): only the steps
     if (v2_steps() && cur_step() >= cur_pat(sel)->len) set_step(cur_pat(sel)->len ? cur_pat(sel)->len - 1 : 0);
@@ -1940,7 +1943,6 @@ static void seq_tap(void) {
             p->slice[st] = (int8_t)(f ? f : -1); return;   // it sounded when B went down
         }
         if (edit_put) { edit_put = 0; return; }   // put when EDIT went down: the release leaves it on
-        if (p->trig[st] && lane == L_REP) { sub_open(st); return; }   // SUB: EDIT dives into the step's cells
         if (p->trig[st] && lane == L_PROB) { prb_open(st); return; }  // PRB: its mode NOTE / SUB / JUMP
         if (p->trig[st] && lane != L_TRIG) { char b[32]; snprintf(b, sizeof b, "ERASE ON THE %s LANE", lane_nm(L_TRIG)); toast(b); return; }   // 2026-11-12, user
         if (!p->trig[st]) step_seed(p, st);
@@ -1979,7 +1981,7 @@ static void pat_switch(int np) {          // the pad's pattern: queued for the n
 }
 static int pfol;                  // SELECT: the cursor is on the cards (not on the grid); pfcol: the old window's field
 static int sl_r, sl_c;                   // SELECT (UI v2): rows 0-1 the grid 2 x 8, 2 LENGTH DIVISION MODE, 3-4 REPEAT THEN / CHANCE ELSE
-static void select_value(int d, int big); static void patmenu_open(void);
+static void select_value(int d, int big);
 static const char *const fa_name[FA_N] = {"LOOP", "NEXT", "PREV", "FIRST", "RANDOM", "OTHER", "JUMP", "STOP"};
 static int fol_pat(void) { return pat_last >= 0 && pat_last < NPAT ? pat_last : pcur % NPAT; }   // FOLLOW is about the chosen pattern (SEL)
 static void pat_open(void) { Track *t = &song.t[sel]; pcur = pat_last = t->queued >= 0 ? t->queued : t->cur; pfol = 0; tab = T_PAT; sl_r = pcur / 8; sl_c = pcur % 8; }
@@ -2849,7 +2851,7 @@ static void step_listen(int st) {        // only this step's slice, with its not
     flash[sel] = SDL_GetTicks();
     rec_hit(sel, sl, note);
 }
-static void set_tab(int t) { leave_screen(); if (browsing) browse_close(); slicing = 0; roll_leave(); randing = 0; learning = 0; learn_lfo = -1; pt_pick = 0; if (picking) pick_close(); if (presetting) preset_close(1); theming = 0; iconing = 0; ducking = 0; subbing = 0; prbing = 0; if (chording) chord_leave(); perform = 0; tab = t; hubbing = 0; patmenu = 0; modmenu = 0; scening = 0; recpage = 0; if (t == T_GRID || t == T_PRJ) ui_cat = -1; }
+static void set_tab(int t) { leave_screen(); if (browsing) browse_close(); slicing = 0; roll_leave(); randing = 0; learning = 0; learn_lfo = -1; pt_pick = 0; if (picking) pick_close(); if (presetting) preset_close(1); theming = 0; iconing = 0; ducking = 0; prbing = 0; if (chording) chord_leave(); perform = 0; tab = t; scening = 0; if (t == T_GRID || t == T_PRJ) ui_cat = -1; }
 // KEYS: the pad gets its own tonality, the project's stays. Coming back to the project's value means following the project again.
 static void pad_tonality(int k) {
     Track *t = &song.t[sel]; char b[48];
@@ -2905,18 +2907,18 @@ static void tab_step(int d) {            // F1 left, F2 right, round: GRID SEQ+I
     set_tab(nt);
 }
 static void roll_open(void); static void duck_open(int s); static int mx_pg;
-static struct { int tab, ui_cat, hub_cur, hubbing, patmenu, modmenu, scening, recpage, perform, srow, scol, lane, fx_unit, fx_page, mcol, mx_pg, rolling, ducking; } prj_from;
+static struct { int tab, ui_cat, hub_cur, scening, perform, srow, scol, lane, fx_unit, fx_page, mcol, mx_pg, rolling, ducking; } prj_from;
 static void prj_leave(void) {            // back where F1+F2 was pressed: the same pad, category, page and cursor
-    set_tab(prj_from.tab); ui_cat = prj_from.ui_cat; hub_cur = prj_from.hub_cur; hubbing = prj_from.hubbing; patmenu = prj_from.patmenu;
-    modmenu = prj_from.modmenu; scening = prj_from.scening; recpage = prj_from.recpage; perform = prj_from.perform; srow = prj_from.srow;
+    set_tab(prj_from.tab); ui_cat = prj_from.ui_cat; hub_cur = prj_from.hub_cur;
+    scening = prj_from.scening; perform = prj_from.perform; srow = prj_from.srow;
     scol = prj_from.scol; lane = prj_from.lane; fx_unit = prj_from.fx_unit; fx_page = prj_from.fx_page; mcol = prj_from.mcol; mx_pg = prj_from.mx_pg;
     if (prj_from.rolling && cur_pat(sel)->mode) { if (cur_pat(sel)->mode == 2) chord_open(); else roll_open(); }
     if (prj_from.ducking) duck_open(sel);
 }
 static void tab_project(void) {          // F1+F2: in and out of PROJECT (its only way in since 2026-11-14)
     if (tab == T_PRJ) { prj_leave(); return; }
-    prj_from.tab = tab == T_PRJ ? T_GRID : tab; prj_from.ui_cat = ui_cat; prj_from.hub_cur = hub_cur; prj_from.hubbing = hubbing; prj_from.patmenu = patmenu;
-    prj_from.modmenu = modmenu; prj_from.scening = scening; prj_from.recpage = recpage; prj_from.perform = perform; prj_from.srow = srow;
+    prj_from.tab = tab == T_PRJ ? T_GRID : tab; prj_from.ui_cat = ui_cat; prj_from.hub_cur = hub_cur;
+    prj_from.scening = scening; prj_from.perform = perform; prj_from.srow = srow;
     prj_from.scol = scol; prj_from.lane = lane; prj_from.fx_unit = fx_unit; prj_from.fx_page = fx_page; prj_from.mcol = mcol; prj_from.mx_pg = mx_pg;
     prj_from.rolling = rolling; prj_from.ducking = ducking;
     set_tab(T_PRJ);
@@ -3771,7 +3773,6 @@ static void key_event1(int k, int down) {
     if (k == K_PLAY && held[K_SHIFT]) { if (down) { quit_down = SDL_GetTicks() | 1; used[K_SHIFT] = 1; } return; }   // v3: SHIFT+PLAY held 3 s quits
     if (k == K_PLAY && held[K_EDIT] && tab == T_GRID && ui_cat < 0 && !perform && !ui_over() && !qb_focus) { if (down) { used[K_EDIT] = 1; sim_key(K_X, -1); } return; }   // EDIT+PLAY: this pad's clip
     if (x_latch_key(k, down)) return;
-    if (ctxing) { ctx_key(k, down); return; }
     if (qpicking) { qp_key(k, down); return; }   // PROJECT > SETTINGS > BAR BUTTONS
     if (held[K_MENU] && k == K_UP && y_back_here()) { if (down) { used[K_MENU] = 1; sim_key(K_Y, -1); } return; }   // v3: Y's way back
     if ((k == K_L1 || k == K_R1 || k == K_L2 || k == K_R2) && !sim_on && !perform && !ui_simple && !ui_over() && !naming && !exporting && !asking && !cfm && !learning
@@ -3869,7 +3870,6 @@ static void key_event1(int k, int down) {
     if (slicing) { slice_key(k, down); return; }
     if (randing) { rnd_key(k, down); return; }   // before ROLL: RANDOM opens over a roll pattern too
     if (prbing) { prb_key(k, down); return; }
-    if (subbing) { sub_key(k, down); return; }
     if (chording) { chord_key(k, down); return; }
     if (rolling) { roll_key(k, down); return; }
     if (picking) { pick_key(k, down); return; }
@@ -3878,9 +3878,7 @@ static void key_event1(int k, int down) {
     if (iconing) { icon_key(k, down); return; }
     if (ducking) { duck_key(k, down); return; }
     if (jump_ok() && held[K_SHIFT] && k <= K_RIGHT) { if (down) { used[K_SHIFT] = 1; if (k == K_LEFT || k == K_RIGHT) pad_step(k == K_RIGHT ? 1 : -1); } return; }   // v3: SHIFT+<> the next pad
-    if (hubbing || patmenu || modmenu) { hubbing = patmenu = modmenu = 0; cat_open(hub_cur < PC_N ? hub_cur : PC_PATTERN); return; }   // v3: the pad menu is gone
     if (scening) { scene_key(k, down); return; }
-    if (recpage) { record_key(k, down); return; }
     if (!down) {                         // taps fire on release when no combo was used
         if (k == K_EDIT) { if (!used[K_EDIT]) edit_tap(); undo_armed = 0; }
         if (k == K_X && !used[K_X] && tab == T_SEQ && !held[K_SHIFT]) {
@@ -3990,14 +3988,14 @@ static void key_event1(int k, int down) {
 // every page are compared before and after; windows keep their keys.
 static int ch_row, ch_col, ch_slot;      // chords.h
 static int qb_edge(int k, int down) {
-    if (!down || qb_focus || strip_focus || tab_focus || x_latch || v_latch || ctxing || !(k == K_UP && (!ui_qbar || strips_here() || page_tabs()) || k == K_DOWN && ui_qbar) || perform || ui_over() || ui_simple || learning || exporting || asking || cfm || naming) return 0;
+    if (!down || qb_focus || strip_focus || tab_focus || x_latch || v_latch || !(k == K_UP && (!ui_qbar || strips_here() || page_tabs()) || k == K_DOWN && ui_qbar) || perform || ui_over() || ui_simple || learning || exporting || asking || cfm || naming) return 0;
     for (int i = K_OPT; i < K_N; i++) if (held[i] && i != k) return 0;
     return 1;
 }
 static void cur_snap(int *a) {
-    int v[] = {tab, sel, srow, scol, lane, gb_cur, mrow, mcol, mx_r, mx_pg, hub_cur, hubbing, tr_lv, tr_pg, tr_0, fx2_slot, fx_unit, fx_page,
-               lcol, lrow, jcur, jcol, jsec, pm_cur, mm_cur, mix2_cur, dk_row, dk_col, dk_pt, sc_cur, scn_cur, ui_cat, patmenu, modmenu,
-               recpage, scening, spage, sl_r, sl_c, ted_row, ted_col, pcur, ab_pg, cl_deep, rolling, rl_t, rl_n, rl_v0, rl_n0, sp_cur, sp_pg[0], sp_pg[1], sp_pg[2], sp_pg[3], fx2_cur, mx_fz, frow, fcol, ch_row, ch_col};
+    int v[] = {tab, sel, srow, scol, lane, gb_cur, mrow, mcol, mx_r, mx_pg, hub_cur, fx2_slot, fx_unit, fx_page,
+               lcol, lrow, jcur, jcol, jsec, mix2_cur, dk_row, dk_col, dk_pt, sc_cur, scn_cur, ui_cat,
+               scening, spage, sl_r, sl_c, ted_row, ted_col, pcur, ab_pg, cl_deep, rolling, rl_t, rl_n, rl_v0, rl_n0, sp_cur, sp_pg[0], sp_pg[1], sp_pg[2], sp_pg[3], fx2_cur, mx_fz, frow, fcol, ch_row, ch_col};
     memcpy(a, v, sizeof v); a[63] = (int)(sizeof v / sizeof *v);
 }
 static int side_key(int k, int down); static int side_page(void); static int side_enter(int k); static int side_land_mark(void); static void side_land(int before);   // side.h
@@ -4008,7 +4006,7 @@ static void opt_listen(void) {            // OPTION tapped: the step under the c
     if (has_sound(sel)) listen(sel);
 }
 static int side_edge(int k, int down) {   // a plain arrow across on a page with slots: its edge may lead onto them
-    if (!down || (k != K_LEFT && k != K_RIGHT) || !side_page() || x_latch || v_latch || ctxing || qb_focus || qd_open || qpicking || strip_focus || tab_focus
+    if (!down || (k != K_LEFT && k != K_RIGHT) || !side_page() || x_latch || v_latch || qb_focus || qd_open || qpicking || strip_focus || tab_focus
         || ui_over() || perform || ui_simple || learning || cfm || asking || naming || exporting) return 0;   // a window or the drawer keeps its arrows
     for (int i = K_OPT; i < K_N; i++) if (held[i] && i != k) return 0;
     return 1;
@@ -4255,7 +4253,6 @@ static void draw_roll(void) {
     draw_footer(i >= 0 ? "EDIT DELETE  EDIT+ARROWS LENGTH/PITCH  OPT+<> NEXT" : "EDIT NOTE  OPT+<> NEXT  SHIFT+ARROWS PAGE");
 }
 #include "chords.h"
-#include "sub.h"
 #include "prb.h"
 #include "side.h"
 static void slice_card(int x, int y, int w, const char *lb, const char *v, Col ec, int on) {   // UI v2: a name and a value, as on the SOUND cards
@@ -4966,7 +4963,6 @@ static void draw(void) {
     else if (slicing) draw_slice();
     else if (randing) draw_rnd2();
     else if (prbing) draw_prb();
-    else if (subbing) draw_sub();
     else if (chording) draw_chords();
     else if (rolling) draw_roll();
     else if (picking) draw_pick();
@@ -4975,7 +4971,6 @@ static void draw(void) {
     else if (iconing) draw_icons2();
     else if (ducking) draw_duck2();
     else if (scening) draw_scenes();
-    else if (recpage) draw_record();
     else if (v2_steps()) draw_steps2();
     else if (v2_sound()) draw_sound2();
     else if (v2_fx()) draw_fx2();
@@ -5001,7 +4996,6 @@ static void draw(void) {
     qd_draw(); qp_draw();
     ui_popup();
     if (asking) draw_ask2();
-    ctx_e = anim(&ctx_anim, ctxing, 160); if (ctxing || ctx_e > 0) draw_ctx();
     if (cfm) draw_cfm2();
 shown:;
     ui_quit_hold(); adv_hold_draw();

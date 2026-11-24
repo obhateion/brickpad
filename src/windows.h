@@ -217,7 +217,7 @@ static void draw_prjbrowse2(void) {
 
 // No 1.2 screen is left to fall back on: whatever state the keys left, it is brought to the nearest screen of the ladder.
 static void v2_normalize(void) {
-    if (exporting || naming || browsing || slicing || randing || picking || presetting || theming || iconing || ducking || hubbing || patmenu || modmenu || recpage || rolling) return;
+    if (exporting || naming || browsing || slicing || randing || picking || presetting || theming || iconing || ducking || rolling) return;
     if (tab == T_PAT) { if (ui_cat < 0) ui_cat = PC_PATTERN; return; }
     if (tab == T_SEQ) {
         if (ui_cat < 0 || ui_cat == PC_FX || ui_cat == PC_MIX) { cat_open(ui_cat < 0 ? PC_PATTERN : ui_cat); return; }   // v3: no pad menu, its section
