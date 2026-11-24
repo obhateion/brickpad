@@ -22,7 +22,7 @@ enum { KG_GAP = 8, KG_WMAX = 230, KG_HMAX = 280 };
 static int kg_cols(int n) { return n <= 5 ? (n < 1 ? 1 : n) : n <= 8 ? (n + 1) / 2 : 5; }
 static void kg_cell(int n, int i, int x, int w, int y0, int y1, int *cx, int *cy, int *cw, int *ch) {
     int c = kg_cols(n), r = (n + c - 1) / c, row = i / c, inrow = row == r - 1 ? n - row * c : c;
-    *cw = (w + KG_GAP) / c - KG_GAP; if (*cw > KG_WMAX) *cw = KG_WMAX;
+    *cw = (w + KG_GAP) / c - KG_GAP; if (*cw > (n <= 6 ? 270 : KG_WMAX)) *cw = n <= 6 ? 270 : KG_WMAX;
     *ch = (y1 - y0 + KG_GAP) / (r ? r : 1) - KG_GAP; if (*ch > KG_HMAX) *ch = KG_HMAX;
     *cx = x + (w - (inrow * (*cw + KG_GAP) - KG_GAP)) / 2 + (i % c) * (*cw + KG_GAP); *cy = y0 + row * (*ch + KG_GAP);
 }
@@ -225,7 +225,7 @@ static void ui_path(char *b, int n) {    // NEON > INSTRUMENT > 06 GRAND > DEEP
     if (perform) UI_ADD("%s", perform == 2 ? "KEYS" : "PADS");
     else if (!inpad) UI_ADD("%s", tab == T_GRID ? (scening ? "SCENES" : "PADS") : tab == T_FX ? "MIXER" : tab_name[tab == T_PAT ? T_SEQ : tab]);
     int pad = inpad || perform || tab == T_SEQ || tab == T_PAT || (browsing && !bmode) || presetting || slicing || iconing ? sel : tab == T_FX && fx_unit < NSLOT ? fx_unit : -1;
-    if (pad >= 0) UI_ADD("%02d %.14s", pad + 1, slot_name(pad) ? slot_name(pad) : "EMPTY");
+    if (pad >= 0) { char nb[40]; snprintf(nb, sizeof nb, "%s", slot_name(pad) ? slot_name(pad) : "EMPTY"); fit(nb, FT_MB, 170); UI_ADD("%02d %s", pad + 1, nb); }
     else if (tab == T_FX) UI_ADD("%s", fx_unit == NSLOT ? "RETURN A" : fx_unit == NSLOT + 1 ? "RETURN B" : "MASTER");
     if (exporting) UI_ADD("EXPORT"); else if (naming) UI_ADD("NAME"); else if (browsing) UI_ADD("%s", bmode ? "FILES" : "SOUND > FILE");
     else if (slicing) UI_ADD("SOUND > SLICES > EDIT"); else if (prbing) UI_ADD("PATTERN > PRB"); else if (subbing) UI_ADD("PATTERN > SUB"); else if (chording) UI_ADD("PATTERN > CHORDS"); else if (rolling) UI_ADD("PATTERN > ROLL"); else if (randing) UI_ADD("RANDOM");
@@ -258,10 +258,11 @@ static void ui_shade(int a) {            // the screen under an overlay goes dar
 }
 static int ui_pair(int x, int y, const char *p, int n) {   // a key chip and what it does, small; returns the width
     int w = (int)strcspn(p, " "); if (w > n) w = n; char b[64];
-    snprintf(b, sizeof b, "%.*s", w, p); int kw = ftext_w(FT_S, b) + 16; rrect(x, y, kw, 24, 5, C_SELBG);
+    snprintf(b, sizeof b, "%.*s", w, p); arrows(b, 1); int kw = ftext_w(FT_S, b) + 16; rrect(x, y, kw, 24, 5, C_SELBG);
     { int lb = C_SELBG.r * 3 + C_SELBG.g * 6 + C_SELBG.b, lo = C_ORANGE.r * 3 + C_ORANGE.g * 6 + C_ORANGE.b, lw = C_WHITE.r * 3 + C_WHITE.g * 6 + C_WHITE.b;
       ftext(x + 8, y + 2, FT_S, abs(lo - lb) * 2 >= abs(lw - lb) ? C_ORANGE : C_WHITE, b); }   // small keys: the key colour unless a theme makes it fade (GAMEBOY)
     snprintf(b, sizeof b, "%.*s", n - w > 0 ? n - w - 1 : 0, p + w + (n > w)); for (char *q = b; *q; q++) if (*q >= 'A' && *q <= 'Z') *q += 32;
+    arrows(b, 0);
     return kw + 8 + ftext(x + kw + 8, y + 2, FT_S, C_WHITE, b);
 }
 // v3: SHIFT+LEFT/RIGHT inside a pad is the next pad (the cross of the jump is gone, 2026-11-20).
@@ -378,10 +379,11 @@ static void draw_phones(int x, int y) {   // the headphones (R2): lit = a note b
 static void draw_steps2(void) {
     const Pattern *p = cur_pat(sel); Col ec = C_ENG(song.t[sel].type); int nsl = track_nslices(sel);
     int l[L_N], n = lane_list(l), nt = 0;
-    for (int i = 0; i < n; i++) if (!is_auto(l[i])) {   // the tabs; A1-A4 follow them on L1/R1 (their own page comes with MOD)
-        int cx = wx0 + 64 + nt++ * 138, on = l[i] == lane; const char *nm = lane_full(l[i]);
-        if (on) rrect(cx - 65, 74, 130, 38, 8, ec);
-        ftext(cx - ftext_w(FT_MB, nm) / 2, 81, FT_MB, on ? C_BG : C_DIM, nm);
+    int ntab = 0; for (int i = 0; i < n; i++) ntab += !is_auto(l[i]);
+    for (int i = 0; i < n; i++) if (!is_auto(l[i])) {   // the tabs share the work area (2026-11-24: ACID's six ran into the slots)
+        int tp = ww / (ntab ? ntab : 1), cx = wx0 + nt++ * tp + tp / 2, on = l[i] == lane; const char *nm = lane_full(l[i]); int tw = tp - 8 > 130 ? 130 : tp - 8, f = ftext_w(FT_MB, nm) <= tw - 8 ? FT_MB : FT_S;
+        if (on) rrect(cx - tw / 2, 74, tw, 38, 8, ec);
+        ftext(cx - ftext_w(f, nm) / 2, 81 + (f == FT_S ? 3 : 0), f, on ? C_BG : C_DIM, nm);
     }
     int cs = cur_step(), play = song.t[sel].on ? engine_step(sel) : -1, page = follow_ph && play >= 0 ? play / 16 : cs / 16; char b[64];
     for (int v = 0; v < 16; v++) {

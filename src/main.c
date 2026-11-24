@@ -120,13 +120,20 @@ static void arrows(char *s, int keys) {
     char o[256]; int n = 0;
     for (int i = 0; s[i] && n < 250; i++) {
         char c = s[i], nx = s[i + 1], pv = i ? s[i - 1] : ' '; int lone = pv == ' ' || pv == '+' || pv == '(';
-        if (c == '^' && nx == 'v') { o[n++] = 6; o[n++] = 7; i++; }
+        if (keys && !strncmp(s + i, "ARROWS", 6) && (lone || pv == '+')) { o[n++] = 6; o[n++] = 7; o[n++] = 5; o[n++] = 4; i += 5; }   // the four arrows
+        else if (keys && !strncmp(s + i, "UP/DOWN", 7)) { o[n++] = 6; o[n++] = 7; i += 6; }
+        else if (c == '^' && nx == 'v') { o[n++] = 6; o[n++] = 7; i++; }
         else if (c == '<' && nx == '>') { o[n++] = 5; o[n++] = 4; i++; }
         else if (c == '^') o[n++] = 6;
         else if (keys && lone && (nx == ' ' || !nx || nx == ')') && (c == 'v' || c == '<' || c == '>')) o[n++] = c == 'v' ? 7 : c == '<' ? 5 : 4;
         else o[n++] = c;
     }
     o[n] = 0; memcpy(s, o, (size_t)n + 1);
+}
+static int ftext_w(int f, const char *s);
+static void fit(char *b, int f, int maxw) {   // 2026-11-24 (audit): too long for its place: cut, and say so with ".."
+    if (ftext_w(f, b) <= maxw) return; int l = (int)strlen(b);
+    while (l > 2 && ftext_w(f, b) > maxw) { b[--l] = 0; if (l >= 2) { b[l - 2] = '.'; b[l - 1] = '.'; } }
 }
 static void toast(const char *s) { snprintf(msg, sizeof msg, "%s", s); arrows(msg, 0); msg_t = SDL_GetTicks(); }
 static int clampi(int v, int lo, int hi) { return v < lo ? lo : v > hi ? hi : v; }
@@ -4035,7 +4042,7 @@ static void draw_grid(void) {
         if (!snd) {                      // empty: a dark place with a plus, or the file it misses
             if (i == sel) rframe(x - 4, y - 4, CW + 8, CH + 8, 11, 3, perform ? C_DIM : C_WHITE, C_BG);
             rframe(x, y, CW, CH, 8, 2, C_LINE, C_BG);
-            if (slot_want[i][0]) { ftext(x + 25, y + 60, FT_MB, C_RED, "MISSING"); char b[16]; snprintf(b, sizeof b, "%.12s", file_base(slot_want[i])); ftext(x + 25, y + 92, FT_S, C_DIM, b); }
+            if (slot_want[i][0]) { char nn[8]; snprintf(nn, sizeof nn, "%02d", i + 1); ftext(x + 25, y + 12, FT_M, C_DIM, nn); ftext(x + 25, y + 60, FT_MB, C_RED, "MISSING"); char b[64]; snprintf(b, sizeof b, "%s", file_base(slot_want[i])); fit(b, FT_S, CW - 40); ftext(x + 25, y + 92, FT_S, C_DIM, b); }
             else ftext(x + CW / 2 - fv2[FT_LB].w / 2, y + CH / 2 - fv2[FT_LB].h / 2, FT_LB, C_GREY, "+");
         } else {
             if (i == sel) rframe(x - 4, y - 4, CW + 8, CH + 8, 11, 3, perform ? C_DIM : C_WHITE, C_BG);   // the selected card: a white rounded outline
@@ -4043,7 +4050,7 @@ static void draw_grid(void) {
             rrect(x, y, CW, CH, 8, bg);
             rect(x, y, 9, CH, t->mute ? mix(ec, C_BG, 150) : ec, 1);   // the engine's stripe
             char b[24]; snprintf(b, sizeof b, "%02d", i + 1); ftext(x + 25, y + 12, FT_M, C_DIM, b);
-            snprintf(b, sizeof b, "%.10s", slot_name(i)); ftext(x + 25, y + 42, FT_XB, ink, b);
+            { char nb[64]; snprintf(nb, sizeof nb, "%s", slot_name(i)); fit(nb, FT_XB, CW - 40); ftext(x + 25, y + 42, FT_XB, ink, nb); }
             ftext(x + 25, y + 94, FT_M, t->mute ? C_DIM : ec, eng_tag[t->type & 3]);
             icon(slot_icon(i), x + CW - 46, y + 86, t->mute ? C_DIM : pad_icol(i, ink));   // the pad's icon (X), by the engine's name
             { char r[24]; const Pattern *p0 = &t->pat[t->cur]; (void)p0;   // where the pattern goes, small
@@ -4127,7 +4134,8 @@ static void draw_roll(void) {
         int ton = ((n - track_key(sel)) % 12 + 12) % 12 == 0;
         rect(GX, y, rl_cols() * CW, RH - 1, black ? mix(C_BG, C_CELL, 110) : C_CELL, 1);
         rect(KX, y, KW, RH - 1, black ? key_b : key_w, 1);
-        if (pc == 0 || n == rl_n) { roll_name(nm, n); ftext(KX + 6, y + 2, FT_S, n == rl_n && pc ? ec : black ? C_WHITE : C_BG, nm); }
+        if (pc == 0 || n == rl_n) { roll_name(nm, n); ftext(KX + 6, y + 2, FT_S, black ? C_WHITE : C_BG, nm); }   // readable on either key
+        if (n == rl_n) rect(KX + KW - 4, y, 4, RH - 1, ec, 1);   // the cursor's row: a bar on its key
         if (roll_in_scale(n)) rect(KX + KW - 10, y + RH / 2 - 3, 6, 6, ton ? C_ORANGE : black ? C_DIM : C_GREY, 1);
     }
     for (int c = 0; c <= rl_cols(); c++) { int t = rl_v0 + c * rl_snap;   // lines: beats faint, bars clear
@@ -4142,14 +4150,15 @@ static void draw_roll(void) {
         if (x1 - x0 < 8) x1 = x0 + 8;
         Col c = n->start >= T ? C_GREY : mix(mix(ec, C_BG, 110), ec, n->vel * 2);
         if (j == i) rframe(x0, y + 2, x1 - x0, RH - 5, 7, 3, C_WHITE, c); else rrect(x0 + 2, y + 4, x1 - x0 - 3, RH - 9, 5, c);
-        if (n->flags & NF_ACC) ftext(x0 + 7, y + 10, FT_S, C_BG, "A");
+        if (n->flags & NF_ACC) { if (x1 - x0 >= 18) ftext(x0 + 5, y + 10, FT_S, C_BG, "A"); else rect(x0 + 2, y + 4, x1 - x0 - 3, 4, C_WHITE, 1); }   // a short note: a stripe
     }
     if (st >= 0) { int t = st * rl_d32[p->div % 6] * RT - rl_v0; if (t >= 0 && t < rl_cols() * rl_snap) rect(GX + t * CW / rl_snap, GY, 2, RL_ROWS * RH, C_WHITE, 1); }
     if (i < 0) { int cx = GX + (rl_t - rl_v0) * CW / rl_snap, cy = GY + (rl_n0 + RL_ROWS - 1 - rl_n) * RH;   // the cursor on an empty place
         rect(cx, cy + 2, CW, 2, C_WHITE, 1); rect(cx, cy + RH - 5, CW, 2, C_WHITE, 1); rect(cx, cy + 2, 2, RH - 5, C_WHITE, 1); rect(cx + CW - 2, cy + 2, 2, RH - 5, C_WHITE, 1); }
-    snprintf(b, sizeof b, "grid 1/%d \3 bar %d.%d", 128 / rl_snap, rl_t / bar + 1, rl_t % bar / beat + 1); ftext(wx0, 694, FT_S, C_DIM, b);
+    snprintf(b, sizeof b, "grid 1/%d \3 bar %d.%d", 128 / rl_snap, rl_t / bar + 1, rl_t % bar / beat + 1); ftext(wx0, 694, FT_S, C_GREY, b);
     roll_name(nm, rl_n);
-    if (i >= 0) { const Note *n = &p->roll[i]; snprintf(b, sizeof b, "%s \3 len %d/128 \3 vel %d \3 chance %d%s", nm, n->len, n->vel, n->prob, n->flags & NF_ACC ? " \3 acc" : ""); }
+    if (i >= 0) { const Note *n = &p->roll[i]; int sp = rl_d32[p->div % 6] * RT;   // the length in the clip's steps
+        snprintf(b, sizeof b, "%s \3 len %g st \3 vel %d \3 chc %d%s", nm, (double)((int)(n->len * 10.f / sp + 0.5f)) / 10, n->vel, n->prob, n->flags & NF_ACC ? " \3 acc" : ""); }
     else snprintf(b, sizeof b, "%s", nm);
     ftext(wx0 + ww - ftext_w(FT_S, b), 694, FT_S, C_WHITE, b);
     if (ui_qbar) draw_phones(850, 16);   // v3: MON on the quick bar at the top

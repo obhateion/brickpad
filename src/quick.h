@@ -411,6 +411,6 @@ static void qp_draw(void) {
     }
     ftext(40, 584 + oy, FT_M, C_WHITE, qa_tab[ids[qp_cur]].name);
     ftext(40, 614 + oy, FT_M, mix(C_WHITE, C_DIM, 90), qa_desc[ids[qp_cur]]);
-    ftext(40, 648 + oy, FT_S, C_DIM, qb_on(ids[qp_cur]) ? "ON THE BAR. EDIT TAKES IT OFF, EDIT+<> MOVES IT" : qb_n < QB_MAX ? "IN THE DRAWER. EDIT PUTS IT ON THE BAR" : "IN THE DRAWER. THE BAR IS FULL");
+    ftext(40, 648 + oy, FT_S, C_DIM, qb_on(ids[qp_cur]) ? "ON THE BAR. EDIT TAKES IT OFF, EDIT+\005\004 MOVES IT" : qb_n < QB_MAX ? "IN THE DRAWER. EDIT PUTS IT ON THE BAR" : "IN THE DRAWER. THE BAR IS FULL");
     SDL_RenderSetClipRect(R, NULL);
 }

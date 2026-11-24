@@ -241,7 +241,7 @@ static float knob_draw(int x, int y, int w, int h, const char *lb, char *v, floa
     if (on) rframe(x, y, w, h, 8, 3, ec, C_CELL); else rrect(x, y, w, h, 8, C_CELL);
     char l2[16]; snprintf(l2, sizeof l2, "%.13s", lb);
     ftext(x + (w - ftext_w(FT_S, l2)) / 2, y + 8, FT_S, on ? C_WHITE : C_DIM, l2);
-    int cx = x + w / 2, cy = y + 30 + (h - 70) / 2, r = (h - 70) / 2 - 8; if (r > 72) r = 72; if (r > w / 2 - 14) r = w / 2 - 14;   // the knob grows with its card
+    int cx = x + w / 2, cy = y + 30 + (h - 70) / 2, r = (h - 70) / 2 - 8; if (r > 72) r = 72; if (r > w / 2 - 24) r = w / 2 - 24;   // the knob grows with its card; room for its mod ring
     float a = 135 + 270 * f, a0 = 135 + 270 * z;
     knob_arc(cx, cy, r, 6, 135, 405, C_LINE);
     if (fabsf(a - a0) > 1) knob_arc(cx, cy, r, 6, a0, a, ec);
@@ -252,23 +252,29 @@ static float knob_draw(int x, int y, int w, int h, const char *lb, char *v, floa
     ftext(cx - ftext_w(fw, v) / 2, y + h - 30, fw, C_WHITE, v);
     *kcx = cx; *kcy = cy; *kr = r; return a;
 }
+static void val_draw(int x, int y, int w, int h, const char *lb, const char *v, int on, Col ec) {   // a value with many names (TARGET, SHAPE): big, no needle
+    if (on) rframe(x, y, w, h, 8, 3, ec, C_CELL); else rrect(x, y, w, h, 8, C_CELL);
+    char l2[16]; snprintf(l2, sizeof l2, "%.13s", lb); ftext(x + (w - ftext_w(FT_S, l2)) / 2, y + 8, FT_S, on ? C_WHITE : C_DIM, l2);
+    char b[32]; snprintf(b, sizeof b, "%s", v); int f = ftext_w(FT_LB, b) <= w - 16 ? FT_LB : FT_MB; fit(b, f, w - 16);
+    rrect(x + 12, y + h / 2 - 26, w - 24, 52, 10, C_SELBG); ftext(x + w / 2 - ftext_w(f, b) / 2, y + h / 2 - fv2[f].h / 2, f, C_WHITE, b);
+}
 // 2026-11-24 (user): a value with two states is a switch, not a knob. Named pair (a, b): two halves, the one in use filled;
 // a, b NULL: one lamp button ON / OFF (as MIX's M and S). The same card as a knob, the value on the same line.
 static void toggle_draw(int x, int y, int w, int h, const char *lb, const char *a, const char *b, int st, int on, Col ec) {
     if (on) rframe(x, y, w, h, 8, 3, ec, C_CELL); else rrect(x, y, w, h, 8, C_CELL);
     char l2[16]; snprintf(l2, sizeof l2, "%.13s", lb); ftext(x + (w - ftext_w(FT_S, l2)) / 2, y + 8, FT_S, on ? C_WHITE : C_DIM, l2);
-    int bw = w - 28 > 200 ? 200 : w - 28, bh = clampi((h - 70) * 45 / 100, 44, 96), bx = x + (w - bw) / 2, by = y + 30 + (h - 70 - bh) / 2;
+    int bw = w - 28 > 200 ? 200 : w - 28, bh = clampi((h - 40) * 45 / 100, 44, 96), bx = x + (w - bw) / 2, by = y + 30 + (h - 36 - bh) / 2;
     const char *v;
     if (a) { int hw = bw / 2;
         for (int i = 0; i < 2; i++) { const char *t = i ? b : a; int lit = st == i, f = ftext_w(FT_MB, t) <= hw - 10 ? FT_MB : FT_S;
             rrect(bx + i * hw + i, by, hw - 1, bh, 8, lit ? ec : C_SELBG);
-            if (ftext_w(f, t) <= hw - 4) ftext(bx + i * hw + hw / 2 - ftext_w(f, t) / 2, by + bh / 2 - fv2[f].h / 2, f, lit ? C_BG : C_DIM, t); }
+            if (ftext_w(f, t) <= hw - 4) ftext(bx + i * hw + hw / 2 - ftext_w(f, t) / 2, by + bh / 2 - fv2[f].h / 2, f, lit ? C_BG : mix(C_WHITE, C_GREY, 120), t); }
         v = st ? b : a;
     } else {
-        rrect(bx, by, bw, bh, 12, st ? ec : C_SELBG); disc2(bx + bw - 14, by + 14, 6, st ? C_WHITE : mix(ec, C_BG, 150));
+        rrect(bx, by, bw, bh, 12, st ? ec : C_SELBG); disc2(bx + bw - 18, by + 18, 6, st ? C_WHITE : mix(ec, C_BG, 150));
         v = st ? "ON" : "OFF"; ftext(bx + bw / 2 - ftext_w(FT_LB, v) / 2, by + bh / 2 - fv2[FT_LB].h / 2, FT_LB, st ? C_BG : C_DIM, v);
     }
-    int f = ftext_w(FT_MB, v) <= w - 12 ? FT_MB : FT_S; ftext(x + w / 2 - ftext_w(f, v) / 2, y + h - 30, f, st && !a ? ec : C_WHITE, v);
+    (void)v;                              // the switch shows its state: no value line under it (2026-11-24, audit)
 }
 static int snd_pair(int p, const char **a, const char **b) {   // a two-state SOUND parameter: 1, and its names (NULL: OFF / ON)
     *a = *b = NULL;
@@ -279,13 +285,36 @@ static int snd_pair(int p, const char **a, const char **b) {   // a two-state SO
     return p == P_GX + GX_SYNC || p == P_GX + GX_ARP || p == P_CX + CX_FREEZE;
 }
 // 2026-11-24 (audit): a choice among 3..6 named values is a row of segments, the chosen one filled, its name on the value line
-static void seg_draw(int x, int y, int w, int h, const char *lb, const char *v, int n, int cur, int on, Col ec) {
+static void seg_draw(int x, int y, int w, int h, const char *lb, const char *v, const char *const *nm, int n, int cur, int on, Col ec) {
     if (on) rframe(x, y, w, h, 8, 3, ec, C_CELL); else rrect(x, y, w, h, 8, C_CELL);
     char l2[16]; snprintf(l2, sizeof l2, "%.13s", lb); ftext(x + (w - ftext_w(FT_S, l2)) / 2, y + 8, FT_S, on ? C_WHITE : C_DIM, l2);
-    int bw = w - 28, bh = clampi((h - 70) * 30 / 100, 18, 40), bx = x + 14, by = y + 30 + (h - 70 - bh) / 2, sw = bw / n;
-    for (int i = 0; i < n; i++) rrect(bx + i * sw + 1, by, sw - 3, bh, 6, i == cur ? ec : C_SELBG);
-    int f = ftext_w(FT_MB, v) <= w - 12 ? FT_MB : FT_S; char vv[24]; snprintf(vv, sizeof vv, "%s", v); if (ftext_w(f, vv) > w - 12) vv[(w - 12) / fv2[f].w] = 0;
-    ftext(x + w / 2 - ftext_w(f, vv) / 2, y + h - 30, f, C_WHITE, vv);
+    int bx = x + 10, bw = w - 20, sw = bw / n, row = 1;   // the names: in a row when each fits its segment, else one under another
+    for (int i = 0; i < n; i++) if (ftext_w(FT_S, nm[i]) > sw - 6) row = 0;
+    if (row) { int bh = clampi((h - 40) / 2, 28, 56), by = y + 34 + (h - 40 - bh) / 2;
+        for (int i = 0; i < n; i++) { rrect(bx + i * sw + 1, by, sw - 3, bh, 6, i == cur ? ec : C_SELBG);
+            ftext(bx + i * sw + sw / 2 - ftext_w(FT_S, nm[i]) / 2, by + bh / 2 - fv2[FT_S].h / 2, FT_S, i == cur ? C_BG : mix(C_WHITE, C_GREY, 120), nm[i]); }
+        return; }
+    int rh = (h - 40) / n; if (rh > 30) rh = 30; int y0 = y + 32 + (h - 36 - rh * n) / 2;
+    for (int i = 0; i < n; i++) { int ry = y0 + i * rh; char t[24]; snprintf(t, sizeof t, "%s", nm[i]); fit(t, FT_S, bw - 12);
+        if (i == cur) rrect(bx, ry + 1, bw, rh - 2, 6, ec);
+        ftext(x + w / 2 - ftext_w(FT_S, t) / 2, ry + rh / 2 - fv2[FT_S].h / 2, FT_S, i == cur ? C_BG : mix(C_WHITE, C_GREY, 120), t); }
+    (void)v;
+}
+static const char *const *snd_names(int p) {   // the choices of a list parameter, as short as they read
+    static const char *const nrm[] = {"OFF", "PEAK", "LOUD"}, *const wrp[] = {"OFF", "BEATS", "REPITCH", "TONES", "TEXTURE", "COMPLEX"},
+        *const slc[] = {"OFF", "4", "8", "16", "32"}, *const way[] = {"EQUAL", "TRANS", "BY HAND"}, *const brs[] = {"AUTO", "1", "2", "4", "8", "16"},
+        *const osc[] = {"TRI", "SAW", "SQR", "PULSE"}, *const o1[] = {"32'", "16'", "8'", "4'"}, *const o2[] = {"16'", "8'", "4'", "2'"},
+        *const lw[] = {"TRI", "SQR", "SAW", "RAMP", "S&H"}, *const kb[] = {"OFF", "HALF", "FULL"}, *const vca[] = {"ENV", "GATE", "DRONE"},
+        *const am[] = {"UP", "DOWN", "ORDER", "UP/DN"}, *const ao[] = {"1", "2", "3"}, *const dt[] = {"DIODE", "TRANS", "TUBE", "FUZZ"},
+        *const sw[] = {"SQR", "SINE", "TRI"}, *const wn[] = {"HANN", "TRI", "TUKEY", "PERC", "REV P"}, *const im[] = {"OCT+5", "OCT", "SCALE"},
+        *const sy[] = {"FREE", "1/4", "1/8", "1/16", "1/32"}, *const sc[] = {"FWD", "REV", "PING"};
+    switch (p) { case P_NORM: return nrm; case P_WARP: return wrp; case P_SLICES: return slc; case P_SLWAY: return way; case P_BARS: return brs; }
+    if (p == P_SY + SP_OSC1 || p == P_SY + SP_OSC2) return osc;
+    if (p == P_GX + GX_O1OCT) return o1; if (p == P_GX + GX_O2OCT) return o2; if (p == P_GX + GX_LWAVE) return lw; if (p == P_GX + GX_KBT) return kb;
+    if (p == P_GX + GX_VCA) return vca; if (p == P_GX + GX_AMODE) return am; if (p == P_GX + GX_AOCT) return ao; if (p == P_AC + AP_DTYPE) return dt;
+    if (p == P_AX + AX_SUBWAVE) return sw; if (p == P_CX + CX_WINDOW) return wn; if (p == P_CX + CX_SHMODE) return im; if (p == P_CX + CX_SYNC) return sy;
+    if (p == P_CX + CX_SCAN) return sc;
+    return NULL;
 }
 static int snd_list(int p, int *n, int *cur) {   // a parameter whose values are names: how many and which (BARS: AUTO 1 2 4 8 16)
     int lo, hi, st, bg, v; par_limits(sel, p, &lo, &hi, &st, &bg); v = par_get(sel, p);
@@ -298,7 +327,7 @@ static int snd_list(int p, int *n, int *cur) {   // a parameter whose values are
 static void snd_knob(int x, int y, int w, int h, int p, int on, Col ec) {
     { const char *a, *b; if (snd_pair(p, &a, &b)) { int lo, hi, st, bg; par_limits(sel, p, &lo, &hi, &st, &bg); int v = par_get(sel, p) - lo;
         toggle_draw(x, y, w, h, snd_label(p), a, b, v != 0, on, ec); if (on) ui_focus(snd_label(p), v ? (b ? b : "ON") : (a ? a : "OFF"), -1, ec); return; } }
-    { int n, cur; if (snd_list(p, &n, &cur)) { char v[48]; par_str(sel, p, v, sizeof v); seg_draw(x, y, w, h, snd_label(p), v, n, cur, on, ec); if (on) ui_focus(snd_label(p), v, -1, ec); return; } }
+    { int n, cur; if (snd_list(p, &n, &cur) && snd_names(p)) { char v[48]; par_str(sel, p, v, sizeof v); seg_draw(x, y, w, h, snd_label(p), v, snd_names(p), n, cur, on, ec); if (on) ui_focus(snd_label(p), v, -1, ec); return; } }
     char v[96]; if (p == P_SAMPLE) snprintf(v, sizeof v, "OPEN"); else if (p == P_DIR) snprintf(v, sizeof v, "%s", song.t[sel].rev ? "\005" : "\004");
     else par_str(sel, p, v, sizeof v);
     const char *lb = snd_label(p);
@@ -317,8 +346,8 @@ static void snd_knob(int x, int y, int w, int h, int p, int on, Col ec) {
             for (int k = 0; k < NAUTO; k++) if (al[k].target == b) { disc2(cx + (int)((r + 9) * cosf(a * 0.0174533f)), cy + (int)((r + 9) * sinf(a * 0.0174533f)), 6, C_CAT(PC_MOD)); break; }
         }
     }
-    char tg[4][4]; int nt = snd_tags(p, tg), tx = x + w - 6 - nt * 30;   // A1 / L1 badges in the corner
-    for (int i = 0; i < nt; i++) { Col bc = tg[i][0] == 'A' ? C_CAT(PC_MOD) : C_WHITE; rrect(tx + i * 30, y + h - 58, 26, 18, 4, bc); ftext(tx + i * 30 + 13 - ftext_w(FT_S, tg[i]) / 2, y + h - 58, FT_S, C_BG, tg[i]); }
+    char tg[4][4]; int nt = snd_tags(p, tg), tx = x + w - 6 - nt * 30;   // A1 / L1 badges in the top corner, off the ring (2026-11-24)
+    for (int i = 0; i < nt; i++) { Col bc = tg[i][0] == 'A' ? C_CAT(PC_MOD) : C_WHITE; rrect(tx + i * 30, y + 6, 26, 18, 4, bc); ftext(tx + i * 30 + 13 - ftext_w(FT_S, tg[i]) / 2, y + 6, FT_S, C_BG, tg[i]); }
     if (on) ui_focus(lb, v, par_is_number(p) && hi > lo ? (int)(f * 100) : -1, ec);
 }
 static int pt_y(int j) { return j < 16 ? 150 + (j - 1) * 40 : 146 + (j - 17) * 37; }   // a jack's row
@@ -352,6 +381,9 @@ static void draw_patch2(Col ec) {
         char o[16], d[16]; l = (int)strlen(s); snprintf(s + l, sizeof s - l, "%s%s \004 %s", l ? "   " : "", pt_name(gp[k][0], o), pt_name(16 + gp[k][1], d));
         if (gp[k][0] == JO_ATT || gp[k][1] == JI_ATT) { l = (int)strlen(s); snprintf(s + l, sizeof s - l, " \003 %d%%", song.gx[sel][GX_ATTEN]); } }
     if (!s[0]) snprintf(s, sizeof s, "%s: no cable", pt_name(cj, b));
+    { int any = 0; for (int k = 0; k < NCABLE; k++) any |= gp[k][0] && gp[k][1];   // an empty bay says how (2026-11-24)
+      if (!any && !pt_pick) { const char *h1 = "EDIT an output on the left,", *h2 = "then EDIT an input on the right";
+        ftext(wx0 + ww / 2 - ftext_w(FT_M, h1) / 2, 380, FT_M, C_GREY, h1); ftext(wx0 + ww / 2 - ftext_w(FT_M, h2) / 2, 412, FT_M, C_GREY, h2); } }
     ftext(wx0 + ww / 2 - ftext_w(FT_MB, s) / 2, 672, FT_MB, ec, s);
     draw_footer(pt_pick ? "EDIT ON AN INPUT PLUG  Y DROP THE CABLE" : cj >= 16 ? "EDIT TAKE ITS CABLE  OPT+EDIT PULL IT  ^ TABS"
                 : "EDIT CABLE  OPT+EDIT PULL ITS CABLES  ^ TABS");
@@ -385,6 +417,8 @@ static void snd_deco(const SndPage *pg, int x, int y, int w, int h, Col ec) {
         int v = clampi(t->vol, 0, 100); char b[16]; snprintf(b, sizeof b, "%d", v);
         rrect(ix, iy + ih / 2 - 14, iw, 28, 8, C_BG); rrect(ix, iy + ih / 2 - 14, iw * v / 100, 28, 8, ec);
         ftext(ix, iy, FT_S, C_DIM, "LEVEL"); ftext(ix + iw - ftext_w(FT_XB, b), iy + ih / 2 - 60, FT_XB, C_WHITE, b);
+        mx_meters(); float m = mx_show[sel]; int mw = (int)(iw * fminf(1.f, m));   // what the pad plays now (2026-11-24: the picture was the VOLUME card again)
+        ftext(ix, iy + ih / 2 + 30, FT_S, C_DIM, "NOW"); rrect(ix, iy + ih / 2 + 56, iw, 12, 5, C_BG); if (mw > 0) rrect(ix, iy + ih / 2 + 56, mw, 12, 5, m > 0.98f ? C_RED : C_PLAY);
     }
 }
 static void draw_sound2(void) {

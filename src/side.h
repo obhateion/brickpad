@@ -46,7 +46,7 @@ static int side_fill(int pg, int i, SideSlot *s) {   // 0: the place is empty
         s->name = "HEAR"; snprintf(s->v1, 16, "%s", m == 0 ? "OFF" : m == 1 ? "PUT" : "ALL"); s->vc = m ? C_ORANGE : C_DIM; s->lamp = 1; s->lc = m ? C_ORANGE : C_LINE;
         s->hint = "EDIT OFF / PUT / ALL"; return 1; }
     case 6:
-        if (pg == SD_ROLL) { s->name = "VEL/CHNC"; snprintf(s->v1, 16, "%s", x_latch ? "ON" : "ARROWS"); s->vc = x_latch ? C_ORANGE : C_WHITE; s->hint = "EDIT ARROWS: ^v VELOCITY <> CHANCE"; return 1; }
+        if (pg == SD_ROLL) { s->name = "VEL/CHNC"; snprintf(s->v1, 16, "%s", x_latch ? "ON" : "OFF"); s->vc = x_latch ? C_ORANGE : C_DIM; s->hint = "EDIT ARROWS: ^v VELOCITY <> CHANCE"; return 1; }
         if (pg == SD_CHORDS) { s->name = "SLOT"; snprintf(s->v1, 16, "%d/%d", ch_slot + 1, ch_nslots(cur_pat(sel))); s->hint = "EDIT NEXT SLOT  EDIT+<> SLOT"; return 1; }
         s->name = "RANDOM"; snprintf(s->v1, 16, "FILL"); s->hint = "EDIT RANDOM"; return 1;
     case 7:
@@ -56,6 +56,8 @@ static int side_fill(int pg, int i, SideSlot *s) {   // 0: the place is empty
     }
     if (pg == SD_SOUND) switch (i) {
     case 0: s->name = "LISTEN"; snprintf(s->v1, 16, "PLAY"); s->hint = "EDIT LISTEN TO THE PAD"; return 1;
+    case 2: if (song.t[sel].type == 1 || song.t[sel].type == 2) { s->name = "PRESET"; snprintf(s->v1, 16, "OPEN"); s->hint = "EDIT PRESETS"; return 1; }
+        s->name = "FILE"; { const char *f = slot_name(sel); snprintf(s->v1, 16, "%s", f ? f : "LOAD"); } s->hint = "EDIT BROWSE FILES"; return 1;
     case 1: s->name = "MIDI"; snprintf(s->v1, 16, "%s", mlearn_par >= 0 ? "ON" : "OFF"); s->vc = mlearn_par >= 0 ? C_ORANGE : C_DIM; s->lamp = 1; s->lc = mlearn_par >= 0 ? C_ORANGE : C_LINE;
         s->hint = "EDIT MIDI LEARN"; return 1;
     }
@@ -67,7 +69,7 @@ static int side_fill(int pg, int i, SideSlot *s) {   // 0: the place is empty
             else { s->name = "LFO"; snprintf(s->v1, 16, "1-4"); s->hint = "EDIT OPEN LFO"; } return 1;
     case 1: { const PadMix *pm = &song.mix.pad[sel]; s->name = "DUCK";
         if (pm->spare[DK_SRC]) snprintf(s->v1, 16, "PAD %d", pm->spare[DK_SRC]); else snprintf(s->v1, 16, "OFF");
-        s->vc = pm->spare[DK_SRC] ? C_WHITE : C_DIM; s->hint = "EDIT OPEN DUCK"; return 1; }
+        s->vc = !pm->spare[DK_SRC] ? C_DIM : has_sound(pm->spare[DK_SRC] - 1) ? C_WHITE : C_RED; s->hint = "EDIT OPEN DUCK"; return 1; }   // red: that pad is empty
     }
     return 0;
 }
@@ -118,7 +120,7 @@ static void side_press(int pg, int i) {   // EDIT on a slot
             if (pg == SD_ROLL) sim_key(K_EDIT, K_X);
             return;
     }
-    if (pg == SD_SOUND) { if (i == 0) listen(sel); else { side_foc = 0; sim_key(K_R2, -1); } return; }
+    if (pg == SD_SOUND) { if (i == 0) listen(sel); else if (i == 2) { side_foc = 0; if (song.t[sel].type == 1 || song.t[sel].type == 2) preset_open(); else browse_slot(); } else { side_foc = 0; sim_key(K_R2, -1); } return; }
     if (pg == SD_FX) { sim_key(K_X, -1); return; }
     if (pg == SD_LFO || pg == SD_AUTO) { side_foc = 0; if (i == 1) cx_duck(); else if (pg == SD_LFO) cx_auto(); else cx_lfo(); }
 }
@@ -197,8 +199,9 @@ static void side_draw(void) {
         rrect(x, y, SD_W, sh, 10, C_CELL);
         ftext(x + 12, y + 10, FT_S, on ? C_WHITE : C_DIM, s.name);
         if (s.lamp) disc2(x + SD_W - 16, y + 20, 6, s.lc);
-        if (s.v2[0]) { ftext(x + SD_W / 2 - ftext_w(FT_MB, s.v1) / 2, y + 42, FT_MB, s.vc, s.v1); ftext(x + SD_W / 2 - ftext_w(FT_MB, s.v2) / 2, y + 74, FT_MB, s.vc, s.v2); }
-        else { int f = ftext_w(FT_LB, s.v1) <= SD_W - 12 ? FT_LB : FT_MB; ftext(x + SD_W / 2 - ftext_w(f, s.v1) / 2, y + 56, f, s.vc, s.v1); }
+        if (s.v2[0]) { int f1 = ftext_w(FT_MB, s.v1) <= SD_W - 12 ? FT_MB : FT_S, f2 = ftext_w(FT_MB, s.v2) <= SD_W - 12 ? FT_MB : FT_S; fit(s.v1, f1, SD_W - 12); fit(s.v2, f2, SD_W - 12);
+            ftext(x + SD_W / 2 - ftext_w(f1, s.v1) / 2, y + 42, f1, s.vc, s.v1); ftext(x + SD_W / 2 - ftext_w(f2, s.v2) / 2, y + 74, f2, s.vc, s.v2); }
+        else { int f = ftext_w(FT_LB, s.v1) <= SD_W - 12 ? FT_LB : ftext_w(FT_MB, s.v1) <= SD_W - 12 ? FT_MB : FT_S; fit(s.v1, f, SD_W - 12); ftext(x + SD_W / 2 - ftext_w(f, s.v1) / 2, y + 56, f, s.vc, s.v1); }
     }
 }
 static const char *side_hint(void) {      // the footer while the cursor is on a slot
