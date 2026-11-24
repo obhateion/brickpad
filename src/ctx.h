@@ -17,6 +17,8 @@ static void cx_step(void) { step_listen(cur_step()); }
 static void cx_mute(void) { if (gsel_mute()) return; int s = tab == T_MIX && mcol < NSLOT ? mcol : sel; act_mute_toggle(s); toast(song.t[s].mute ? "MUTE ON" : "MUTE OFF"); }
 static void cx_solo(void) { int s = tab == T_MIX && mcol < NSLOT ? mcol : sel; act_solo_toggle(s); toast(song.mix.pad[s].solo ? "SOLO ON" : "SOLO OFF"); }
 static void cx_copy(void) { copy_paste(0); }
+static void export_open(void); static int ex_resample;
+static void cx_resample(void) { export_open(); ex_resample = 1; toast("RESAMPLE: EDIT RENDERS INTO AN EMPTY PAD"); }
 static void cx_paste(void) { copy_paste(1); }
 static void chord_open(void);
 static void lay_go(int m) {             // v3 (user): the layout of the clip: STEPS, PIANO ROLL, CHORDS
@@ -58,6 +60,7 @@ static void ctx_open(void) {
     else if (rolling) ctx_add("RANDOM", K_X, K_SHIFT, 0, NULL);   // the roll's slots have no room for it
     else if (ducking) { ctx_add("NEW POINT", K_X, -1, 0, NULL); ctx_add("BEND", 0, 0, 1, NULL); }
     else if (scening) ctx_add("NEW COPY", K_X, -1, 0, NULL);
+    else if (tab == T_GRID && ui_cat < 0 && !has_sound(sel)) { ctx_add("RESAMPLE HERE", 0, 0, 0, cx_resample); ctx_common(); }   // an empty pad: the mix rendered into it
     else if (tab == T_GRID && ui_cat < 0) {
         ctx_add("CLIP START / STOP", K_X, -1, 0, NULL); ctx_add("LISTEN", 0, 0, 0, cx_listen); ctx_add("MUTE", 0, 0, 0, cx_mute);
         ctx_add("SOLO", 0, 0, 0, cx_solo); ctx_add("NAME", K_X, K_SHIFT, 0, NULL); ctx_add("FREEZE", K_Y, K_SHIFT, 0, NULL); ctx_common();

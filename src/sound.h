@@ -278,9 +278,27 @@ static int snd_pair(int p, const char **a, const char **b) {   // a two-state SO
     if (p == P_AX + AX_SUBOCT) { *a = "-1 OCT"; *b = "-2 OCT"; return 1; }
     return p == P_GX + GX_SYNC || p == P_GX + GX_ARP || p == P_CX + CX_FREEZE;
 }
+// 2026-11-24 (audit): a choice among 3..6 named values is a row of segments, the chosen one filled, its name on the value line
+static void seg_draw(int x, int y, int w, int h, const char *lb, const char *v, int n, int cur, int on, Col ec) {
+    if (on) rframe(x, y, w, h, 8, 3, ec, C_CELL); else rrect(x, y, w, h, 8, C_CELL);
+    char l2[16]; snprintf(l2, sizeof l2, "%.13s", lb); ftext(x + (w - ftext_w(FT_S, l2)) / 2, y + 8, FT_S, on ? C_WHITE : C_DIM, l2);
+    int bw = w - 28, bh = clampi((h - 70) * 30 / 100, 18, 40), bx = x + 14, by = y + 30 + (h - 70 - bh) / 2, sw = bw / n;
+    for (int i = 0; i < n; i++) rrect(bx + i * sw + 1, by, sw - 3, bh, 6, i == cur ? ec : C_SELBG);
+    int f = ftext_w(FT_MB, v) <= w - 12 ? FT_MB : FT_S; char vv[24]; snprintf(vv, sizeof vv, "%s", v); if (ftext_w(f, vv) > w - 12) vv[(w - 12) / fv2[f].w] = 0;
+    ftext(x + w / 2 - ftext_w(f, vv) / 2, y + h - 30, f, C_WHITE, vv);
+}
+static int snd_list(int p, int *n, int *cur) {   // a parameter whose values are names: how many and which (BARS: AUTO 1 2 4 8 16)
+    int lo, hi, st, bg, v; par_limits(sel, p, &lo, &hi, &st, &bg); v = par_get(sel, p);
+    if (p == P_BARS) { static const int bv[6] = {0, 1, 2, 4, 8, 16}; *n = 6; *cur = 0; for (int i = 0; i < 6; i++) if (bv[i] == v) *cur = i; return 1; }
+    static const int ls[] = {P_NORM, P_WARP, P_SLICES, P_SLWAY, P_SY + SP_OSC1, P_SY + SP_OSC2, P_GX + GX_O1OCT, P_GX + GX_O2OCT, P_GX + GX_LWAVE, P_GX + GX_KBT,
+        P_GX + GX_VCA, P_GX + GX_AMODE, P_GX + GX_AOCT, P_AC + AP_DTYPE, P_AX + AX_SUBWAVE, P_CX + CX_WINDOW, P_CX + CX_SHMODE, P_CX + CX_SYNC, P_CX + CX_SCAN};
+    for (unsigned i = 0; i < sizeof ls / sizeof *ls; i++) if (ls[i] == p && hi - lo >= 1 && hi - lo <= 5) { *n = hi - lo + 1; *cur = clampi(v - lo, 0, hi - lo); return 1; }
+    return 0;
+}
 static void snd_knob(int x, int y, int w, int h, int p, int on, Col ec) {
     { const char *a, *b; if (snd_pair(p, &a, &b)) { int lo, hi, st, bg; par_limits(sel, p, &lo, &hi, &st, &bg); int v = par_get(sel, p) - lo;
         toggle_draw(x, y, w, h, snd_label(p), a, b, v != 0, on, ec); if (on) ui_focus(snd_label(p), v ? (b ? b : "ON") : (a ? a : "OFF"), -1, ec); return; } }
+    { int n, cur; if (snd_list(p, &n, &cur)) { char v[48]; par_str(sel, p, v, sizeof v); seg_draw(x, y, w, h, snd_label(p), v, n, cur, on, ec); if (on) ui_focus(snd_label(p), v, -1, ec); return; } }
     char v[96]; if (p == P_SAMPLE) snprintf(v, sizeof v, "OPEN"); else if (p == P_DIR) snprintf(v, sizeof v, "%s", song.t[sel].rev ? "\005" : "\004");
     else par_str(sel, p, v, sizeof v);
     const char *lb = snd_label(p);

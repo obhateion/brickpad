@@ -257,6 +257,7 @@ static void mixer2_move(int k) {
         if (k == K_LEFT || k == K_RIGHT) { int p = (ui_drawer_left ? (mcol >= NSLOT ? mcol - NSLOT : mcol + 3) : mcol) + (k == K_RIGHT ? 1 : -1);
             if (p < 0 || p > NSLOT + 2) return;
             mcol = ui_drawer_left ? (p < 3 ? p + NSLOT : p - 3) : p;
+            if (mcol < NSLOT && !has_sound(mcol) && any_sound()) { mixer2_move(k); return; }   // 2026-11-24: an empty strip is passed over
             if (mcol < NSLOT) sel = mcol; else if (mx_pg == 0) { mx_pg = 1; mx_r = 0; } }
         else if (mcol >= NSLOT) { if (k == K_UP && mx_r) mx_r--; else if (k == K_DOWN && mx_r < 2) mx_r++; }
         mrow = mcol >= NSLOT && mx_r ? MX_PAN : MX_VOL; return; }
@@ -562,10 +563,10 @@ static void draw_prj2(void) {
 // ---- MIXER > RETURN A / RETURN B / MASTER: every parameter of the unit as cards (the 1.2 cursor: fcol the column, frow the row) ----
 static int v2_unit(void) { return tab == T_FX && fx_unit >= NSLOT; }
 static void draw_unit2(void) {
-    int u = fx_unit, n = unit_nparams(u), half = (n + 1) / 2; Col ec = u == NSLOT + 2 ? th_cur[TC_SMP] : C_CAT(PC_MIX);
+    int u = fx_unit, n = unit_nparams(u), half = unit_split(u); Col ec = u == NSLOT + 2 ? th_cur[TC_SMP] : C_CAT(PC_MIX);
     mx_row();                            // 2026-11-24: the mixer's tab row (PADS RETURN A RETURN B MASTER FREEZE)
-    int h = half <= 4 ? 136 : 108, dy = h + 12;
-    for (int k = 0; k < n; k++) { int c = k >= half, r = c ? k - half : k, x = c ? 518 : 32, y = 118 + r * dy, on = fcol == c && frow == r, lo, hi, def; char b[16];
+    int gr = u == NSLOT + 2, rows[2] = {half, n - half + gr};   // MASTER: a meter of the gain reduction under LIMITER
+    for (int k = 0; k < n; k++) { int c = k >= half, r = c ? k - half : k, x = c ? 518 : 32, h = (700 - 118 - (rows[c] - 1) * 12) / rows[c]; if (h > 136) h = 136; int y = 118 + r * (h + 12), on = !tab_focus && fcol == c && frow == r, lo, hi, def; char b[16];
         int v = *unit_param(u, k, &lo, &hi, &def); unit_pstr(u, k, v, b);
         const char *nm = u == NSLOT ? rv_name[k] : u == NSLOT + 1 ? dl_name[k] : ms_name[k];
         if (on) { rframe(x, y, 473, h, 8, 4, ec, C_CELL); ui_focus(nm, b, hi - lo > 1 ? (v - lo) * 100 / (hi - lo) : -1, ec); } else rrect(x, y, 473, h, 8, C_CELL);
@@ -574,6 +575,10 @@ static void draw_unit2(void) {
             rrect(lx, ly, lw, lh, 10, v ? ec : C_SELBG); ftext(lx + lw / 2 - ftext_w(FT_LB, b) / 2, ly + lh / 2 - fv2[FT_LB].h / 2, FT_LB, v ? C_BG : C_DIM, b); continue; }
         ftext(x + 453 - ftext_w(FT_XB, b), y + 10, FT_XB, C_WHITE, b);
         if (hi - lo > 1) { rect(x + 20, y + h - 26, 433, 8, C_LINE, 1); rect(x + 20, y + h - 26, 433 * clampi(v - lo, 0, hi - lo) / (hi - lo), 8, ec, 1); } }
+    if (gr) { int h = (700 - 118 - (rows[1] - 1) * 12) / rows[1]; if (h > 136) h = 136; int y = 118 + (rows[1] - 1) * (h + 12); float g = engine_master_gr(); char b[24];
+        rrect(518, y, 473, h, 8, C_CELL); ftext(538, y + 12, FT_M, C_DIM, "GAIN REDUCTION"); snprintf(b, sizeof b, "%.1f DB", g > 0.05f ? -g : 0.f);
+        ftext(971 - ftext_w(FT_XB, b), y + 10, FT_XB, g > 0.1f ? C_ORANGE : C_WHITE, b);
+        rect(538, y + h - 26, 433, 8, C_LINE, 1); rect(538 + 433 - (int)(433 * fminf(g, 24) / 24), y + h - 26, (int)(433 * fminf(g, 24) / 24), 8, C_ORANGE, 1); }
     draw_footer("EDIT+ARROWS VALUE  ^ PAGES  Y BACK  EDIT ON/OFF  OPT+EDIT DEFAULT");
 }
 

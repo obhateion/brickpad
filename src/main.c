@@ -50,7 +50,7 @@ enum { TC_BG, TC_CELL, TC_LINE, TC_GREY, TC_DIM, TC_TEXT, TC_ACCENT, TC_ALERT, T
 enum { TH_PRESETS = 5 };
 #define RGB(x) {(x) >> 16 & 255, (x) >> 8 & 255, (x) & 255}
 static const Col th_preset[TH_PRESETS][TC_N] = {
-    {RGB(0x0B0C10), RGB(0x161820), RGB(0x2A2E3A), RGB(0x3D4250), RGB(0x626877), RGB(0xE8E8E8), RGB(0xFFD23F), RGB(0xFF5A5A), RGB(0x23263A), RGB(0x7CFF6B),
+    {RGB(0x0B0C10), RGB(0x161820), RGB(0x2A2E3A), RGB(0x3D4250), RGB(0x80879A), RGB(0xE8E8E8), RGB(0xFFD23F), RGB(0xFF5A5A), RGB(0x23263A), RGB(0x7CFF6B),
      RGB(0x3FE0D0), RGB(0xFF4FA3), RGB(0xFFD23F), RGB(0x5AA0FF), RGB(0x7CFF6B), RGB(0xFFD23F), RGB(0xFF4FA3), RGB(0x5AA0FF), RGB(0xFF8A3D)},   // COSMIC: the mockups
     {RGB(0x000802), RGB(0x041408), RGB(0x0A3014), RGB(0x145024), RGB(0x288C46), RGB(0xAAFFB4), RGB(0x5AFF78), RGB(0xE6FFE6), RGB(0x082C12), RGB(0x78FF96),
      RGB(0x3CDC6E), RGB(0x8CFFAA), RGB(0x64F082), RGB(0x28B45A), RGB(0x78FF96), RGB(0x5AFF78), RGB(0x8CFFAA), RGB(0x28B45A), RGB(0x64F082)},   // MATRIX: green monochrome
@@ -61,7 +61,7 @@ static const Col th_preset[TH_PRESETS][TC_N] = {
     {RGB(0x80913A), RGB(0x748536), RGB(0x5F6E32), RGB(0x536234), RGB(0x3C563C), RGB(0x192E19), RGB(0x2B442B), RGB(0x192E19), RGB(0x687635), RGB(0x3C563C),
      RGB(0x192E19), RGB(0x3C563C), RGB(0x2B442B), RGB(0x495D39), RGB(0x3C563C), RGB(0x2B442B), RGB(0x3C563C), RGB(0x495D39), RGB(0x2B442B)},   // GAMEBOY: light olive, half saturated (user 2026-11-14: "too loud")
 };
-static Col th_cur[TC_N] = {RGB(0x0B0C10), RGB(0x161820), RGB(0x2A2E3A), RGB(0x3D4250), RGB(0x626877), RGB(0xE8E8E8), RGB(0xFFD23F), RGB(0xFF5A5A), RGB(0x23263A), RGB(0x7CFF6B),
+static Col th_cur[TC_N] = {RGB(0x0B0C10), RGB(0x161820), RGB(0x2A2E3A), RGB(0x3D4250), RGB(0x80879A), RGB(0xE8E8E8), RGB(0xFFD23F), RGB(0xFF5A5A), RGB(0x23263A), RGB(0x7CFF6B),
      RGB(0x3FE0D0), RGB(0xFF4FA3), RGB(0xFFD23F), RGB(0x5AA0FF), RGB(0x7CFF6B), RGB(0xFFD23F), RGB(0xFF4FA3), RGB(0x5AA0FF), RGB(0xFF8A3D)};
 #define C_ENG(t) th_cur[TC_SMP + ((t) & 3)]   // an engine by Track.type: SAMPLER GRAND ACID CLOUD
 #define C_PLAY th_cur[TC_PLAY]
@@ -114,7 +114,21 @@ static void logmsg(const char *fmt, ...) {
 }
 // A time mark is SDL_GetTicks() | 1, so it is never 0 but may be 1 ms ahead of "now": compare only through this.
 static int ms_since(Uint32 now, Uint32 mark) { return (Sint32)(now - mark); }
-static void toast(const char *s) { snprintf(msg, sizeof msg, "%s", s); msg_t = SDL_GetTicks(); }
+// 2026-11-24 (user: "^v <> are unclear, draw them"): the keys' arrows as arrow glyphs (6 up, 7 down, 5 left, 4 right).
+// keys: also a lone v < > (or after a +) in a key name; text: only ^v, <> and ^ (a v in a word stays a letter).
+static void arrows(char *s, int keys) {
+    char o[256]; int n = 0;
+    for (int i = 0; s[i] && n < 250; i++) {
+        char c = s[i], nx = s[i + 1], pv = i ? s[i - 1] : ' '; int lone = pv == ' ' || pv == '+' || pv == '(';
+        if (c == '^' && nx == 'v') { o[n++] = 6; o[n++] = 7; i++; }
+        else if (c == '<' && nx == '>') { o[n++] = 5; o[n++] = 4; i++; }
+        else if (c == '^') o[n++] = 6;
+        else if (keys && lone && (nx == ' ' || !nx || nx == ')') && (c == 'v' || c == '<' || c == '>')) o[n++] = c == 'v' ? 7 : c == '<' ? 5 : 4;
+        else o[n++] = c;
+    }
+    o[n] = 0; memcpy(s, o, (size_t)n + 1);
+}
+static void toast(const char *s) { snprintf(msg, sizeof msg, "%s", s); arrows(msg, 0); msg_t = SDL_GetTicks(); }
 static int clampi(int v, int lo, int hi) { return v < lo ? lo : v > hi ? hi : v; }
 static float clampf1(float v) { return v < -1 ? -1 : v > 1 ? 1 : v; }
 
@@ -138,9 +152,9 @@ static void font_init(void) {
         SDL_SetTextureBlendMode(font_sc[sc], SDL_BLENDMODE_BLEND);
         free(px);
     }
-    for (int f = 0; f < FT_N; f++) {     // UI v2 fonts: 101 glyphs in a row
-        const FontV2 *v = &fv2[f]; int w = 101 * v->w; Uint32 *px = calloc((size_t)w * v->h, 4);
-        for (int g = 0; g < 101; g++) for (int i = 0; i < v->w * v->h; i++) {
+    for (int f = 0; f < FT_N; f++) {     // UI v2 fonts: 103 glyphs in a row
+        const FontV2 *v = &fv2[f]; int w = 103 * v->w; Uint32 *px = calloc((size_t)w * v->h, 4);
+        for (int g = 0; g < 103; g++) for (int i = 0; i < v->w * v->h; i++) {
             int a = v->px[g * v->per + i / 2] >> ((i & 1) ? 0 : 4) & 15;
             px[(i / v->w) * w + g * v->w + i % v->w] = (Uint32)(a * 17) << 24 | 0xFFFFFF;
         }
@@ -3206,6 +3220,7 @@ static int8_t *unit_param(int unit, int k, int *lo, int *hi, int *def) {   // re
     ms_range(k, lo, hi); *def = msd[k]; return &song.mix.ms[k];
 }
 static int unit_nparams(int unit) { return unit == NSLOT + 2 ? 9 : 8; }   // master: the duck rows come later
+static int unit_split(int u) { return u == NSLOT + 2 ? 6 : (unit_nparams(u) + 1) / 2; }   // the left column: MASTER keeps COMP's six there, LIMITER's three on the right (2026-11-24)
 // ---------- DUCK window (2026-11-11, user: "more flexible, a window like Kickstart 2 / ShaperBox 3") ----------
 // EDIT on a strip's DK row. The curve: 16 points of level along the dip (Song.dkc), filled from a SHAPE or set point by
 // point. The fields: TRIGGER (NOTE of the source pad, its SOUND passing a threshold, GRID on the tempo), SOURCE, AMOUNT,
@@ -3375,7 +3390,7 @@ static void fx_move(int k) {
         if (frow == 8) fcol = fcol * 2;
         return;
     }
-    int n = unit_nparams(fx_unit), half = (n + 1) / 2;   // two columns of parameters
+    int n = unit_nparams(fx_unit), half = unit_split(fx_unit);   // two columns of parameters
     if (k == K_LEFT || k == K_RIGHT) { fcol = k == K_RIGHT; if (fcol && frow >= n - half) frow = n - half - 1; return; }
     frow = clampi(frow + (k == K_DOWN ? 1 : -1), 0, (fcol ? n - half : half) - 1);
 }
@@ -3383,7 +3398,7 @@ static void lfo_value(int d, int big);
 static void fx_value(int d, int big) {
     if (fx_unit < NSLOT && fx_page) { lfo_value(d, big); return; }
     if (fx_unit >= NSLOT) {
-        int half = (unit_nparams(fx_unit) + 1) / 2, kk = fcol * half + frow, lo, hi, def;
+        int half = unit_split(fx_unit), kk = fcol * half + frow, lo, hi, def;
         unit_param(fx_unit, kk, &lo, &hi, &def); act_unit_param_add(fx_unit, kk, d * (big && hi > 10 ? 10 : 1)); return;
     }
     PadMix *pm = &song.mix.pad[fx_unit];
@@ -3403,7 +3418,7 @@ static void fx_value(int d, int big) {
 }
 static void fx_tap(void) {
     if (fx_unit < NSLOT && fx_page) { if (lrow == 0) learn_lfo_start(fx_unit, lcol); else lfo_value(1, 0); return; }   // TARGET: point at a knob
-    if (fx_unit >= NSLOT) { int half = (unit_nparams(fx_unit) + 1) / 2, kk = fcol * half + frow, lo, hi, def; int8_t *v = unit_param(fx_unit, kk, &lo, &hi, &def);
+    if (fx_unit >= NSLOT) { int half = unit_split(fx_unit), kk = fcol * half + frow, lo, hi, def; int8_t *v = unit_param(fx_unit, kk, &lo, &hi, &def);
         if (hi == 1) { edit_begin(); *v = !*v; } return; }
     if (frow == 8) return;
     FxSlot *f = &song.mix.pad[fx_unit].ins[fcol];
@@ -3415,7 +3430,7 @@ static void fx_tap(void) {
 static void fx_delete(void) {
     if (fx_unit < NSLOT && fx_page && lrow == 0) { char b[24]; edit_begin(); song.lfo[fx_unit][lcol].target = 0; snprintf(b, sizeof b, "LFO %d UNLINKED", lcol + 1); toast(b); return; }   // 2026-11-12, user
     if (fx_unit < NSLOT && fx_page) { edit_begin(); memset(&song.lfo[fx_unit][lcol], 0, sizeof(Lfo)); toast("LFO OFF"); return; }
-    if (fx_unit >= NSLOT) { int half = (unit_nparams(fx_unit) + 1) / 2, kk = fcol * half + frow, lo, hi, def; int8_t *v = unit_param(fx_unit, kk, &lo, &hi, &def); edit_begin(); *v = (int8_t)def; return; }
+    if (fx_unit >= NSLOT) { int half = unit_split(fx_unit), kk = fcol * half + frow, lo, hi, def; int8_t *v = unit_param(fx_unit, kk, &lo, &hi, &def); edit_begin(); *v = (int8_t)def; return; }
     PadMix *pm = &song.mix.pad[fx_unit]; edit_begin();
     if (frow == 8) { if (fcol == 0) pm->send_a = 0; else if (fcol == 1) pm->send_b = 0; else if (fcol == 2) song.t[fx_unit].pan = 0; else song.t[fx_unit].vol = 75; return; }
     FxSlot *f = &pm->ins[fcol];
@@ -3906,7 +3921,7 @@ static void key_event1(int k, int down) {
     if (tab == T_FX && (k == K_L1 || k == K_R1)) { fx_unit_step(k == K_R1 ? 1 : -1); return; }
     if (tab == T_FX && k == K_Y && fx_unit < NSLOT) { fx_page = !fx_page; return; }   // FX <> MOD
     if (v2_mix() && (k == K_L1 || k == K_R1)) return;   // MIX of a pad: one page
-    if (v2_unit() && k == K_Y) { int u = fx_unit; set_tab(T_MIX); mx_pg = 1; mcol = u; mx_r = 0; mrow = MX_VOL; return; }   // back to the drawer
+    if (v2_unit() && k == K_Y) { mix_goto(MXP_PADS); return; }   // 2026-11-24: back to the mixer's first tab, a level up
     if (v2_mixer() && (k == K_L1 || k == K_R1)) { mix_goto((mix_at() + (k == K_R1 ? 1 : MXP_N - 1)) % MXP_N); return; }   // 2026-11-24: PADS RETURN A RETURN B MASTER FREEZE
     if (tab == T_MIX && (k == K_L1 || k == K_R1)) { mcol = k == K_R1 ? (mcol < NSLOT ? (mcol / 4 + 1) * 4 : 0) : (mcol < 4 ? NSLOT : mcol <= NSLOT ? (mcol - 1) / 4 * 4 : NSLOT); if (mcol > NSLOT + 2) mcol = 0; if (mcol < NSLOT) sel = mcol; return; }
     if (ui_cat == PC_SOUND && tab == T_SEQ && (k == K_L1 || k == K_R1)) { sound_page_step(k == K_R1 ? 1 : -1); return; }   // SOUND: the page

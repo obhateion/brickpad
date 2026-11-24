@@ -45,6 +45,8 @@ static int ftext(int x, int y, int f, Col c, const char *s) {   // y: the top of
         if (ch == 3) g = 98;             // the middle dot
         if (ch == 4) g = 99;             // the arrow
         if (ch == 5) g = 100;            // the arrow to the left
+        if (ch == 6) g = 101;            // up (2026-11-24: the keys' ^ v drawn as arrows)
+        if (ch == 7) g = 102;            // down
         if (g <= 0) continue;
         SDL_Rect src = {g * v->w, 0, v->w, v->h}, dst = {x, y, v->w, v->h}; SDL_RenderCopy(R, t, &src, &dst);
     }
@@ -192,18 +194,19 @@ static void ui2_footer(const char *h) {  // at most three key chips: the key in 
     while (*h && left--) {
         const char *e = strstr(h, "  "); int n = e ? (int)(e - h) : (int)strlen(h), k = (int)strcspn(h, " "); char b[64];
         if (k > n) k = n;
-        snprintf(b, sizeof b, "%.*s", k, h);
+        snprintf(b, sizeof b, "%.*s", k, h); char kb[64]; snprintf(kb, sizeof kb, "%s", b); arrows(kb, 1);   // the key with its arrows drawn
         int gone = !strcmp(b, "X") || !strncmp(b, "X+", 2) || strstr(b, "+X") || strstr(b, "+Y") || !strncmp(b, "Y+", 2) || !strcmp(b, "MENU") || !strcmp(b, "R2");
         if (gone) { left++; if (!e) break; h = e; while (*h == ' ') h++; continue; }   // v3: X, Y and MENU alone do nothing any more
         const char *what = NULL;
         if (!strcmp(b, "Y")) what = "back";   // 2026-11-21: Y is always the way back
         else if ((!strcmp(b, "OPT") || !strcmp(b, "OPTION")) && ctx_ok() && !chording && !rolling) what = "menu";   // a tap opens OPTION's menu here
-        int kw = ftext_w(FT_MB, b) + 24;
+        int kw = ftext_w(FT_MB, kb) + 24;
         if (x + kw > lim) break;            // no hint under the metronome
-        rrect(x, y, kw, 32, 6, C_SELBG); ftext(x + 12, y + 4, FT_MB, C_ORANGE, b); x += kw + 10;
+        rrect(x, y, kw, 32, 6, C_SELBG); ftext(x + 12, y + 4, FT_MB, C_ORANGE, kb); x += kw + 10;
         snprintf(b, sizeof b, "%.*s", n - k > 0 ? n - k - 1 : 0, h + k + (n > k));
         if (what) snprintf(b, sizeof b, "%s", what);
         for (char *q = b; *q; q++) if (*q >= 'A' && *q <= 'Z') *q += 32;   // the mockups write what a key does in small letters
+        arrows(b, 0);
         x += ftext(x, y + 4, FT_M, mix(C_WHITE, C_DIM, 70), b) + 36;
         if (!e) break;
         h = e; while (*h == ' ') h++;

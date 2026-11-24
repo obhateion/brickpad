@@ -75,7 +75,7 @@ static const char *const qa_desc[QA_N] = {   // one line under the name in the p
     "show the sound load and the voices", "hear notes while you put them", "play the pads (EDIT+<) or keys (EDIT+>)", "play notes like a keyboard",
     "slow the tempo while held", "speed the tempo up while held", "free / lock / hold all; EDIT+<> steps scenes", "pause follow actions: clips loop",
     "new notes over the old, or wipe the clip first", "snap recorded notes to the grid", "render the mix into an empty pad", "keep what you just played as a clip",
-    "the page follows the playhead", "notes snap to the grid", "copy the current block", "paste into the current block", "fill steps randomly",
+    "the page follows the playhead", "notes keep to the scale", "copy the current block", "paste into the current block", "fill steps randomly",
     "bypass the master compressor and limiter", "mute every pad, again brings them back", "turn every solo off",
     "the scene before", "the next scene", "lock the controls (kid lock)", "map a parameter to a MIDI controller",
 };
