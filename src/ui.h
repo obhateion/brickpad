@@ -199,7 +199,7 @@ static void ui2_footer(const char *h) {  // at most three key chips: the key in 
         if (gone) { left++; if (!e) break; h = e; while (*h == ' ') h++; continue; }   // v3: X, Y and MENU alone do nothing any more
         const char *what = NULL;
         if (!strcmp(b, "Y")) what = "back";   // 2026-11-21: Y is always the way back
-        else if ((!strcmp(b, "OPT") || !strcmp(b, "OPTION")) && ctx_ok() && !chording && !rolling) what = "menu";   // a tap opens OPTION's menu here
+        else if ((!strcmp(b, "OPT") || !strcmp(b, "OPTION")) && ctx_ok() && !chording && !rolling) what = "listen";   // a tap listens (2026-11-24, no menu)
         int kw = ftext_w(FT_MB, kb) + 24;
         if (x + kw > lim) break;            // no hint under the metronome
         rrect(x, y, kw, 32, 6, C_SELBG); ftext(x + 12, y + 4, FT_MB, C_ORANGE, kb); x += kw + 10;

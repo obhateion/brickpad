@@ -2769,9 +2769,11 @@ static void cfm_key(int k, int down) {
     if (k == K_LEFT || k == K_RIGHT || k == K_UP || k == K_DOWN) cfm_cur = !cfm_cur;
     else if (k == K_Y || k == K_OPT) cfm = 0;
 }
+static void cx_resample(void);
 static void delete_action(void) {   // OPTION + EDIT
     switch (tab) {
-    case T_GRID: cfm_pad(gsel_on() ? -1 : sel, PP_ALL, ""); break;   // the pad, or every pad of the selection
+    case T_GRID: if (!gsel_on() && !has_sound(sel)) { cx_resample(); break; }   // an empty pad: the mix rendered into it (2026-11-24)
+        cfm_pad(gsel_on() ? -1 : sel, PP_ALL, ""); break;   // the pad, or every pad of the selection
     case T_PRJ:
         if (!jcol) { cfm_prj(jsec); break; }
         if (!prj_row_resets(jcur)) break;
@@ -3096,9 +3098,19 @@ static void roll_leave(void) {           // out of the editor: no note it starte
     roll_chord_off(); rolling = 0;
 }
 static void rnd_open(void);
+static int rl_odel;                      // OPT+EDIT went down on the roll: delete on release
+static void roll_triad(Pattern *p, int i) {   // a triad on the cursor, in the scale (ACID: the note's ACCENT)
+    used[K_EDIT] = 1;
+    if (song.t[sel].type == 2) { if (i >= 0) { push_undo(); p->roll[i].flags ^= NF_ACC; } return; }
+    push_undo();
+    int st = i >= 0 ? p->roll[i].start : rl_t, ln = i >= 0 ? p->roll[i].len : rl_len, v = i >= 0 ? p->roll[i].vel : 100;
+    if (i < 0) roll_add(p, st, ln, rl_n, v);
+    for (int s2 = 2; s2 <= 4; s2 += 2) { int n = roll_up(rl_n, s2); if (n <= 127 && roll_find(p, st, n) < 0) roll_add(p, st, ln, n, v); }
+}
 static void roll_key(int k, int down) {
     Pattern *p = cur_pat(sel); int T = roll_ticks(p);
     if (k == K_R2) { if (down && !held[K_SHIFT]) { hear_on = !hear_on; toast(hear_on ? "HEAR NOTES ON" : "HEAR NOTES OFF"); } return; }
+    if (!down && rl_odel && (k == K_EDIT || k == K_OPT)) { int j = roll_find(p, rl_t, rl_n); rl_odel = 0; if (j >= 0) { push_undo(); roll_del(p, j); } return; }
     if (!down) {
         if (k == K_EDIT) {
             if (rl_heard) { rl_heard = 0; engine_release_key(RL_TAG); }
@@ -3122,19 +3134,11 @@ static void roll_key(int k, int down) {
         g = clampi(g + (k == K_R1 ? 1 : -1), 0, 5); rl_snap = rl_snaps[g]; rl_t = rl_t / rl_snap * rl_snap; rl_v0 = rl_v0 / rl_snap * rl_snap; roll_view(); return;
     }
     int i = roll_find(p, rl_t, rl_n);
-    if ((k == K_EDIT && held[K_OPT]) || (k == K_OPT && held[K_EDIT])) {
-        used[K_EDIT] = used[K_OPT] = 1; roll_chord_off();
-        if (i >= 0) { push_undo(); roll_del(p, i); } return;
+    if ((k == K_EDIT && held[K_OPT]) || (k == K_OPT && held[K_EDIT])) {   // OPT+EDIT: the note goes when they are let go, unless UP made a triad
+        used[K_EDIT] = used[K_OPT] = 1; roll_chord_off(); rl_odel = 1; return;
     }
-    if (k == K_EDIT && held[K_X]) {      // X+EDIT: a triad on the cursor (ACID: ACCENT)
-        used[K_EDIT] = used[K_X] = 1;
-        if (song.t[sel].type == 2) { if (i >= 0) { push_undo(); p->roll[i].flags ^= NF_ACC; } return; }
-        push_undo();
-        int st = i >= 0 ? p->roll[i].start : rl_t, ln = i >= 0 ? p->roll[i].len : rl_len, v = i >= 0 ? p->roll[i].vel : 100;
-        if (i < 0) roll_add(p, st, ln, rl_n, v);
-        for (int s2 = 2; s2 <= 4; s2 += 2) { int n = roll_up(rl_n, s2); if (n <= 127 && roll_find(p, st, n) < 0) roll_add(p, st, ln, n, v); }
-        return;
-    }
+    if (k == K_UP && held[K_OPT] && held[K_EDIT]) { rl_odel = 0; roll_triad(p, i); return; }   // 2026-11-24: OPT+EDIT+UP a triad (ACID: ACCENT); was X+EDIT
+    if (k == K_EDIT && held[K_X]) { used[K_X] = 1; roll_triad(p, i); return; }
     if (k == K_EDIT) { roll_hear(i >= 0 ? p->roll[i].note : rl_n); return; }
     if (k == K_OPT) {                    // the chord under the cursor's time, while held
         roll_chord_off();
@@ -3285,6 +3289,10 @@ static void duck_key(int k, int down) {
             dk_pt_put(c, dk_pt + 1, m); dk_pt++; }
         return; }
     if (k == K_X) { xcombo = 0; return; }
+    if (held[K_OPT] && !held[K_EDIT] && (k == K_UP || k == K_DOWN || k == K_RIGHT) && dk_row == 0) {   // 2026-11-24 (M8): OPT+> a new point, OPT+^v the bend (were X)
+        used[K_OPT] = 1;
+        if (k == K_RIGHT) { xcombo = 0; duck_key(K_X, 0); return; }
+        held[K_X] = 1; duck_key(k, 1); held[K_X] = 0; return; }
     used[k] = 1;
     if (k == K_EDIT && !held[K_OPT]) { combo = 0; return; }
     if (held[K_EDIT] || k == K_EDIT) combo = 1;
@@ -3730,6 +3738,7 @@ static void key_event1(int k, int down) {
     if (k == K_SHIFT && !down) quit_down = 0;
     if (k == K_PLAY && !down) quit_down = 0;
     if (k == K_PLAY && held[K_SHIFT]) { if (down) { quit_down = SDL_GetTicks() | 1; used[K_SHIFT] = 1; } return; }   // v3: SHIFT+PLAY held 3 s quits
+    if (k == K_PLAY && held[K_EDIT] && tab == T_GRID && ui_cat < 0 && !perform && !ui_over() && !qb_focus) { if (down) { used[K_EDIT] = 1; sim_key(K_X, -1); } return; }   // EDIT+PLAY: this pad's clip
     if (x_latch_key(k, down)) return;
     if (ctxing) { ctx_key(k, down); return; }
     if (qpicking) { qp_key(k, down); return; }   // PROJECT > SETTINGS > BAR BUTTONS
@@ -3851,8 +3860,8 @@ static void key_event1(int k, int down) {
         return;
     }
     int arrow = k <= K_RIGHT;
-    if (arrow && (held[K_Y] || held[K_X]) && tab == T_SEQ && srow >= 1 && srow <= 2 && is_auto(lane) && !browsing) {   // BEND the segment under the cursor (A19: X+arrows)
-        used[K_Y] = used[K_X] = 1; int back = aut_point_back();
+    if (arrow && (held[K_Y] || held[K_X] || held[K_OPT]) && tab == T_SEQ && srow >= 1 && srow <= 2 && is_auto(lane) && !browsing) {   // BEND the segment under the cursor (OPT+arrows since 2026-11-24)
+        used[K_Y] = used[K_X] = used[K_OPT] = 1; int back = aut_point_back();
         if (back < 0) { toast("NO POINT: EDIT PUTS ONE"); return; }
         edit_begin(); int8_t *bc = aut_bend(); int d = k == K_RIGHT ? 10 : k == K_LEFT ? -10 : k == K_UP ? 50 : -50;
         act_bend(bc, back, d);
@@ -3891,6 +3900,13 @@ static void key_event1(int k, int down) {
     if (arrow && held[K_EDIT]) { used[K_EDIT] = 1; edit_arrow(k); return; }
     if (held[K_X] && tab == T_SEQ && (k == K_LEFT || k == K_RIGHT)) { act_select_step(k == K_RIGHT ? 1 : -1); seq_clamp(); pat_sync(); return; }
     if (held[K_X] && tab == T_FX && (k == K_LEFT || k == K_RIGHT)) { used[K_X] = 1; act_select_step(k == K_RIGHT ? 1 : -1); fx_unit = sel; return; }   // another pad from any row
+    if (arrow && held[K_OPT] && ((tab == T_GRID && ui_cat < 0 && !perform) || (v2_mixer() && mcol < NSLOT))) {   // 2026-11-24 (user, M8): the pad under the cursor
+        used[K_OPT] = 1; int s = v2_mixer() ? mcol : sel;
+        if (k == K_DOWN) { if (!gsel_mute()) { act_mute_toggle(s); toast(song.t[s].mute ? "MUTE ON" : "MUTE OFF"); } }
+        else if (k == K_UP) { act_solo_toggle(s); toast(song.mix.pad[s].solo ? "SOLO ON" : "SOLO OFF"); }
+        else if (k == K_RIGHT && has_sound(s)) { int o = sel; sel = s; sim_key(K_Y, K_SHIFT); sel = o; }   // FREEZE / LIVE, as SHIFT+Y did
+        return;
+    }
     if (arrow && held[K_OPT]) {          // OPTION+<> slot (patterns only on the pattern field since 2026-11-08: OPTION+^v does nothing)
         used[K_OPT] = 1;
         if (k == K_LEFT || k == K_RIGHT) {
@@ -3955,6 +3971,11 @@ static void cur_snap(int *a) {
 }
 static int side_key(int k, int down); static int side_page(void); static int side_enter(int k); static int side_land_mark(void); static void side_land(int before);   // side.h
 static void key_event2(int k, int down);
+static void step_audition(int st);
+static void opt_listen(void) {            // OPTION tapped: the step under the cursor on STEPS, else the pad
+    if (v2_steps()) { const Pattern *p = cur_pat(sel); int st = cur_step(); if (st < p->len && p->trig[st]) { step_audition(st); return; } }
+    if (has_sound(sel)) listen(sel);
+}
 static int side_edge(int k, int down) {   // a plain arrow across on a page with slots: its edge may lead onto them
     if (!down || (k != K_LEFT && k != K_RIGHT) || !side_page() || x_latch || v_latch || ctxing || qb_focus || qd_open || qpicking || strip_focus || tab_focus
         || ui_over() || perform || ui_simple || learning || cfm || asking || naming || exporting) return 0;   // a window or the drawer keeps its arrows
@@ -3971,7 +3992,7 @@ static void key_event(int k, int down) {   // 2026-11-24: the side slots first, 
     side_land(lm);
 }
 static void key_event2(int k, int down) {
-    if (k == K_OPT && !down && !used[K_OPT] && ctx_ok()) { key_event1(k, down); ctx_open(); return; }   // v3: OPTION tapped alone
+    if (k == K_OPT && !down && !used[K_OPT] && ctx_ok()) { key_event1(k, down); opt_listen(); return; }   // 2026-11-24 (user, M8): OPTION tapped alone listens; no menu
     if (!qb_edge(k, down)) { key_event1(k, down); return; }
     int a[64], b[64]; cur_snap(a); key_event1(k, down); cur_snap(b);
     if (memcmp(a, b, a[63] * sizeof *a)) return;
@@ -4072,11 +4093,11 @@ static void draw_grid(void) {
         if (c0 > c1) { tt = c0; c0 = c1; c1 = tt; } if (r0 > r1) { tt = r0; r0 = r1; r1 = tt; }
         frame(GX + c0 * DX - 6, GY + r0 * DY - 6, (c1 - c0) * DX + CW + 12, (r1 - r0) * DY + CH + 12, 2, C_ORANGE);
     }
-    char missing[96]; snprintf(missing, sizeof missing, "%s  OPT MENU", engine_sample(sel) ? "EDIT OPEN" : "EDIT LOAD");   // the card says MISSING and the file
+    char missing[96]; snprintf(missing, sizeof missing, "%s  OPT+EDIT CLEAR", engine_sample(sel) ? "EDIT OPEN" : "EDIT LOAD");   // the card says MISSING and the file
     draw_footer(perform ? "PAD CLIP/HIT  SHIFT+OPT LEAVE  PLAY PAD CLIP  SHIFT+PAD OTHER  SHIFT+F1/F2 SCENE"
-                        : gsel_on() ? "PLAY ALL SELECTED  OPT MUTE  ARROW ENDS IT"
+                        : gsel_on() ? "PLAY ALL SELECTED  OPT+v MUTE  ARROW ENDS IT"
                         : slot_want[sel][0] ? missing
-                        : has_sound(sel) ? "EDIT OPEN  OPT MENU  PLAY ALL  SHIFT+DPAD SEL"
+                        : has_sound(sel) ? "EDIT OPEN  EDIT+PLAY CLIP  OPT+v MUTE  OPT+^ SOLO  OPT+> FREEZE"
                                              : "EDIT CHOOSE ENGINE  MENU PADS");
 }
 static void slice_label(char *b, const Pattern *p, int i, int ns) {   // "16+": the step also plays what follows slice 16

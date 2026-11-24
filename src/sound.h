@@ -441,7 +441,7 @@ static void draw_sound2(void) {
     for (int i = 0; i < c; i++) { int x, y, w, h; kg_cell(c, i, wx0, ww, y0, 700, &x, &y, &w, &h); snd_knob(x, y, w, h, l[i], i == sp_cur, ec); }
     if (learning) draw_footer("EDIT TAKE THIS PARAMETER  Y CANCEL");   // 2026-11-24: only keys that still work (L1/R1 page the sections)
     else if (sp_cur < 0) draw_footer(pg->gfx == GF_SLICES ? "EDIT SLICE EDITOR  EDIT+ARROWS SLICES  ^ TABS"
-                              : is_synth(sel) && song.t[sel].type != 3 ? "EDIT PRESETS  ^ TABS  OPT MENU"
+                              : is_synth(sel) && song.t[sel].type != 3 ? "EDIT PRESETS  ^ TABS  OPT LISTEN"
                               : "EDIT FILE  EDIT+<> NEXT FILE  ^ TABS");
     else { int p = sound_par();          // the cards with a key of their own say so
         draw_footer(p == P_BPM ? "EDIT TAP IN TIME  EDIT+ARROWS VALUE  ^ TABS"

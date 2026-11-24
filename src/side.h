@@ -50,7 +50,7 @@ static int side_fill(int pg, int i, SideSlot *s) {   // 0: the place is empty
         if (pg == SD_CHORDS) { s->name = "SLOT"; snprintf(s->v1, 16, "%d/%d", ch_slot + 1, ch_nslots(cur_pat(sel))); s->hint = "EDIT NEXT SLOT  EDIT+<> SLOT"; return 1; }
         s->name = "RANDOM"; snprintf(s->v1, 16, "FILL"); s->hint = "EDIT RANDOM"; return 1;
     case 7:
-        if (pg == SD_ROLL) { s->name = song.t[sel].type == 2 ? "ACCENT" : "TRIAD"; snprintf(s->v1, 16, "%s", song.t[sel].type == 2 ? "ACC" : "+3"); s->hint = song.t[sel].type == 2 ? "EDIT ACCENT ON THE NOTE" : "EDIT TRIAD ON THE CURSOR"; return 1; }
+        if (pg == SD_ROLL) { s->name = "RANDOM"; snprintf(s->v1, 16, "FILL"); s->hint = "EDIT RANDOM"; return 1; }   // TRIAD / ACCENT: OPT+EDIT+UP (2026-11-24)
         if (pg == SD_CHORDS) { s->name = "INVERSION"; snprintf(s->v1, 16, "%d", ch_inv); s->hint = "EDIT NEXT INVERSION"; return 1; }
         return 0;
     }
@@ -117,7 +117,7 @@ static void side_press(int pg, int i) {   // EDIT on a slot
             if (pg == SD_ROLL) { side_foc = 0; x_latch = 1; held[K_X] = used[K_X] = 1; toast("ARROWS: ^v VELOCITY <> CHANCE"); return; }
             side_foc = 0; sim_key(K_X, K_SHIFT); return;   // RANDOM's window
     case 7: if (pg == SD_CHORDS) { ch_inv = (ch_inv + 1) % 3; ch_hear(ch_row, ch_col); return; }
-            if (pg == SD_ROLL) sim_key(K_EDIT, K_X);
+            if (pg == SD_ROLL) { side_foc = 0; sim_key(K_X, K_SHIFT); }   // RANDOM's window over the roll
             return;
     }
     if (pg == SD_SOUND) { if (i == 0) listen(sel); else if (i == 2) { side_foc = 0; if (song.t[sel].type == 1 || song.t[sel].type == 2) preset_open(); else browse_slot(); } else { side_foc = 0; sim_key(K_R2, -1); } return; }

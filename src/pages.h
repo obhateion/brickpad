@@ -367,7 +367,7 @@ static void draw_mixer2(void) {
         int xc = ui_drawer_left ? 90 : 50, xo = ui_drawer_left ? 387 : 50, x0 = xc + (int)((xo - xc) * e);
         for (int s = 0; s < NSLOT; s++) if (x0 + (s - off) * 78 - 37 >= 0) mx_strip(s, x0 + (s - off) * 78, 37);   // none half off the left edge
         if (e > 0) mx_drawer(ui_drawer_left ? -(int)((1 - e) * 340) : 704 + (int)((1 - e) * 340)); else mx_tab();
-        draw_footer(!open ? "EDIT DRAWER  EDIT+^v LEVEL  ^ PAGES" : mcol < NSLOT ? "EDIT CLOSE  EDIT+^v LEVEL  OPT MUTE/SOLO"
+        draw_footer(!open ? "EDIT+^v LEVEL  OPT+v MUTE  OPT+^ SOLO" : mcol < NSLOT ? "EDIT+^v LEVEL  OPT+v MUTE  OPT+^ SOLO"
                     : "EDIT ALL PARAMETERS  EDIT+^v VALUE  Y CLOSE  <> UNIT, PADS");
     } else {                              // A23: the pads with a sound, live or frozen; EXPORT last; the DSP load
         int n = 0, ss[NSLOT]; for (int s = 0; s < NSLOT; s++) if (has_sound(s)) ss[n++] = s;
@@ -433,10 +433,11 @@ static void draw_duck2(void) {
 static int sc_cur;
 static int scene_count(void) { return scn_n; }
 static void scene_key(int k, int down) {
-    int rows = scn_n + (scn_n < NSCENE);
+    int rows = scn_n + (scn_n < NSCENE) * 2;   // the scenes, + NEW SCENE, + COPY OF THE OPEN ONE (2026-11-24: was X)
     if (!down) {
         if (k == K_EDIT && !used[K_EDIT]) {
-            if (sc_cur >= scn_n) { scene_new(-1); sc_cur = scn_n - 1; }
+            if (sc_cur == scn_n + 1) { scene_new(scn_cur); sc_cur = scn_n - 1; }
+            else if (sc_cur >= scn_n) { scene_new(-1); sc_cur = scn_n - 1; }
             else if (sc_cur == scn_cur && scn_next < 0) toast("THIS SCENE IS OPEN");
             else if (scn_lock) toast("SCENE LOCK IS ON");
             else scene_go(sc_cur); }
@@ -449,11 +450,12 @@ static void scene_key(int k, int down) {
     if (k == K_UP || k == K_DOWN) sc_cur = clampi(sc_cur + (k == K_DOWN ? 1 : -1), 0, rows - 1);
 }
 static void draw_scenes(void) {
-    int n = scn_n, rows = n + (n < NSCENE); sc_cur = clampi(sc_cur, 0, rows - 1);
+    int n = scn_n, rows = n + (n < NSCENE) * 2; sc_cur = clampi(sc_cur, 0, rows - 1);
     int top = clampi(sc_cur - 2, 0, rows > 6 ? rows - 6 : 0);
     for (int r = 0; r < 6 && top + r < rows; r++) { int q = top + r, y = 80 + r * 104, on = q == sc_cur; char b[24];
         rrect(26, y, 971, 90, 8, on ? C_SELBG : C_CELL);
-        if (q >= n) { const char *h = "empty pads"; ftext(48, y + 30, FT_LB, on ? C_WHITE : C_DIM, "+ NEW SCENE"); ftext(974 - ftext_w(FT_M, h), y + 32, FT_M, C_DIM, h); continue; }
+        if (q >= n) { char t[32]; const char *h = q == n ? "empty pads" : "the same pads"; if (q == n) snprintf(t, sizeof t, "+ NEW SCENE"); else snprintf(t, sizeof t, "+ COPY OF SCENE %d", scn_cur + 1);
+            ftext(48, y + 30, FT_LB, on ? C_WHITE : C_DIM, t); ftext(974 - ftext_w(FT_M, h), y + 32, FT_M, C_DIM, h); continue; }
         const Song *g = q == scn_cur ? &song : scn[q];
         snprintf(b, sizeof b, "SCENE %d", q + 1); ftext(62, y + 30, FT_LB, on ? C_WHITE : C_DIM, b);
         if (q == scn_cur) ftext(38, y + 32, FT_MB, th_cur[TC_SMP], "\001");
@@ -462,7 +464,7 @@ static void draw_scenes(void) {
             int u = has && pat_used(&g->t[s].pat[clampi(g->t[s].cur, 0, NPAT - 1)]);
             if (has) disc2(x, cy, u ? 9 : 6, C_ENG(g->t[s].type)); else { disc2(x, cy, 6, C_GREY); disc2(x, cy, 4, C_CELL); } } }   // an empty pad: a ring
     if (rows > 6) { int th = 6 * 104 - 14, tw = th * 6 / rows; rect(1004, 80, 4, th, C_CELL, 1); rect(1004, 80 + (th - tw) * top / (rows - 6), 4, tw, C_DIM, 1); }
-    draw_footer(sc_cur >= n ? "EDIT NEW EMPTY  OPT COPY OF THE OPEN ONE  Y BACK" : "EDIT LAUNCH  OPT COPY  OPT+EDIT DELETE");
+    draw_footer(sc_cur >= n ? (sc_cur == n + 1 ? "EDIT COPY THE OPEN ONE  Y BACK" : "EDIT NEW EMPTY  Y BACK") : "EDIT LAUNCH  OPT+EDIT DELETE  Y BACK");
 }
 
 // ---- PROJECT > INTERFACE > PAD MENU = TREE (the mockup's map, A-04): the hub drawn as the whole app: HOME's screens, the pad,
@@ -489,12 +491,12 @@ static void tree_open(int c, int i) {
 // cross of the jump now). A row is "KEY what it does", a row that starts with # is a sub-title. UP/DOWN or EDIT turn the topics.
 static const char *const ab_name[AB_N] = {"EVERYWHERE", "HOME", "INSIDE A PAD", "STEPS", "PIANO ROLL", "SOUND", "FX AND MOD", "MIXER", "PADS, KEYS, RECORD", "PROJECT AND FILES", "SIMPLE VIEW"};
 static const char *const ab_rows[AB_N][19] = {
-    {"PLAY play / stop", "Y back", "EDIT open, do it", "EDIT+ARROWS change the value (held: shown big)", "OPT listen to the pad", "OPT+EDIT delete, or the default value",
+    {"PLAY play / stop", "Y back", "EDIT open, do it", "EDIT+ARROWS change the value (held: shown big)", "OPT listen to the pad or the step", "OPT+EDIT delete, or the default value",
      "F1/F2 the next pad (on HOME: the next screen)", "F1+F2 PROJECT, again: back where you were", "F1+F2-3S the simple view (hold)", "SHIFT+ARROW inside a pad: straight to a category",
-     "SHIFT+L2 undo", "SHIFT+OPT copy", "SHIFT+EDIT paste", "MENU pads to play, again: keys, again: back", "MENU+PLAY record, twice: capture what was played",
-     "MENU-3S quit BrickPad (hold)", "MENU+X metronome: off, sound, +vibration, vibration", "SHIFT+PLAY never: the system's own", "#BRICKPAD 1.2 BETA  (C) 2026 TIMOTHY GURTO (OBHATEION)"},
-    {"EDIT open the pad (an empty one: choose its engine)", "X start / stop the clip of this pad", "PLAY all clips", "Y mute", "SHIFT+Y freeze the pad",
-     "SHIFT+X name the pad", "SHIFT+DPAD select several pads", "OPT+EDIT clear the pad, or the selected ones (YES / NO)", "F1/F2 PADS, SCENES, MIXER", "#SCENES", "EDIT launch the scene (its own twelve pads)", "X a copy of it", "OPT+EDIT delete it (YES / NO)", "+ NEW SCENE: empty pads",
+     "SHIFT+L2 undo", "SHIFT+OPT copy", "SHIFT+EDIT paste", "X the quick bar, again: its drawer", "MENU+PLAY record, twice: capture what was played", "MENU+ARROWS the screen map",
+     "SHIFT+PLAY-3S quit BrickPad (hold)", "MENU+X metronome: off, sound, +vibration, vibration", "#BRICKPAD 1.2 BETA  (C) 2026 TIMOTHY GURTO (OBHATEION)"},
+    {"EDIT open the pad (an empty one: choose its engine)", "EDIT+PLAY start / stop the clip of this pad", "PLAY all clips", "OPT+v mute", "OPT+^ solo", "OPT+> freeze the pad",
+     "LOOK (inside the pad) its name and icon", "SHIFT+DPAD select several pads", "OPT+EDIT clear the pad (YES / NO); an empty one: RESAMPLE here", "F1/F2 PADS, SCENES, MIXER", "#SCENES", "EDIT launch the scene (its own twelve pads)", "+ COPY OF SCENE: a copy of the open one", "OPT+EDIT delete it (YES / NO)", "+ NEW SCENE: empty pads",
      "#UP TO 16 SCENES; TEMPO, KEY, MASTER, RETURNS ARE SHARED"},
     {"EDIT open the category or the page", "ARROWS choose", "Y back up: page, category, HOME", "F1/F2 the next pad, the same page",
      "SHIFT+UP PATTERN", "SHIFT+RIGHT SOUND", "SHIFT+DOWN FX", "SHIFT+LEFT MIX", "OPT+EDIT on a card or a list: clear it (YES / NO)", "#LOOK: THE ICON AND ITS COLOUR", "EDIT set", "L1/R1 the group of icons",
