@@ -27,36 +27,36 @@ static int side_pat(int pg) { return pg == SD_STEPS || pg == SD_ROLL || pg == SD
 static int side_fill(int pg, int i, SideSlot *s) {   // 0: the place is empty
     memset(s, 0, sizeof *s); s->vc = C_WHITE;
     const Pattern *p = cur_pat(sel);
-    if (side_pat(pg)) switch (i) {
+    if (side_pat(pg)) switch (i) {        // 2026-11-24 (user): left the clip's build, right what is done with its notes
     case 0: s->name = "LAYOUT"; snprintf(s->v1, 16, "%s", p->mode == 1 ? "ROLL" : p->mode == 2 ? "CHORDS" : "STEPS"); s->vc = C_CAT(PC_PATTERN);
         s->hint = "EDIT NEXT  EDIT+^v PICK"; return 1;
     case 1: s->name = "LEN/GRID"; snprintf(s->v1, 16, "%d", p->len); snprintf(s->v2, 16, "%s", div_name[p->div % 6]);
-        s->hint = "EDIT+^v LENGTH  EDIT+<> GRID  EDIT FINE"; return 1;
-    case 2: { const Track *t = &song.t[sel]; s->name = "PATTERN"; snprintf(s->v1, 16, "P%d", t->cur + 1);
+        s->hint = pg == SD_ROLL ? "EDIT+^v LENGTH  EDIT+<> SNAP  EDIT FINE" : "EDIT+^v LENGTH  EDIT+<> GRID  EDIT FINE"; return 1;
+    case 2: if (pg == SD_CHORDS) { s->name = "CHORD LEN"; snprintf(s->v1, 16, "%s", ch_len_name[ch_len]); s->hint = "EDIT NEXT LENGTH"; return 1; }
+        s->name = "DOUBLE"; snprintf(s->v1, 16, "x2"); s->hint = "EDIT DOUBLE THE CLIP"; return 1;
+    case 3: { const Track *t = &song.t[sel]; s->name = "PATTERN"; snprintf(s->v1, 16, "P%d", t->cur + 1);
         if (t->queued >= 0) snprintf(s->v2, 16, "\177 P%d", t->queued + 1); else snprintf(s->v2, 16, "%s", eng_nofollow ? "FOL OFF" : "FOLLOW");
         s->hint = "EDIT PATTERNS / FOLLOW"; return 1; }
-    case 3:
-        if (pg == SD_STEPS) { s->name = "HEAR"; snprintf(s->v1, 16, "%s", hear_on ? "ON" : "OFF"); s->vc = hear_on ? C_ORANGE : C_DIM; s->lamp = 1; s->lc = hear_on ? C_ORANGE : C_LINE;
-            s->hint = "EDIT ON/OFF: A NOTE YOU PUT SOUNDS"; return 1; }   // 2026-11-24: SELECT had no step selection behind it
-        if (pg == SD_ROLL) { s->name = song.t[sel].type == 2 ? "ACCENT" : "TRIAD"; snprintf(s->v1, 16, "%s", song.t[sel].type == 2 ? "ACC" : "+3"); s->hint = song.t[sel].type == 2 ? "EDIT ACCENT ON THE NOTE" : "EDIT TRIAD ON THE CURSOR"; return 1; }
-        s->name = "CHORD LEN"; snprintf(s->v1, 16, "%s", ch_len_name[ch_len]); s->hint = "EDIT NEXT LENGTH"; return 1;
     case 4: { int cnt = rec ? engine_counting() : -1, wait = rec && rec_wait && cnt < 0;
         s->name = "RECORD"; snprintf(s->v1, 16, "%s", !rec ? "OFF" : wait || cnt >= 0 ? "ARMED" : "REC");
         s->vc = rec ? C_RED : C_DIM; s->lamp = 1; s->lc = !rec ? mix(C_RED, C_BG, 150) : wait && SDL_GetTicks() / 400 % 2 ? mix(C_RED, C_BG, 120) : C_RED;
-        s->hint = rec ? "EDIT STOP" : "EDIT ARM"; return 1; }
-    case 5: s->name = "LISTEN"; snprintf(s->v1, 16, "%s", lst_on ? "ON" : "OFF"); s->vc = lst_on ? C_ORANGE : C_DIM; s->lamp = 1; s->lc = lst_on ? C_ORANGE : C_LINE;
-        s->hint = pg == SD_STEPS ? "EDIT ON/OFF: A STEP SOUNDS UNDER THE CURSOR" : "EDIT ON/OFF: THE NOTE UNDER THE CURSOR SOUNDS"; return 1;
+        { static const char *const rq[5] = {"STEP", "1/32", "1/16", "1/8", "1/4"}; snprintf(s->v2, 16, "%s %s", rec_replace ? "RP" : "OD", rq[song.rec_quant % 5]); }
+        s->hint = rec ? "EDIT STOP  EDIT+^v OD/RP  EDIT+<> QUANT" : "EDIT ARM  EDIT+^v OD/RP  EDIT+<> QUANT"; return 1; }
+    case 5: { int m = !hear_on ? 0 : lst_on ? 2 : 1;   // HEAR (2026-11-24, one switch for both): OFF, PUT (a note put sounds), ALL (the cursor's too)
+        s->name = "HEAR"; snprintf(s->v1, 16, "%s", m == 0 ? "OFF" : m == 1 ? "PUT" : "ALL"); s->vc = m ? C_ORANGE : C_DIM; s->lamp = 1; s->lc = m ? C_ORANGE : C_LINE;
+        s->hint = "EDIT OFF / PUT / ALL"; return 1; }
     case 6:
         if (pg == SD_ROLL) { s->name = "VEL/CHNC"; snprintf(s->v1, 16, "%s", x_latch ? "ON" : "ARROWS"); s->vc = x_latch ? C_ORANGE : C_WHITE; s->hint = "EDIT ARROWS: ^v VELOCITY <> CHANCE"; return 1; }
         if (pg == SD_CHORDS) { s->name = "SLOT"; snprintf(s->v1, 16, "%d/%d", ch_slot + 1, ch_nslots(cur_pat(sel))); s->hint = "EDIT NEXT SLOT  EDIT+<> SLOT"; return 1; }
-        s->name = "DOUBLE"; snprintf(s->v1, 16, "x2"); s->hint = "EDIT DOUBLE THE CLIP"; return 1;
-    case 7:
-        if (pg == SD_CHORDS) { s->name = "INVERSION"; snprintf(s->v1, 16, "%d", ch_inv); s->hint = "EDIT NEXT INVERSION"; return 1; }
         s->name = "RANDOM"; snprintf(s->v1, 16, "FILL"); s->hint = "EDIT RANDOM"; return 1;
+    case 7:
+        if (pg == SD_ROLL) { s->name = song.t[sel].type == 2 ? "ACCENT" : "TRIAD"; snprintf(s->v1, 16, "%s", song.t[sel].type == 2 ? "ACC" : "+3"); s->hint = song.t[sel].type == 2 ? "EDIT ACCENT ON THE NOTE" : "EDIT TRIAD ON THE CURSOR"; return 1; }
+        if (pg == SD_CHORDS) { s->name = "INVERSION"; snprintf(s->v1, 16, "%d", ch_inv); s->hint = "EDIT NEXT INVERSION"; return 1; }
+        return 0;
     }
     if (pg == SD_SOUND) switch (i) {
     case 0: s->name = "LISTEN"; snprintf(s->v1, 16, "PLAY"); s->hint = "EDIT LISTEN TO THE PAD"; return 1;
-    case 1: s->name = "MIDI LRN"; snprintf(s->v1, 16, "%s", mlearn_par >= 0 ? "ON" : "OFF"); s->vc = mlearn_par >= 0 ? C_ORANGE : C_DIM; s->lamp = 1; s->lc = mlearn_par >= 0 ? C_ORANGE : C_LINE;
+    case 1: s->name = "MIDI"; snprintf(s->v1, 16, "%s", mlearn_par >= 0 ? "ON" : "OFF"); s->vc = mlearn_par >= 0 ? C_ORANGE : C_DIM; s->lamp = 1; s->lc = mlearn_par >= 0 ? C_ORANGE : C_LINE;
         s->hint = "EDIT MIDI LEARN"; return 1;
     }
     if (pg == SD_FX && i == 0) { const FxSlot *f = &song.mix.pad[fx_unit].ins[fx2_slot]; s->name = "INSERT";
@@ -106,17 +106,17 @@ static void side_press(int pg, int i) {   // EDIT on a slot
     if (side_pat(pg)) switch (i) {
     case 0: lay_go((p->mode + 1) % 3); return;
     case 1: v_latch = 1; side_foc = 0; toast("ARROWS: LENGTH (^v A BAR)"); return;   // the fine length, as OPTION's LENGTH was
-    case 2: side_foc = 0; cx_patterns(); return;
-    case 3: if (pg == SD_STEPS) { hear_on = !hear_on; toast(hear_on ? "HEAR NOTES ON" : "HEAR NOTES OFF"); }
-            else if (pg == SD_ROLL) sim_key(K_EDIT, K_X);
-            else sim_key(K_X, -1);
-            return;
+    case 2: if (pg == SD_CHORDS) sim_key(K_X, -1); else { clip_double(); toast_length("LENGTH", cur_pat(sel)->len); } return;
+    case 3: side_foc = 0; cx_patterns(); return;
     case 4: rec_toggle(engine_posf(), SDL_GetTicks() | 1); return;
-    case 5: lst_on = !lst_on; ui_cfg_save(); toast(lst_on ? "LISTEN ON" : "LISTEN OFF"); return;
+    case 5: if (!hear_on) { hear_on = 1; lst_on = 0; } else if (!lst_on) lst_on = 1; else hear_on = lst_on = 0;
+        ui_cfg_save(); toast(!hear_on ? "HEAR OFF" : lst_on ? "HEAR ALL: THE CURSOR'S NOTE TOO" : "HEAR PUT: A NOTE PUT SOUNDS"); return;
     case 6: if (pg == SD_CHORDS) { ch_slot = (ch_slot + 1) % ch_nslots(p); return; }
-            if (pg == SD_ROLL) { side_foc = 0; x_latch = 1; held[K_X] = used[K_X] = 1; toast("ARROWS: ^v VELOCITY <> CHANCE"); } else { clip_double(); toast_length("LENGTH", cur_pat(sel)->len); } return;
+            if (pg == SD_ROLL) { side_foc = 0; x_latch = 1; held[K_X] = used[K_X] = 1; toast("ARROWS: ^v VELOCITY <> CHANCE"); return; }
+            side_foc = 0; sim_key(K_X, K_SHIFT); return;   // RANDOM's window
     case 7: if (pg == SD_CHORDS) { ch_inv = (ch_inv + 1) % 3; ch_hear(ch_row, ch_col); return; }
-            side_foc = 0; sim_key(K_X, K_SHIFT); return;   // RANDOM's window (STEPS and the roll)
+            if (pg == SD_ROLL) sim_key(K_EDIT, K_X);
+            return;
     }
     if (pg == SD_SOUND) { if (i == 0) listen(sel); else { side_foc = 0; sim_key(K_R2, -1); } return; }
     if (pg == SD_FX) { sim_key(K_X, -1); return; }
@@ -125,6 +125,10 @@ static void side_press(int pg, int i) {   // EDIT on a slot
 static void side_turn(int pg, int i, int k) {   // EDIT+arrows on a slot
     Pattern *p = cur_pat(sel); int c = song.t[sel].cur;
     if (!side_pat(pg)) return;
+    if (i == 4) { char b[32];             // RECORD: the take's settings (2026-11-24, from the quick bar)
+        if (k == K_UP || k == K_DOWN) { rec_replace = !rec_replace; toast(rec_replace ? "REPLACE: A TAKE WIPES THE CLIP FIRST" : "OVERDUB: NEW NOTES OVER THE OLD"); }
+        else { act_rec_quant_step(k == K_RIGHT ? 1 : -1); snprintf(b, sizeof b, "REC QUANT %s", quant_name[song.rec_quant % 5]); toast(b); }
+        return; }
     if (i == 0 && (k == K_UP || k == K_DOWN)) lay_go((p->mode + (k == K_DOWN ? 1 : 2)) % 3);
     else if (i == 6 && pg == SD_CHORDS && (k == K_LEFT || k == K_RIGHT)) { int n = ch_nslots(p); ch_slot = (ch_slot + (k == K_RIGHT ? 1 : n - 1)) % n; }
     else if (i == 1 && pg == SD_ROLL && (k == K_LEFT || k == K_RIGHT)) sim_key(k == K_RIGHT ? K_R1 : K_L1, -1);   // the roll's own grid (snap)

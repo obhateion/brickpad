@@ -99,12 +99,9 @@ static void sound_move(int k) {          // the knobs; UP from the first row: th
         else if ((k == K_RIGHT && !in) || (k == K_LEFT && in)) { r = clampi((r * 2 + 1) * (in ? PT_NO : PT_NI) / (2 * nr), 0, (in ? PT_NO : PT_NI) - 1); in = !in; }
         sp_cur = in ? PT_NO + r : r; return;
     }
-    if (sp_cur < 0) { if (k == K_DOWN && c) sp_cur = 0; return; }   // v3: five knobs a row, two rows
-    if (k == K_LEFT) { if (sp_cur % 5) sp_cur--; }
-    else if (k == K_RIGHT) { if (sp_cur % 5 < 4 && sp_cur + 1 < c) sp_cur++; }
-    else if (k == K_DOWN) { if (sp_cur + 5 < c) sp_cur += 5; else if (sp_cur / 5 < (c - 1) / 5) sp_cur = c - 1; }
-    else if (sp_cur >= 5) sp_cur -= 5;
-    else if (pg->gfx != GF_NONE) sp_cur = -1;
+    if (sp_cur < 0) { if (k == K_DOWN && c) sp_cur = 0; return; }   // the knobs in kg_cols columns (ui.h)
+    if (k == K_UP && sp_cur < kg_cols(c) && pg->gfx == GF_NONE) return;   // no picture above
+    kg_move(k, c, &sp_cur);
 }
 static int sound_edit_arrow(int k) {     // EDIT+arrows on the picture: the sampler's next file; nothing else changes there
     if (sp_cur >= 0) return 0;
@@ -244,7 +241,7 @@ static float knob_draw(int x, int y, int w, int h, const char *lb, char *v, floa
     if (on) rframe(x, y, w, h, 8, 3, ec, C_CELL); else rrect(x, y, w, h, 8, C_CELL);
     char l2[16]; snprintf(l2, sizeof l2, "%.13s", lb);
     ftext(x + (w - ftext_w(FT_S, l2)) / 2, y + 8, FT_S, on ? C_WHITE : C_DIM, l2);
-    int cx = x + w / 2, cy = y + 30 + (h - 70) / 2, r = (h - 70) / 2 - 8; if (r > 44) r = 44; if (r > w / 2 - 14) r = w / 2 - 14;
+    int cx = x + w / 2, cy = y + 30 + (h - 70) / 2, r = (h - 70) / 2 - 8; if (r > 72) r = 72; if (r > w / 2 - 14) r = w / 2 - 14;   // the knob grows with its card
     float a = 135 + 270 * f, a0 = 135 + 270 * z;
     knob_arc(cx, cy, r, 6, 135, 405, C_LINE);
     if (fabsf(a - a0) > 1) knob_arc(cx, cy, r, 6, a0, a, ec);
@@ -255,7 +252,35 @@ static float knob_draw(int x, int y, int w, int h, const char *lb, char *v, floa
     ftext(cx - ftext_w(fw, v) / 2, y + h - 30, fw, C_WHITE, v);
     *kcx = cx; *kcy = cy; *kr = r; return a;
 }
+// 2026-11-24 (user): a value with two states is a switch, not a knob. Named pair (a, b): two halves, the one in use filled;
+// a, b NULL: one lamp button ON / OFF (as MIX's M and S). The same card as a knob, the value on the same line.
+static void toggle_draw(int x, int y, int w, int h, const char *lb, const char *a, const char *b, int st, int on, Col ec) {
+    if (on) rframe(x, y, w, h, 8, 3, ec, C_CELL); else rrect(x, y, w, h, 8, C_CELL);
+    char l2[16]; snprintf(l2, sizeof l2, "%.13s", lb); ftext(x + (w - ftext_w(FT_S, l2)) / 2, y + 8, FT_S, on ? C_WHITE : C_DIM, l2);
+    int bw = w - 28 > 200 ? 200 : w - 28, bh = clampi((h - 70) * 45 / 100, 44, 96), bx = x + (w - bw) / 2, by = y + 30 + (h - 70 - bh) / 2;
+    const char *v;
+    if (a) { int hw = bw / 2;
+        for (int i = 0; i < 2; i++) { const char *t = i ? b : a; int lit = st == i, f = ftext_w(FT_MB, t) <= hw - 10 ? FT_MB : FT_S;
+            rrect(bx + i * hw + i, by, hw - 1, bh, 8, lit ? ec : C_SELBG);
+            if (ftext_w(f, t) <= hw - 4) ftext(bx + i * hw + hw / 2 - ftext_w(f, t) / 2, by + bh / 2 - fv2[f].h / 2, f, lit ? C_BG : C_DIM, t); }
+        v = st ? b : a;
+    } else {
+        rrect(bx, by, bw, bh, 12, st ? ec : C_SELBG); disc2(bx + bw - 14, by + 14, 6, st ? C_WHITE : mix(ec, C_BG, 150));
+        v = st ? "ON" : "OFF"; ftext(bx + bw / 2 - ftext_w(FT_LB, v) / 2, by + bh / 2 - fv2[FT_LB].h / 2, FT_LB, st ? C_BG : C_DIM, v);
+    }
+    int f = ftext_w(FT_MB, v) <= w - 12 ? FT_MB : FT_S; ftext(x + w / 2 - ftext_w(f, v) / 2, y + h - 30, f, st && !a ? ec : C_WHITE, v);
+}
+static int snd_pair(int p, const char **a, const char **b) {   // a two-state SOUND parameter: 1, and its names (NULL: OFF / ON)
+    *a = *b = NULL;
+    if (p == P_DIR) { *a = "FWD"; *b = "REV"; return 1; }
+    if (p == P_VOICE) { *a = song.t[sel].type == 0 ? "GATE" : "MONO"; *b = "POLY"; return 1; }
+    if (p == P_AC + AP_WAVE) { *a = "SAW"; *b = "SQUARE"; return 1; }
+    if (p == P_AX + AX_SUBOCT) { *a = "-1 OCT"; *b = "-2 OCT"; return 1; }
+    return p == P_GX + GX_SYNC || p == P_GX + GX_ARP || p == P_CX + CX_FREEZE;
+}
 static void snd_knob(int x, int y, int w, int h, int p, int on, Col ec) {
+    { const char *a, *b; if (snd_pair(p, &a, &b)) { int lo, hi, st, bg; par_limits(sel, p, &lo, &hi, &st, &bg); int v = par_get(sel, p) - lo;
+        toggle_draw(x, y, w, h, snd_label(p), a, b, v != 0, on, ec); if (on) ui_focus(snd_label(p), v ? (b ? b : "ON") : (a ? a : "OFF"), -1, ec); return; } }
     char v[96]; if (p == P_SAMPLE) snprintf(v, sizeof v, "OPEN"); else if (p == P_DIR) snprintf(v, sizeof v, "%s", song.t[sel].rev ? "\005" : "\004");
     else par_str(sel, p, v, sizeof v);
     const char *lb = snd_label(p);
@@ -314,6 +339,36 @@ static void draw_patch2(Col ec) {
                 : "EDIT CABLE  OPT+EDIT PULL ITS CABLES  ^ TABS");
 }
 static int pic_h(const SndPage *pg) { return pg->gfx != GF_NONE; }
+// 2026-11-24 (user: no empty half screens): the pages without a picture of their own get one drawn from their values (the
+// cursor never stops on it: EDIT has nothing to open there). LFO its wave, ARP its steps, DIST its curve, VOICE its envelope,
+// OUT the level.
+static void snd_deco(const SndPage *pg, int x, int y, int w, int h, Col ec) {
+    const Track *t = &song.t[sel]; const int8_t *gx = song.gx[sel], *ax = song.ax[sel]; int ix = x + 24, iw = w - 48, iy = y + 20, ih = h - 40, px = 0, py = 0;
+    rrect(x, y, w, h, 8, C_CELL);
+    if (!strcmp(pg->name, "LFO")) {        // TRI SQR SAW RAMP S&H, two periods
+        unsigned r = 7; float hold = 0;
+        for (int i = 0; i <= iw; i += 3) { float ph = fmodf(i * 2.f / iw, 1.f), v;
+            switch (gx[GX_LWAVE] % 5) { case 0: v = ph < 0.5f ? 4 * ph - 1 : 3 - 4 * ph; break; case 1: v = ph < 0.5f ? 1 : -1; break;
+                case 2: v = 1 - 2 * ph; break; case 3: v = 2 * ph - 1; break; default: if (i % (iw / 8 + 1) < 3) { r = r * 1103515245u + 12345u; hold = ((r >> 16) & 255) / 127.5f - 1; } v = hold; }
+            int qx = ix + i, qy = iy + ih / 2 - (int)(v * (ih / 2 - 6)); if (i) line(px, py, qx, qy, 3, ec); px = qx; py = qy; }
+    } else if (!strcmp(pg->name, "ARP")) {  // the steps it plays: UP DOWN ORDER UP/DOWN over 1..3 octaves, the gate as the bar's width
+        int oct = gx[GX_AOCT] + 1, n = 4 * oct, mode = gx[GX_AMODE] % 4, steps = mode == 3 ? 2 * n - 2 : n, gate = clampi(gx[GX_AGATE], 5, 100), on = gx[GX_ARP];
+        if (steps > 24) steps = 24; int sw = iw / (steps ? steps : 1);
+        for (int i = 0; i < steps; i++) { int k = mode == 1 ? n - 1 - i : mode == 3 ? (i < n ? i : 2 * n - 2 - i) : mode == 2 ? (i * 5 + 1) % n : i;
+            int bh = (k + 1) * (ih - 10) / n; rrect(ix + i * sw, iy + ih - bh, sw * gate / 100 > 4 ? sw * gate / 100 - 2 : 4, bh, 4, on ? ec : mix(ec, C_CELL, 170)); }
+        if (!on) ftext(x + w / 2 - ftext_w(FT_MB, "ARP OFF") / 2, y + 12, FT_MB, C_DIM, "ARP OFF");
+    } else if (!strcmp(pg->name, "DIST")) { // the transfer curve with DRIVE, the dry line under it
+        line(ix, iy + ih, ix + iw, iy, 1, C_LINE); float dg = 1 + t->ap[AP_DRIVE] / 100.f * 30.f;
+        for (int i = 0; i <= iw; i += 3) { float xv = i * 2.f / iw - 1, v = acid_shape(t->ap[AP_DTYPE], xv * dg) * 0.9f; v = v > 1 ? 1 : v < -1 ? -1 : v;
+            int qx = ix + i, qy = iy + ih / 2 - (int)(v * (ih / 2 - 4)); if (i) line(px, py, qx, qy, 3, ec); px = qx; py = qy; }
+    } else if (!strcmp(pg->name, "VOICE")) { // the amplitude: its attack and release
+        snd_env(ix, iy, iw, ih, clampi(ax[AX_VATK], 0, 100), 0, 100, clampi(ax[AX_VREL], 0, 100), ec);
+    } else {                               // OUT: the level, big
+        int v = clampi(t->vol, 0, 100); char b[16]; snprintf(b, sizeof b, "%d", v);
+        rrect(ix, iy + ih / 2 - 14, iw, 28, 8, C_BG); rrect(ix, iy + ih / 2 - 14, iw * v / 100, 28, 8, ec);
+        ftext(ix, iy, FT_S, C_DIM, "LEVEL"); ftext(ix + iw - ftext_w(FT_XB, b), iy + ih / 2 - 60, FT_XB, C_WHITE, b);
+    }
+}
 static void draw_sound2(void) {
     int n; const SndPage *pgs = snd_pages(song.t[sel].type, &n), *pg = snd_page(); int cur = (int)(pg - pgs);
     Col ec = C_ENG(song.t[sel].type); int l[20], c = snd_cards(pg, l);
@@ -324,15 +379,14 @@ static void draw_sound2(void) {
         ftext(px - ftext_w(FT_MB, pgs[i].name) / 2, 80, FT_MB, i == cur ? C_BG : C_DIM, pgs[i].name);
     }
     if (pg->gfx == GF_PATCH) { draw_patch2(ec); return; }
-    int y0 = 127;
+    int y0 = 127, ph = (c + kg_cols(c) - 1) / kg_cols(c) <= 1 ? 300 : 210;   // one row of knobs: a taller picture
     if (pg->gfx != GF_NONE) {            // the picture; the cursor on it: the file (the sampler, CLOUD) or the presets
-        if (sp_cur < 0) rframe(wx0, 127, ww, 210, 8, 4, ec, C_CELL); else rrect(wx0, 127, ww, 210, 8, C_CELL);
-        snd_picture(pg, wx0, 127, ww, 210, ec); snd_live(pg, wx0, 127, ww, 210);
-        y0 = 352;
-    }
-    int kh = pic_h(pg) ? 158 : 200; if (!pic_h(pg)) y0 = 150;   // v3: every knob of the page at once, five a row
-    int kp = (ww + 8) / 5;                // five a row in the work area (side slots)
-    for (int i = 0; i < c; i++) snd_knob(wx0 + (i % 5) * kp, y0 + (i / 5) * (kh + 8), kp - 8, kh, l[i], i == sp_cur, ec);
+        if (sp_cur < 0) rframe(wx0, 127, ww, ph, 8, 4, ec, C_CELL); else rrect(wx0, 127, ww, ph, 8, C_CELL);
+        snd_picture(pg, wx0, 127, ww, ph, ec); snd_live(pg, wx0, 127, ww, ph);
+        y0 = 127 + ph + 15;
+    } else { snd_deco(pg, wx0, 127, ww, ph, ec); y0 = 127 + ph + 15; }   // no picture of its own: one from its values
+                                          // every knob of the page at once, in the grid that fits their count (ui.h kg_cell)
+    for (int i = 0; i < c; i++) { int x, y, w, h; kg_cell(c, i, wx0, ww, y0, 700, &x, &y, &w, &h); snd_knob(x, y, w, h, l[i], i == sp_cur, ec); }
     if (learning) draw_footer("EDIT TAKE THIS PARAMETER  Y CANCEL");   // 2026-11-24: only keys that still work (L1/R1 page the sections)
     else if (sp_cur < 0) draw_footer(pg->gfx == GF_SLICES ? "EDIT SLICE EDITOR  EDIT+ARROWS SLICES  ^ TABS"
                               : is_synth(sel) && song.t[sel].type != 3 ? "EDIT PRESETS  ^ TABS  OPT MENU"

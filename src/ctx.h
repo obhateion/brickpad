@@ -54,7 +54,8 @@ static void ctx_open(void) {
     // 2026-11-24 (user): what should be at hand went onto the side slots (side.h); OPTION keeps UNDO COPY PASTE CLEAR and
     // the rare items. ctx_layout and the moved items stay in the code until the user's check.
     ctx_n = ctx_cur = 0;
-    if (chording || rolling) ;          // LAYOUT, LENGTH, GRID, PATTERNS, RECORD, CHORD LENGTH, TRIAD, VELOCITY / CHANCE, RANDOM: slots
+    if (chording) ;                     // LAYOUT, LENGTH, GRID, PATTERNS, RECORD, CHORD LENGTH, SLOT, INVERSION: slots
+    else if (rolling) ctx_add("RANDOM", K_X, K_SHIFT, 0, NULL);   // the roll's slots have no room for it
     else if (ducking) { ctx_add("NEW POINT", K_X, -1, 0, NULL); ctx_add("BEND", 0, 0, 1, NULL); }
     else if (scening) ctx_add("NEW COPY", K_X, -1, 0, NULL);
     else if (tab == T_GRID && ui_cat < 0) {

@@ -2993,6 +2993,10 @@ static int rl_t, rl_n = 60, rl_v0, rl_n0 = 50, rl_snap = 8, rl_len = 8, rl_heard
 static const int rl_snaps[6] = {1, 2, 4, 8, 16, 32};   // 1/128 .. 1/4
 static const int rl_d32[6] = {1, 2, 4, 8, 16, 32};
 enum { RL_COLS = 32, RL_ROWS = 14, RL_TAG = 301, RL_CHORD_TAG = 310 };
+static int rl_snap; static int roll_ticks(const Pattern *p);
+static int rl_cols(void) {               // 2026-11-24: the roll shows the clip, no dead half: as many columns as it is long (8..32)
+    int T = roll_ticks(cur_pat(sel)), c = rl_snap > 0 ? (T + rl_snap - 1) / rl_snap : RL_COLS; return c < 8 ? 8 : c > RL_COLS ? RL_COLS : c;
+}
 static int roll_ticks(const Pattern *p) { return (p->len ? p->len : 16) * rl_d32[p->div % 6] * RT; }
 static int roll_any(const Pattern *p) { for (int i = 0; i < NNOTE; i++) if (p->roll[i].len) return 1; return 0; }
 static int roll_find(const Pattern *p, int t, int n) {   // the note of pitch n sounding at tick t (the latest to start)
@@ -3017,7 +3021,7 @@ static void roll_hear(int n) {           // the note while EDIT is held; editing
     engine_release_key(RL_TAG); engine_trig_key(sel, 1.f, (float)note_semis(sel, n), -1, RL_TAG); flash[sel] = SDL_GetTicks(); rl_heard = 1;
 }
 static void roll_view(void) {            // the cursor stays on screen
-    int w = RL_COLS * rl_snap;
+    int w = rl_cols() * rl_snap;
     if (rl_t < rl_v0) rl_v0 = rl_t; if (rl_t >= rl_v0 + w) rl_v0 = rl_t - w + rl_snap; if (rl_v0 < 0) rl_v0 = 0;
     if (rl_n < rl_n0) rl_n0 = rl_n; if (rl_n >= rl_n0 + RL_ROWS) rl_n0 = rl_n - RL_ROWS + 1; rl_n0 = clampi(rl_n0, 0, 128 - RL_ROWS);
 }
@@ -3148,8 +3152,8 @@ static void roll_key(int k, int down) {
         roll_view(); return;
     }
     int last = (T - 1) / rl_snap * rl_snap;
-    if (held[K_SHIFT]) { rl_t = clampi(rl_t + dx * RL_COLS * rl_snap, 0, last); rl_n = clampi(rl_n + 12 * dy, 0, 127);
-        rl_v0 += dx * RL_COLS * rl_snap; rl_n0 += 12 * dy; roll_view(); return; }
+    if (held[K_SHIFT]) { rl_t = clampi(rl_t + dx * rl_cols() * rl_snap, 0, last); rl_n = clampi(rl_n + 12 * dy, 0, 127);
+        rl_v0 += dx * rl_cols() * rl_snap; rl_n0 += 12 * dy; roll_view(); return; }
     // 2026-11-24: past the end the arrow goes onto the side slots (as on STEPS); the clip grows on LEN/GRID (EDIT+^v a bar)
     if (dx < 0 && p->len > 16) {         // back out of an empty last bar: it goes
         int bt = roll_ticks(p) * ((p->len - 1) / 16 * 16) / p->len, any = 0;
@@ -3406,6 +3410,7 @@ static void fx_tap(void) {
     if (frow == 9 && fx_is_mod(f->type)) { edit_begin(); fx_mod_mode(f, (f->type - FX_CHORUS + 1) % 3); }   // EDIT: the next mode, round
     else if (frow == 0) fx_cycle(f, 1);
     else if (frow == 1) { edit_begin(); if (f->on) f->on = 0; else fx_turn_on(f); }
+    else if (frow >= 2 && frow - 2 < 8) { int lo, hi; fx_range(f->type, frow - 2, &lo, &hi); if (hi - lo == 1) { edit_begin(); f->p[frow - 2] = (int8_t)(f->p[frow - 2] == lo ? hi : lo); } }   // a switch: EDIT flips it
 }
 static void fx_delete(void) {
     if (fx_unit < NSLOT && fx_page && lrow == 0) { char b[24]; edit_begin(); song.lfo[fx_unit][lcol].target = 0; snprintf(b, sizeof b, "LFO %d UNLINKED", lcol + 1); toast(b); return; }   // 2026-11-12, user
@@ -4096,35 +4101,35 @@ static void draw_roll_mini(const Pattern *p, int x, int y, int w, int h, int st,
 // PATTERN > ROLL (UI v2, mockup A06): piano keys on the left, fourteen rows, the notes in the engine's colour.
 static void draw_roll(void) {
     Pattern *p = cur_pat(sel); int T = roll_ticks(p), st = song.t[sel].on ? engine_step(sel) : -1;
-    enum { KW = 64, GY = 76, RH = 44 }; const int KX = wx0, GX = wx0 + 70, CW = (ww - 70) / RL_COLS;   // the work area (side slots)
+    enum { KW = 64, GY = 76, RH = 44 }; const int KX = wx0, GX = wx0 + 70, CW = (ww - 70) / rl_cols();   // the work area (side slots)
     int beat = 8 * RT, bar = beat * (song.beats > 0 ? song.beats : 4), i = roll_find(p, rl_t, rl_n);
     Col ec = C_ENG(song.t[sel].type), key_w = mix(C_WHITE, C_BG, 30), key_b = C_LINE;
     roll_view();
-    if (follow_ph && st >= 0) { int w = RL_COLS * rl_snap, pt = st * rl_d32[p->div % 6] * RT; rl_v0 = pt / w * w; }   // FOLLOW: the view shows the playhead
+    if (follow_ph && st >= 0) { int w = rl_cols() * rl_snap, pt = st * rl_d32[p->div % 6] * RT; rl_v0 = pt / w * w; }   // FOLLOW: the view shows the playhead
     char b[80], nm[8];
     for (int r = 0; r < RL_ROWS; r++) {  // rows, high pitches on top: white and black keys; the pad's scale has a dot, its tonic the accent
         int n = rl_n0 + RL_ROWS - 1 - r, y = GY + r * RH, pc = n % 12, black = pc == 1 || pc == 3 || pc == 6 || pc == 8 || pc == 10;
         int ton = ((n - track_key(sel)) % 12 + 12) % 12 == 0;
-        rect(GX, y, RL_COLS * CW, RH - 1, black ? mix(C_BG, C_CELL, 110) : C_CELL, 1);
+        rect(GX, y, rl_cols() * CW, RH - 1, black ? mix(C_BG, C_CELL, 110) : C_CELL, 1);
         rect(KX, y, KW, RH - 1, black ? key_b : key_w, 1);
         if (pc == 0 || n == rl_n) { roll_name(nm, n); ftext(KX + 6, y + 2, FT_S, n == rl_n && pc ? ec : black ? C_WHITE : C_BG, nm); }
         if (roll_in_scale(n)) rect(KX + KW - 10, y + RH / 2 - 3, 6, 6, ton ? C_ORANGE : black ? C_DIM : C_GREY, 1);
     }
-    for (int c = 0; c <= RL_COLS; c++) { int t = rl_v0 + c * rl_snap;   // lines: beats faint, bars clear
+    for (int c = 0; c <= rl_cols(); c++) { int t = rl_v0 + c * rl_snap;   // lines: beats faint, bars clear
         if (t % bar == 0) rect(GX + c * CW, GY, 2, RL_ROWS * RH, C_GREY, 1);
         else if (t % beat == 0) rect(GX + c * CW, GY, 1, RL_ROWS * RH, C_LINE, 1); }
-    int end = T - rl_v0; if (end < RL_COLS * rl_snap) { int ex = GX + (end > 0 ? end * CW / rl_snap : 0); rect(ex, GY, GX + RL_COLS * CW - ex, RL_ROWS * RH, C_BG, 1); }   // past the end of the pattern
+    int end = T - rl_v0; if (end < rl_cols() * rl_snap) { int ex = GX + (end > 0 ? end * CW / rl_snap : 0); rect(ex, GY, GX + rl_cols() * CW - ex, RL_ROWS * RH, C_BG, 1); }   // past the end of the pattern
     for (int j = 0; j < NNOTE; j++) { const Note *n = &p->roll[j];
         if (!n->len || n->note < rl_n0 || n->note >= rl_n0 + RL_ROWS) continue;
-        int a = n->start - rl_v0, e = a + n->len; if (e <= 0 || a >= RL_COLS * rl_snap) continue;
-        int x0 = GX + (a < 0 ? 0 : a * CW / rl_snap), x1 = GX + (e > RL_COLS * rl_snap ? RL_COLS * rl_snap : e) * CW / rl_snap;
+        int a = n->start - rl_v0, e = a + n->len; if (e <= 0 || a >= rl_cols() * rl_snap) continue;
+        int x0 = GX + (a < 0 ? 0 : a * CW / rl_snap), x1 = GX + (e > rl_cols() * rl_snap ? rl_cols() * rl_snap : e) * CW / rl_snap;
         int y = GY + (rl_n0 + RL_ROWS - 1 - n->note) * RH;
         if (x1 - x0 < 8) x1 = x0 + 8;
         Col c = n->start >= T ? C_GREY : mix(mix(ec, C_BG, 110), ec, n->vel * 2);
         if (j == i) rframe(x0, y + 2, x1 - x0, RH - 5, 7, 3, C_WHITE, c); else rrect(x0 + 2, y + 4, x1 - x0 - 3, RH - 9, 5, c);
         if (n->flags & NF_ACC) ftext(x0 + 7, y + 10, FT_S, C_BG, "A");
     }
-    if (st >= 0) { int t = st * rl_d32[p->div % 6] * RT - rl_v0; if (t >= 0 && t < RL_COLS * rl_snap) rect(GX + t * CW / rl_snap, GY, 2, RL_ROWS * RH, C_WHITE, 1); }
+    if (st >= 0) { int t = st * rl_d32[p->div % 6] * RT - rl_v0; if (t >= 0 && t < rl_cols() * rl_snap) rect(GX + t * CW / rl_snap, GY, 2, RL_ROWS * RH, C_WHITE, 1); }
     if (i < 0) { int cx = GX + (rl_t - rl_v0) * CW / rl_snap, cy = GY + (rl_n0 + RL_ROWS - 1 - rl_n) * RH;   // the cursor on an empty place
         rect(cx, cy + 2, CW, 2, C_WHITE, 1); rect(cx, cy + RH - 5, CW, 2, C_WHITE, 1); rect(cx, cy + 2, 2, RH - 5, C_WHITE, 1); rect(cx + CW - 2, cy + 2, 2, RH - 5, C_WHITE, 1); }
     snprintf(b, sizeof b, "grid 1/%d \3 bar %d.%d", 128 / rl_snap, rl_t / bar + 1, rl_t % bar / beat + 1); ftext(wx0, 694, FT_S, C_DIM, b);

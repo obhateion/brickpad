@@ -16,6 +16,24 @@ static char ui_hint[256];                // this frame's whole footer hint
 static int wx0 = 26, ww = 971;           // the page's work area across (side.h makes it narrower by the slot columns)
 static int side_foc;                     // side.h: the cursor on a side slot (1..8)
 static int page_tabs(void); static int ctx_ok(void);   // ctx.h
+// 2026-11-24 (user: fill the space by what the screen holds): n cards in rows across x..x+w, y0..y1. Columns from the count
+// (6 = 3x2, 7 = 4+3, 8 = 4x2, 9 = 5+4, 10 = 5x2), no row ends with a lone card; the last row is centred; cards grow to a cap.
+enum { KG_GAP = 8, KG_WMAX = 230, KG_HMAX = 280 };
+static int kg_cols(int n) { return n <= 5 ? (n < 1 ? 1 : n) : n <= 8 ? (n + 1) / 2 : 5; }
+static void kg_cell(int n, int i, int x, int w, int y0, int y1, int *cx, int *cy, int *cw, int *ch) {
+    int c = kg_cols(n), r = (n + c - 1) / c, row = i / c, inrow = row == r - 1 ? n - row * c : c;
+    *cw = (w + KG_GAP) / c - KG_GAP; if (*cw > KG_WMAX) *cw = KG_WMAX;
+    *ch = (y1 - y0 + KG_GAP) / (r ? r : 1) - KG_GAP; if (*ch > KG_HMAX) *ch = KG_HMAX;
+    *cx = x + (w - (inrow * (*cw + KG_GAP) - KG_GAP)) / 2 + (i % c) * (*cw + KG_GAP); *cy = y0 + row * (*ch + KG_GAP);
+}
+static void kg_move(int k, int n, int *cur) {   // the cursor in such a grid; -1 above it
+    int c = kg_cols(n);
+    if (*cur < 0) { if (k == K_DOWN && n) *cur = 0; return; }
+    if (k == K_LEFT) { if (*cur % c) (*cur)--; }
+    else if (k == K_RIGHT) { if (*cur % c < c - 1 && *cur + 1 < n) (*cur)++; }
+    else if (k == K_DOWN) { if (*cur + c < n) *cur += c; else if (*cur / c < (n - 1) / c) *cur = n - 1; }
+    else *cur = *cur >= c ? *cur - c : -1;
+}
 
 // ---- the kit of the mockups: text in their sizes, rounded cards, the header and the footer ----
 enum { V2_HEAD = 60, V2_FOOT = 718 };    // the header ends, the footer starts
@@ -165,7 +183,8 @@ static void ui2_footer(const char *h) {  // at most three key chips: the key in 
     if (ui_qbar) { qbar_draw(x, y, 32); if (qb_focus) ftext(x + qbar_w() + 20, y + 4, FT_MB, C_WHITE, qb_cur == QB_HANDLE ? "MORE" : qa_tab[qb_top[qb_cur]].name); return; }   // at the bottom: no hints
     char qh[80]; if (qpicking) h = "EDIT ON/OFF  EDIT+<> ORDER  Y DONE";
     else if (qd_open) h = qd_hint();
-    else if (qb_focus) { snprintf(qh, sizeof qh, "EDIT %s  Y BACK  X DRAWER", qb_cur == QB_HANDLE ? "MORE" : qa_tab[qb_top[qb_cur]].name); h = qh; }
+    else if (qb_focus) { const char *qh2 = qb_cur < qb_n ? qa_hint(qb_top[qb_cur]) : NULL;   // a merged button names its EDIT+arrows
+        if (qh2) h = qh2; else { snprintf(qh, sizeof qh, "EDIT %s  Y BACK  X DRAWER", qb_cur == QB_HANDLE ? "MORE" : qa_tab[qb_top[qb_cur]].name); h = qh; } }
     else if (strip_focus == 1) h = sec_cur == HUB_LOOK ? "EDIT OPEN  <> SECTION  v BACK" : sec_cur == PC_SOUND ? "EDIT(HOLD) ENGINE  <> SECTION  v BACK" : "<> SECTION  ^ UP  v BACK";
     else if (strip_focus == 2) h = "<> PAD  v SECTIONS  ^ BAR";
     else if (tab_focus) h = "<> PAGE  ^ UP  v BACK";

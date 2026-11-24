@@ -23,15 +23,10 @@ static void fx2_sync(void) {             // the 1.2 cursor follows the card: fx_
     fcol = fx2_slot;
     if (fx2_cur < 0) { frow = 0; fx_sub = 0; } else { frow = c[fx2_cur].row; fx_sub = c[fx2_cur].side; }
 }
-static int fx2_cols(int n);
 static void fx2_move(int k) {            // knobs in two rows; UP from the first row: the picture
     FxCard c[16]; int n = fx2_cards(c);
     if (fx2_cur < 0) { if (k == K_DOWN && n) fx2_cur = 0; }
-    else { int cl = fx2_cols(n);          // v3: rows of knobs
-        if (k == K_LEFT) { if (fx2_cur % cl) fx2_cur--; }
-        else if (k == K_RIGHT) { if (fx2_cur % cl < cl - 1 && fx2_cur + 1 < n) fx2_cur++; }
-        else if (k == K_DOWN) { if (fx2_cur + cl < n) fx2_cur += cl; else if (fx2_cur / cl < (n - 1) / cl) fx2_cur = n - 1; }
-        else fx2_cur = fx2_cur >= cl ? fx2_cur - cl : -1; }
+    else kg_move(k, n, &fx2_cur);          // the knobs in kg_cols columns (ui.h)
     fx2_sync();
 }
 static void fx2_picture(int x, int y, int w, int h, const FxSlot *f, Col c) {   // what the effect does, as one line
@@ -101,10 +96,10 @@ static void fx2_card(int x, int y, int w, int h, const FxSlot *f, FxCard cd, int
         else { lb = mb_name[cd.row - 2]; snprintf(v, sizeof v, "%+d DB", val); } }
     else { int k = cd.row - 2; lb = fx_pname[f->type][k]; val = f->p[k]; fx_range(f->type, k, &lo, &hi); fx_pstr(f->type, k, val, v); }
     if (on) ui_focus(lb, v, hi - lo > 3 ? (val - lo) * 100 / (hi - lo) : -1, ec);
+    if (hi - lo == 1 && cd.row >= 2 && !cd.side) { toggle_draw(x, y, w, h, lb, NULL, NULL, val != lo, on, ec); return; }   // ON / OFF: a switch
     int cx, cy, r; float fz = lo < 0 && hi > 0 ? (float)-lo / (hi - lo) : 0;   // v3: a knob, as on SOUND
     knob_draw(x, y, w, h, lb, v, hi > lo ? (float)clampi(val - lo, 0, hi - lo) / (hi - lo) : 0, fz, on, ec, &cx, &cy, &r);
 }
-static int fx2_cols(int n) { return n <= 10 ? 5 : n <= 12 ? 6 : 8; }   // two rows of knobs, always
 static void draw_fx2(void) {
     PadMix *pm = &song.mix.pad[fx_unit]; Col ec = C_CAT(PC_FX); fx2_sync();
     for (int s = 0; s < 2; s++) {        // the inserts as tabs
@@ -115,11 +110,11 @@ static void draw_fx2(void) {
         ftext(x + hw / 2 - ftext_w(FT_MB, b) / 2, 92, FT_MB, on ? C_BG : f->type && f->on ? C_WHITE : C_DIM, b);
     }
     const FxSlot *f = &pm->ins[fx2_slot]; FxCard c[16]; int n = fx2_cards(c);
-    int ph = 186, cols = fx2_cols(n), kw = (ww + 8) / cols, h = 166, y0 = 153 + ph + 16;   // v3: every knob at once
+    int ph = (n + kg_cols(n) - 1) / kg_cols(n) <= 1 ? 290 : 186, y0 = 153 + ph + 16;   // every knob at once; one row: a taller picture
     if (fx2_cur < 0) rframe(wx0, 153, ww, ph, 8, 4, ec, C_CELL); else rrect(wx0, 153, ww, ph, 8, C_CELL);
     fx2_picture(wx0 + 20, 153, ww - 40, ph, f, ec);
     fx2_live(wx0 + 20, 153, ww - 40, ph, f, ec);
-    for (int i = 0; i < n; i++) fx2_card(wx0 + (i % cols) * kw, y0 + (i / cols) * (h + 8), kw - 8, h, f, c[i], i == fx2_cur, ec);
+    for (int i = 0; i < n; i++) { int x, y, w, h; kg_cell(n, i, wx0, ww, y0, 700, &x, &y, &w, &h); fx2_card(x, y, w, h, f, c[i], i == fx2_cur, ec); }
     if (fx2_cur < 0) draw_footer("EDIT CHANGE  EDIT+<> TYPE  ^ TABS");
     else draw_footer("EDIT+ARROWS VALUE  ^ TABS  OPT+EDIT DEFAULT");
 }
@@ -132,11 +127,8 @@ static int v2_lfo(void) { return ui_cat == PC_MOD && tab == T_FX && fx_unit < NS
 static const int8_t lfo2_ord[LR_N] = {LR_TARGET, LR_SHAPE, LR_RATE, LR_DEPTH, LR_SYNC, LR_TRIG, LR_PHASE};   // A18's four first
 static int lfo2_pos(void) { for (int i = 0; i < LR_N; i++) if (lfo2_ord[i] == lrow) return i; return 0; }
 static void lfo2_move(int k) {
-    int p = lfo2_pos();
-    if (k == K_LEFT) { if (p % 4) p--; } else if (k == K_RIGHT) { if (p % 4 < 3 && p + 1 < LR_N) p++; }   // v3: knobs, four a row
-    else if (k == K_DOWN) { if (p + 4 < LR_N) p += 4; else if (p < 4) p = LR_N - 1; }
-    else if (p >= 4) p -= 4;
-    lrow = lfo2_ord[p];
+    int p = lfo2_pos(); if (k == K_UP && p < kg_cols(LR_N)) return;   // the knobs in kg_cols columns (ui.h)
+    kg_move(k, LR_N, &p); lrow = lfo2_ord[p];
 }
 static float lfo2_shape(int sh, float t, unsigned *rng) {   // one period, -1..1
     switch (sh % LS_N) {
@@ -166,11 +158,12 @@ static void draw_lfo2(void) {
       if (act) { float v = engine_lfo(fx_unit, lcol); disc2(wx0 + ww - 11, 227 - (int)(v * 80), 6, C_WHITE); }   // where it is now
       else if (!L->target) ui_empty(wx0 + ww / 2 - 305, 160, 611, 134, "NO TARGET YET", "TARGET: EDIT, then EDIT on a SOUND card"); }   // empty state (TZ)
     for (int i = 0; i < LR_N; i++) {     // v3: every setting as a knob at once
-        int kp = (ww + 8) / 4, r = lfo2_ord[i], x = wx0 + (i % 4) * kp, y = 343 + (i / 4) * 178, on = r == lrow, lo = 0, hi = 0, v = 0, cx, cy, kr;
+        int r = lfo2_ord[i], x, y, kw, kh, on = r == lrow, lo = 0, hi = 0, v = 0, cx, cy, kr; kg_cell(LR_N, i, wx0, ww, 343, 700, &x, &y, &kw, &kh);
         lfo_str(fx_unit, lcol, r, b);
         if (r == LR_DEPTH) { lo = -100; hi = 100; v = L->depth; } else if (r == LR_PHASE) { hi = 100; v = L->phase; } else if (r == LR_RATE && !L->sync) { hi = 100; v = L->rate; }
         if (on) ui_focus(lr_name[r], b, hi > lo ? (v - lo) * 100 / (hi - lo) : -1, ec);
-        knob_draw(x, y, kp - 8, 170, lr_name[r], b, hi > lo ? (float)(v - lo) / (hi - lo) : 0, lo < 0 ? 0.5f : 0, on, ec, &cx, &cy, &kr);
+        if (r == LR_SYNC) { toggle_draw(x, y, kw, kh, lr_name[r], "FREE", "TEMPO", L->sync != 0, on, ec); continue; }   // two states: a switch
+        knob_draw(x, y, kw, kh, lr_name[r], b, hi > lo ? (float)(v - lo) / (hi - lo) : 0, lo < 0 ? 0.5f : 0, on, ec, &cx, &cy, &kr);
     }
     draw_footer(lrow == LR_TARGET ? "EDIT PICK ON SOUND  EDIT+<> TARGET  ^ TABS" : "EDIT+ARROWS VALUE  ^ TABS  OPT+EDIT LFO OFF");
 }
@@ -576,7 +569,10 @@ static void draw_unit2(void) {
         int v = *unit_param(u, k, &lo, &hi, &def); unit_pstr(u, k, v, b);
         const char *nm = u == NSLOT ? rv_name[k] : u == NSLOT + 1 ? dl_name[k] : ms_name[k];
         if (on) { rframe(x, y, 473, h, 8, 4, ec, C_CELL); ui_focus(nm, b, hi - lo > 1 ? (v - lo) * 100 / (hi - lo) : -1, ec); } else rrect(x, y, 473, h, 8, C_CELL);
-        ftext(x + 20, y + 12, FT_M, C_DIM, nm); ftext(x + 453 - ftext_w(FT_XB, b), y + 10, FT_XB, C_WHITE, b);
+        ftext(x + 20, y + 12, FT_M, C_DIM, nm);
+        if (hi - lo == 1) { int lw = 140, lh = h - 24 > 70 ? 70 : h - 24, lx = x + 453 - lw, ly = y + (h - lh) / 2;   // ON / OFF: a lamp switch (2026-11-24)
+            rrect(lx, ly, lw, lh, 10, v ? ec : C_SELBG); ftext(lx + lw / 2 - ftext_w(FT_LB, b) / 2, ly + lh / 2 - fv2[FT_LB].h / 2, FT_LB, v ? C_BG : C_DIM, b); continue; }
+        ftext(x + 453 - ftext_w(FT_XB, b), y + 10, FT_XB, C_WHITE, b);
         if (hi - lo > 1) { rect(x + 20, y + h - 26, 433, 8, C_LINE, 1); rect(x + 20, y + h - 26, 433 * clampi(v - lo, 0, hi - lo) / (hi - lo), 8, ec, 1); } }
     draw_footer("EDIT+ARROWS VALUE  ^ PAGES  Y BACK  EDIT ON/OFF  OPT+EDIT DEFAULT");
 }

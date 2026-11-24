@@ -92,18 +92,18 @@ static void draw_chords(void) {
     static const char *const rn[7] = {"I", "II", "III", "IV", "V", "VI", "VII"}, *const rown[CH_ROWS] = {"TRIADS", "SEVENTHS", "SUS4"};
     int sc = ch_scale();
     for (int r = 0; r < CH_ROWS; r++) {
-        ftext(wx0 + 6, 80 + r * 118, FT_S, C_DIM, rown[r]);
+        ftext(wx0 + 6, 80 + r * 146, FT_S, C_DIM, rown[r]);   // 2026-11-24: taller cards fill the page
         for (int c = 0; c < CH_COLS; c++) {
-            int cp = (ww + 10) / CH_COLS, cw = cp - 10, x = wx0 + c * cp, y = 100 + r * 118, on = r == ch_row && c == ch_col;
+            int cp = (ww + 10) / CH_COLS, cw = cp - 10, x = wx0 + c * cp, y = 100 + r * 146, on = r == ch_row && c == ch_col;
             int t = deg_semis(sc, c + 2) - deg_semis(sc, c); char rb[8]; snprintf(rb, sizeof rb, "%s", rn[c]);
             if (t == 3) for (char *q = rb; *q; q++) *q += 32;   // minor and diminished in small numerals
-            if (on) rframe(x, y, cw, 92, 8, 4, ec, C_SELBG); else rrect(x, y, cw, 92, 8, C_CELL);
+            if (on) rframe(x, y, cw, 122, 8, 4, ec, C_SELBG); else rrect(x, y, cw, 122, 8, C_CELL);
             ftext(x + 12, y + 8, FT_S, on ? ec : C_DIM, rb);
             ch_name(r, c, b, sizeof b); int f = ftext_w(FT_MB, b) <= cw - 14 ? FT_MB : ftext_w(FT_M, b) <= cw - 8 ? FT_M : FT_S;
-            ftext(x + cw / 2 - ftext_w(f, b) / 2, y + 44, f, on ? C_WHITE : C_GREY, b);
+            ftext(x + cw / 2 - ftext_w(f, b) / 2, y + 58, f, on ? C_WHITE : C_GREY, b);
         }
     }
-    int n = ch_nslots(p), tx = wx0, tw = ww, ty = 470, th = 92, sw = tw / n;   // the clip: a block per slot, the chord in it
+    int n = ch_nslots(p), tx = wx0, tw = ww, ty = 560, th = 92, sw = tw / n;   // the clip: a block per slot, the chord in it
     ftext(wx0 + 6, ty - 22, FT_S, C_DIM, "CLIP");
     for (int i = 0; i < n; i++) { int x = tx + i * sw, r, c, m = ch_slot_match(p, i, &r, &c), on = i == ch_slot;
         if (on) rframe(x + 2, ty, sw - 4, th, 8, 4, C_WHITE, m ? mix(C_CELL, ec, 90) : C_CELL); else rrect(x + 2, ty, sw - 4, th, 8, m ? mix(C_CELL, ec, 60) : C_CELL);
