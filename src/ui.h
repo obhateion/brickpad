@@ -15,6 +15,7 @@ static void draw_footer(const char *hint);
 static char ui_hint[256];                // this frame's whole footer hint
 static int wx0 = 26, ww = 971;           // the page's work area across (side.h makes it narrower by the slot columns)
 static int side_foc;                     // side.h: the cursor on a side slot (1..8)
+static int page_tabs(void); static int ctx_ok(void);   // ctx.h
 
 // ---- the kit of the mockups: text in their sizes, rounded cards, the header and the footer ----
 enum { V2_HEAD = 60, V2_FOOT = 718 };    // the header ends, the footer starts
@@ -84,7 +85,7 @@ static int strip_key(int k, int down) {   // the cursor on a strip: <> the secti
     } else if (k == K_UP) {
         if (strip_focus == 1 && strip_on()) strip_focus = 2;
         else if (!ui_qbar) { strip_focus = 0; qb_focus = 1; }
-    } else if (k == K_DOWN || k == K_OPT) strip_focus = k == K_DOWN && strip_focus == 2 && sec_on() ? 1 : 0;
+    } else if (k == K_DOWN || k == K_OPT) { strip_focus = k == K_DOWN && strip_focus == 2 && sec_on() ? 1 : 0; if (!strip_focus && k == K_DOWN) tab_focus = page_tabs(); }   // down: the page's tabs first, as UP came
     return 1;
 }
 static Col hub_col(int c);
@@ -165,9 +166,9 @@ static void ui2_footer(const char *h) {  // at most three key chips: the key in 
     char qh[80]; if (qpicking) h = "EDIT ON/OFF  EDIT+<> ORDER  Y DONE";
     else if (qd_open) h = qd_hint();
     else if (qb_focus) { snprintf(qh, sizeof qh, "EDIT %s  Y BACK  X DRAWER", qb_cur == QB_HANDLE ? "MORE" : qa_tab[qb_top[qb_cur]].name); h = qh; }
-    else if (strip_focus == 1) h = sec_cur == HUB_LOOK ? "EDIT OPEN  <> SECTION  OPTION BACK" : sec_cur == PC_SOUND ? "EDIT(HOLD) ENGINE  <> SECTION  OPTION BACK" : "<> SECTION  ^ UP  OPTION BACK";
-    else if (strip_focus == 2) h = "<> PAD  v SECTIONS  OPTION BACK";
-    else if (tab_focus) h = "<> PAGE  ^ UP  OPTION BACK";
+    else if (strip_focus == 1) h = sec_cur == HUB_LOOK ? "EDIT OPEN  <> SECTION  v BACK" : sec_cur == PC_SOUND ? "EDIT(HOLD) ENGINE  <> SECTION  v BACK" : "<> SECTION  ^ UP  v BACK";
+    else if (strip_focus == 2) h = "<> PAD  v SECTIONS  ^ BAR";
+    else if (tab_focus) h = "<> PAGE  ^ UP  v BACK";
     if (!hint_on) return;                // PROJECT > SYSTEM > FOOTER HINTS off: every key is in PROJECT > ABOUT
     while (*h && left--) {
         const char *e = strstr(h, "  "); int n = e ? (int)(e - h) : (int)strlen(h), k = (int)strcspn(h, " "); char b[64];
@@ -177,7 +178,7 @@ static void ui2_footer(const char *h) {  // at most three key chips: the key in 
         if (gone) { left++; if (!e) break; h = e; while (*h == ' ') h++; continue; }   // v3: X, Y and MENU alone do nothing any more
         const char *what = NULL;
         if (!strcmp(b, "Y")) what = "back";   // 2026-11-21: Y is always the way back
-        else if (!strcmp(b, "OPT") || !strcmp(b, "OPTION")) what = "menu";
+        else if ((!strcmp(b, "OPT") || !strcmp(b, "OPTION")) && ctx_ok() && !chording && !rolling) what = "menu";   // a tap opens OPTION's menu here
         int kw = ftext_w(FT_MB, b) + 24;
         if (x + kw > lim) break;            // no hint under the metronome
         rrect(x, y, kw, 32, 6, C_SELBG); ftext(x + 12, y + 4, FT_MB, C_ORANGE, b); x += kw + 10;
@@ -385,8 +386,7 @@ static void draw_steps2(void) {
     else snprintf(b, sizeof b, "step %d", cs + 1);
     ftext(wx0 + ww - ftext_w(FT_M, b), 660, FT_M, C_WHITE, b);
     if (ui_qbar) draw_phones(850, 16);   // v3: MON on the quick bar at the top
-    draw_footer(lane == L_TRIG || lane == L_SLICE ? "EDIT NOTE  L1/R1 LANE  Y BACK  R2 HEAR  EDIT+ARROWS VALUE  OPT LISTEN  OPT+<> WALK AND LISTEN  X+<> PAD  OPT+EDIT DELETE  XX DOUBLE CLIP  SHIFT+X RANDOM"
-                                                  : "EDIT+ARROWS VALUE  L1/R1 LANE  Y BACK  OPT LISTEN  X+<> PAD  OPT+EDIT DEFAULT  XX DOUBLE CLIP  SHIFT+X RANDOM");
+    draw_footer(lane == L_TRIG || lane == L_SLICE ? "EDIT NOTE  EDIT+ARROWS VALUE  ^ TABS" : "EDIT+ARROWS VALUE  ^ TABS  OPT+EDIT DEFAULT");   // 2026-11-24: keys that still work
 }
 
 // PATTERN > RECORD (UI v2, mockup A04): the take's state as one big circle. The logic is the one of MENU+PLAY: EDIT arms

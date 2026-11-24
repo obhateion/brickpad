@@ -310,8 +310,8 @@ static void draw_patch2(Col ec) {
         if (gp[k][0] == JO_ATT || gp[k][1] == JI_ATT) { l = (int)strlen(s); snprintf(s + l, sizeof s - l, " \003 %d%%", song.gx[sel][GX_ATTEN]); } }
     if (!s[0]) snprintf(s, sizeof s, "%s: no cable", pt_name(cj, b));
     ftext(wx0 + ww / 2 - ftext_w(FT_MB, s) / 2, 672, FT_MB, ec, s);
-    draw_footer(pt_pick ? "EDIT ON AN INPUT PLUG  Y DROP THE CABLE" : cj >= 16 ? "EDIT TAKE ITS CABLE  OPT+EDIT PULL IT  L1/R1 PAGE  Y BACK"
-                : "EDIT CABLE  OPT+EDIT PULL ITS CABLES  L1/R1 PAGE  Y BACK");
+    draw_footer(pt_pick ? "EDIT ON AN INPUT PLUG  Y DROP THE CABLE" : cj >= 16 ? "EDIT TAKE ITS CABLE  OPT+EDIT PULL IT  ^ TABS"
+                : "EDIT CABLE  OPT+EDIT PULL ITS CABLES  ^ TABS");
 }
 static int pic_h(const SndPage *pg) { return pg->gfx != GF_NONE; }
 static void draw_sound2(void) {
@@ -333,14 +333,14 @@ static void draw_sound2(void) {
     int kh = pic_h(pg) ? 158 : 200; if (!pic_h(pg)) y0 = 150;   // v3: every knob of the page at once, five a row
     int kp = (ww + 8) / 5;                // five a row in the work area (side slots)
     for (int i = 0; i < c; i++) snd_knob(wx0 + (i % 5) * kp, y0 + (i / 5) * (kh + 8), kp - 8, kh, l[i], i == sp_cur, ec);
-    if (learning) draw_footer("EDIT TAKE THIS PARAMETER  L1/R1 PAGE  Y CANCEL");
-    else if (sp_cur < 0) draw_footer(pg->gfx == GF_SLICES ? "EDIT SLICE EDITOR  L1/R1 PAGE  Y BACK  EDIT+ARROWS SLICES  OPT LISTEN"
-                              : is_synth(sel) && song.t[sel].type != 3 ? "EDIT PRESETS  L1/R1 PAGE  Y BACK  OPT LISTEN"
-                              : "EDIT FILE  L1/R1 PAGE  Y BACK  EDIT+<> NEXT FILE  OPT LISTEN");
+    if (learning) draw_footer("EDIT TAKE THIS PARAMETER  Y CANCEL");   // 2026-11-24: only keys that still work (L1/R1 page the sections)
+    else if (sp_cur < 0) draw_footer(pg->gfx == GF_SLICES ? "EDIT SLICE EDITOR  EDIT+ARROWS SLICES  ^ TABS"
+                              : is_synth(sel) && song.t[sel].type != 3 ? "EDIT PRESETS  ^ TABS  OPT MENU"
+                              : "EDIT FILE  EDIT+<> NEXT FILE  ^ TABS");
     else { int p = sound_par();          // the cards with a key of their own say so
-        draw_footer(p == P_BPM ? "EDIT TAP IN TIME  EDIT+ARROWS VALUE  Y BACK  OPT+EDIT AUTO  L1/R1 PAGE  OPT LISTEN"
-                  : p == P_ROOT ? "EDIT SET AS PROJECT KEY  EDIT+ARROWS VALUE  Y BACK  OPT+EDIT AUTO  L1/R1 PAGE  OPT LISTEN"
-                  : "EDIT+ARROWS VALUE  L1/R1 PAGE  Y BACK  OPT LISTEN  R2 MIDI KNOB  OPT+EDIT DEFAULT  OPT+ARROWS LISTEN NOTE  EDIT HEAR IT"); }
+        draw_footer(p == P_BPM ? "EDIT TAP IN TIME  EDIT+ARROWS VALUE  ^ TABS"
+                  : p == P_ROOT ? "EDIT SET AS PROJECT KEY  EDIT+ARROWS VALUE  ^ TABS"
+                  : "EDIT+ARROWS VALUE  ^ TABS  OPT+EDIT DEFAULT"); }
 }
 static const char *snd_page_name(void) { return snd_page()->name; }
 static void snd_page_count(char *b, int n) { int k; const SndPage *pgs = snd_pages(song.t[sel].type, &k); snprintf(b, n, "%d/%d", (int)(snd_page() - pgs) + 1, k); }

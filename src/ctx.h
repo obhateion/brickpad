@@ -14,7 +14,7 @@ static void ctx_add(const char *n, int key, int mod, int latch, void (*fn)(void)
 }
 static void cx_listen(void) { listen(sel); }
 static void cx_step(void) { step_listen(cur_step()); }
-static void cx_mute(void) { int s = tab == T_MIX && mcol < NSLOT ? mcol : sel; act_mute_toggle(s); toast(song.t[s].mute ? "MUTE ON" : "MUTE OFF"); }
+static void cx_mute(void) { if (gsel_mute()) return; int s = tab == T_MIX && mcol < NSLOT ? mcol : sel; act_mute_toggle(s); toast(song.t[s].mute ? "MUTE ON" : "MUTE OFF"); }
 static void cx_solo(void) { int s = tab == T_MIX && mcol < NSLOT ? mcol : sel; act_solo_toggle(s); toast(song.mix.pad[s].solo ? "SOLO ON" : "SOLO OFF"); }
 static void cx_copy(void) { copy_paste(0); }
 static void cx_paste(void) { copy_paste(1); }
@@ -64,7 +64,8 @@ static void ctx_open(void) {
         if (is_auto(lane)) ctx_add("BEND", 0, 0, 1, NULL);
         ctx_common();
     } else if (v2_fx()) ctx_common();
-    else if (tab == T_MIX && mcol < NSLOT) ctx_common();   // MUTE and SOLO: the M and S buttons on the page
+    else if (v2_mixer() && mcol < NSLOT) { ctx_add("MUTE", 0, 0, 0, cx_mute); ctx_add("SOLO", 0, 0, 0, cx_solo); ctx_common(); }   // the faders have no M/S buttons
+    else if (tab == T_MIX && mcol < NSLOT) ctx_common();   // a pad's MIX: its M and S tiles
     else if (v2_lfo() || v2_auto()) {    // LFO, AUTOMATION, DUCK: slots
         if (v2_auto()) ctx_add("BEND", 0, 0, 0, NULL), ctx_it[ctx_n - 1].latch = 1;
         ctx_common(); }
@@ -107,7 +108,7 @@ static int x_latch_key(int k, int down) {  // 1: the key ended the latch and is 
     x_latch = 0; held[K_X] = 0; used[K_X] = 1; toast("DONE"); return 1;
 }
 // v3: the page's own tabs are a row the cursor reaches (UP from the page's top); <> turn them as L1/R1 used to.
-static int page_tabs(void) { return !ui_over() && !perform && (v2_sound() || v2_steps() || v2_fx() || v2_lfo() || v2_auto() || v2_mixer() || v2_unit()); }
+static int page_tabs(void) { return !ui_over() && !perform && (v2_sound() || v2_steps() || v2_fx() || v2_lfo() || v2_auto() || v2_mixer() || v2_unit()); }   // each draws its tab row (MIXER: mx_row)
 static int tabs_key(int k, int down) {
     if (sim_on) return 0;                 // its own L1/R1 go on to the page
     if (k == K_PLAY || k == K_SHIFT || k == K_MENU || k == K_F1 || k == K_F2) return 0;
@@ -122,7 +123,7 @@ static void tabs_frame(void) {          // an outline round the tab row (draw() 
 }
 static int y_back_here(void) {            // windows and sub-pages where Y was the way back: MENU+UP now
     return ui_over() || naming || exporting || asking || cfm || scening || recpage || tab == T_PAT || v2_unit() || (tab == T_PRJ && jcol)
-        || (v2_mixer() && mx_pg && !(mx_pg == 1 && mcol < NSLOT));
+        || (v2_mixer() && mx_pg == 2);
 }
 static void draw_ctx(void) {
     enum { PW = 460 }; int RH = ctx_n > 10 ? 38 : 46, ph = 70 + ctx_n * RH, px = (W - PW) / 2, py = (H - ph) / 2 + (int)((1 - ctx_e) * 60);   // it rises into place
@@ -142,15 +143,21 @@ static void xy_key(int k) {
     if (k == K_Y) {
         if (qpicking) { qpicking = 0; return; }
         if (ctxing) { ctxing = 0; return; }
-        if (x_latch || v_latch) { x_latch = v_latch = 0; return; }
+        if (x_latch || v_latch) { x_latch = v_latch = 0; held[K_X] = 0; used[K_X] = 1; return; }   // X is let go with the latch
         if (qd_open) { qd_toggle(0); return; }
         if (qb_focus || strip_focus || tab_focus) { qb_focus = strip_focus = tab_focus = 0; if (!midi_clk_in) tempo_mul = 1.f; return; }
+        if (pt_pick) { pt_pick = 0; toast("CABLE DROPPED"); return; }   // PATCH: the carried cable only
+        if (mlearn_par >= 0) { mlearn_par = -1; toast("MIDI LEARN CANCELLED"); return; }
+        if (v2_mixer() && mx_pg == 1) { mx_pg = 0; if (mcol >= NSLOT) mcol = sel; return; }   // the drawer closes
         if (learning || y_back_here()) { sim_key(K_Y, -1); return; }   // windows and sub-pages: the old way back
+        if (v2_mixer()) { set_tab(T_GRID); ui_cat = -1; return; }   // MIXER, as SCENES: back to PADS
         if (tab == T_PRJ) { menu_nav(K_DOWN); return; }   // back where PROJECT was opened
         if (in_pad()) { menu_nav(K_UP); return; }        // a pad's section: HOME
         return;
     }
+    if (browsing && !naming) { sim_key(K_X, -1); return; }   // the browsers: X is their FILES menu
     if (naming || exporting || asking || cfm || learning || qpicking || ui_over()) return;   // a window is open: it answers first
+    if (x_latch || v_latch) { x_latch = v_latch = 0; held[K_X] = 0; }   // a latch ends when the bar opens
     if (ctxing) ctxing = 0;
     if (qd_open) { qd_toggle(0); return; }
     if (qb_focus) { qd_toggle(1); return; }

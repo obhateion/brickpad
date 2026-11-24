@@ -83,7 +83,7 @@ static void chord_key(int k, int down) {
     if (held[K_EDIT] && (k == K_UP || k == K_DOWN)) { ch_oct = clampi(ch_oct + (k == K_UP ? 1 : -1), -2, 2); ch_hear(ch_row, ch_col); return; }
     int r0 = ch_row, c0 = ch_col;          // 2026-11-24: no wrap across, the edges lead to the side slots
     if (k == K_LEFT) { if (ch_col) ch_col--; } else if (k == K_RIGHT) { if (ch_col < CH_COLS - 1) ch_col++; }
-    else if (k == K_UP) ch_row = (ch_row + CH_ROWS - 1) % CH_ROWS; else if (k == K_DOWN) ch_row = (ch_row + 1) % CH_ROWS;
+    else if (k == K_UP) { if (ch_row) ch_row--; } else if (k == K_DOWN) { if (ch_row < CH_ROWS - 1) ch_row++; }   // no wrap: UP at the top goes on to the strips
     else return;
     if (lst_on && (r0 != ch_row || c0 != ch_col)) { ch_hear(ch_row, ch_col); }   // the LISTEN slot
 }
@@ -115,5 +115,5 @@ static void draw_chords(void) {
     char info[96]; snprintf(info, sizeof info, "INVERSION %d   OCTAVE %+d   %s", ch_inv, ch_oct, b);   // LENGTH: its side slot
     ftext(wx0 + 6, ty + th + 24, FT_M, C_GREY, info);
     { char nn[24], vv[32]; ch_name(ch_row, ch_col, vv, sizeof vv); snprintf(nn, sizeof nn, "SLOT %d/%d", ch_slot + 1, n); ui_focus(nn, vv, -1, ec); }
-    draw_footer("EDIT PUT  OPT HEAR  L1/R1 SLOT  X LENGTH  R2 INVERSION  EDIT+^v OCTAVE  OPT+EDIT CLEAR SLOT  Y BACK");
+    draw_footer("EDIT PUT  OPT HEAR  EDIT+^v OCTAVE  OPT+EDIT CLEAR SLOT");
 }

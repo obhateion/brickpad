@@ -36,7 +36,8 @@ static int side_fill(int pg, int i, SideSlot *s) {   // 0: the place is empty
         if (t->queued >= 0) snprintf(s->v2, 16, "\177 P%d", t->queued + 1); else snprintf(s->v2, 16, "%s", eng_nofollow ? "FOL OFF" : "FOLLOW");
         s->hint = "EDIT PATTERNS / FOLLOW"; return 1; }
     case 3:
-        if (pg == SD_STEPS) { s->name = "SELECT"; snprintf(s->v1, 16, "%s", x_latch ? "ON" : "OFF"); s->vc = x_latch ? C_ORANGE : C_DIM; s->hint = "EDIT SELECT STEPS (ARROWS)"; return 1; }
+        if (pg == SD_STEPS) { s->name = "HEAR"; snprintf(s->v1, 16, "%s", hear_on ? "ON" : "OFF"); s->vc = hear_on ? C_ORANGE : C_DIM; s->lamp = 1; s->lc = hear_on ? C_ORANGE : C_LINE;
+            s->hint = "EDIT ON/OFF: A NOTE YOU PUT SOUNDS"; return 1; }   // 2026-11-24: SELECT had no step selection behind it
         if (pg == SD_ROLL) { s->name = song.t[sel].type == 2 ? "ACCENT" : "TRIAD"; snprintf(s->v1, 16, "%s", song.t[sel].type == 2 ? "ACC" : "+3"); s->hint = song.t[sel].type == 2 ? "EDIT ACCENT ON THE NOTE" : "EDIT TRIAD ON THE CURSOR"; return 1; }
         s->name = "CHORD LEN"; snprintf(s->v1, 16, "%s", ch_len_name[ch_len]); s->hint = "EDIT NEXT LENGTH"; return 1;
     case 4: { int cnt = rec ? engine_counting() : -1, wait = rec && rec_wait && cnt < 0;
@@ -47,14 +48,15 @@ static int side_fill(int pg, int i, SideSlot *s) {   // 0: the place is empty
         s->hint = pg == SD_STEPS ? "EDIT ON/OFF: A STEP SOUNDS UNDER THE CURSOR" : "EDIT ON/OFF: THE NOTE UNDER THE CURSOR SOUNDS"; return 1;
     case 6:
         if (pg == SD_ROLL) { s->name = "VEL/CHNC"; snprintf(s->v1, 16, "%s", x_latch ? "ON" : "ARROWS"); s->vc = x_latch ? C_ORANGE : C_WHITE; s->hint = "EDIT ARROWS: ^v VELOCITY <> CHANCE"; return 1; }
+        if (pg == SD_CHORDS) { s->name = "SLOT"; snprintf(s->v1, 16, "%d/%d", ch_slot + 1, ch_nslots(cur_pat(sel))); s->hint = "EDIT NEXT SLOT  EDIT+<> SLOT"; return 1; }
         s->name = "DOUBLE"; snprintf(s->v1, 16, "x2"); s->hint = "EDIT DOUBLE THE CLIP"; return 1;
     case 7:
-        if (pg == SD_CHORDS) return 0;
+        if (pg == SD_CHORDS) { s->name = "INVERSION"; snprintf(s->v1, 16, "%d", ch_inv); s->hint = "EDIT NEXT INVERSION"; return 1; }
         s->name = "RANDOM"; snprintf(s->v1, 16, "FILL"); s->hint = "EDIT RANDOM"; return 1;
     }
     if (pg == SD_SOUND) switch (i) {
     case 0: s->name = "LISTEN"; snprintf(s->v1, 16, "PLAY"); s->hint = "EDIT LISTEN TO THE PAD"; return 1;
-    case 1: s->name = "MIDI LRN"; snprintf(s->v1, 16, "%s", learning ? "ON" : "OFF"); s->vc = learning ? C_ORANGE : C_DIM;
+    case 1: s->name = "MIDI LRN"; snprintf(s->v1, 16, "%s", mlearn_par >= 0 ? "ON" : "OFF"); s->vc = mlearn_par >= 0 ? C_ORANGE : C_DIM; s->lamp = 1; s->lc = mlearn_par >= 0 ? C_ORANGE : C_LINE;
         s->hint = "EDIT MIDI LEARN"; return 1;
     }
     if (pg == SD_FX && i == 0) { const FxSlot *f = &song.mix.pad[fx_unit].ins[fx2_slot]; s->name = "INSERT";
@@ -74,7 +76,9 @@ static void side_sync(void);
 
 // ---- the work area: the pages lay themselves out in wx0 .. wx0 + ww ----
 static void side_area(void) {
-    if (side_page()) { wx0 = SD_LX + SD_W + SD_GAP; ww = SD_RX - SD_GAP - wx0; } else { wx0 = 26; ww = 971; }
+    int pg = side_page(), l = 0, r = 0;
+    for (int i = 0; pg && i < 4; i++) { l |= side_has(pg, i); r |= side_has(pg, 4 + i); }
+    wx0 = l ? SD_LX + SD_W + SD_GAP : 26; ww = (r ? SD_RX - SD_GAP : 997) - wx0;   // a side with no slot gives its width back
 }
 
 // ---- the keys ----
@@ -103,14 +107,16 @@ static void side_press(int pg, int i) {   // EDIT on a slot
     case 0: lay_go((p->mode + 1) % 3); return;
     case 1: v_latch = 1; side_foc = 0; toast("ARROWS: LENGTH (^v A BAR)"); return;   // the fine length, as OPTION's LENGTH was
     case 2: side_foc = 0; cx_patterns(); return;
-    case 3: if (pg == SD_STEPS) { side_foc = 0; x_latch = 1; held[K_X] = used[K_X] = 1; toast("ARROWS SELECT: ANY OTHER KEY ENDS IT"); }
+    case 3: if (pg == SD_STEPS) { hear_on = !hear_on; toast(hear_on ? "HEAR NOTES ON" : "HEAR NOTES OFF"); }
             else if (pg == SD_ROLL) sim_key(K_EDIT, K_X);
             else sim_key(K_X, -1);
             return;
     case 4: rec_toggle(engine_posf(), SDL_GetTicks() | 1); return;
     case 5: lst_on = !lst_on; ui_cfg_save(); toast(lst_on ? "LISTEN ON" : "LISTEN OFF"); return;
-    case 6: if (pg == SD_ROLL) { side_foc = 0; x_latch = 1; held[K_X] = used[K_X] = 1; toast("ARROWS: ^v VELOCITY <> CHANCE"); } else { clip_double(); toast_length("LENGTH", cur_pat(sel)->len); } return;
-    case 7: side_foc = 0; sim_key(K_X, K_SHIFT); return;   // RANDOM's window (STEPS and the roll)
+    case 6: if (pg == SD_CHORDS) { ch_slot = (ch_slot + 1) % ch_nslots(p); return; }
+            if (pg == SD_ROLL) { side_foc = 0; x_latch = 1; held[K_X] = used[K_X] = 1; toast("ARROWS: ^v VELOCITY <> CHANCE"); } else { clip_double(); toast_length("LENGTH", cur_pat(sel)->len); } return;
+    case 7: if (pg == SD_CHORDS) { ch_inv = (ch_inv + 1) % 3; ch_hear(ch_row, ch_col); return; }
+            side_foc = 0; sim_key(K_X, K_SHIFT); return;   // RANDOM's window (STEPS and the roll)
     }
     if (pg == SD_SOUND) { if (i == 0) listen(sel); else { side_foc = 0; sim_key(K_R2, -1); } return; }
     if (pg == SD_FX) { sim_key(K_X, -1); return; }
@@ -120,6 +126,8 @@ static void side_turn(int pg, int i, int k) {   // EDIT+arrows on a slot
     Pattern *p = cur_pat(sel); int c = song.t[sel].cur;
     if (!side_pat(pg)) return;
     if (i == 0 && (k == K_UP || k == K_DOWN)) lay_go((p->mode + (k == K_DOWN ? 1 : 2)) % 3);
+    else if (i == 6 && pg == SD_CHORDS && (k == K_LEFT || k == K_RIGHT)) { int n = ch_nslots(p); ch_slot = (ch_slot + (k == K_RIGHT ? 1 : n - 1)) % n; }
+    else if (i == 1 && pg == SD_ROLL && (k == K_LEFT || k == K_RIGHT)) sim_key(k == K_RIGHT ? K_R1 : K_L1, -1);   // the roll's own grid (snap)
     else if (i == 1) {
         if (k == K_UP || k == K_DOWN) { act_pattern_len_step(sel, c, k == K_UP ? 16 : -16); toast_length("LENGTH", cur_pat(sel)->len); }
         else { act_pattern_div_step(sel, c, k == K_RIGHT ? 1 : -1); char b[32]; snprintf(b, sizeof b, "GRID %s", div_name[cur_pat(sel)->div % 6]); toast(b); }
@@ -132,14 +140,15 @@ static int side_key(int k, int down) {    // 1: the key was the slot's
     if (!pg || ui_over() || ctxing || cfm || asking) { if (!pg) side_foc = 0; return 0; }
     int i = side_foc - 1, right = i >= 4;
     if (qb_focus || strip_focus || tab_focus) { side_foc = 0; return 0; }
-    if (k == K_PLAY || k == K_SHIFT || k == K_MENU || k == K_F1 || k == K_F2 || k == K_L1 || k == K_R1 || k == K_L2 || k == K_R2 || k == K_X) return 0;
+    if (k == K_PLAY || k == K_SHIFT || k == K_MENU || k == K_F1 || k == K_F2 || k == K_L1 || k == K_R1 || k == K_L2 || k == K_R2 || k == K_X || k == K_OPT) return 0;
+    if (k <= K_RIGHT && (held[K_MENU] || held[K_SHIFT])) return 0;   // MENU+arrows (the map), SHIFT+<> (the next pad) stay theirs
+    if (k == K_Y) { if (down) side_foc = 0; return 1; }   // X and Y never go through input_key (key_event1): nothing to hold
     input_key(k, down); input_combo(k, down);   // the slot takes the key: held[] and used[] as key_event1 keeps them
-    if (k == K_Y) { if (down) side_foc = 0; return 1; }
     if (!down) {
-        if (k == K_EDIT && !used[K_EDIT]) side_press(pg, i);
-        return k == K_EDIT || k <= K_RIGHT || k == K_OPT;
+        if (k == K_EDIT && !used[K_EDIT] && !held[K_OPT]) side_press(pg, i);   // OPT+EDIT (delete / default) presses nothing
+        return k == K_EDIT || k <= K_RIGHT;
     }
-    if (k > K_RIGHT) return k == K_EDIT || k == K_OPT;
+    if (k > K_RIGHT) return k == K_EDIT;
     if (held[K_EDIT]) { used[K_EDIT] = 1; side_turn(pg, i, k); return 1; }
     if (k == (right ? K_LEFT : K_RIGHT)) { side_foc = 0; return 1; }   // back to the page, where it was
     if (k == K_UP || k == K_DOWN) {           // the next slot this side; past the end nothing
@@ -191,6 +200,8 @@ static void side_draw(void) {
 static const char *side_hint(void) {      // the footer while the cursor is on a slot
     static char b[96]; SideSlot s; int pg = side_page();
     if (!side_foc || !pg || !side_fill(pg, side_foc - 1, &s)) return NULL;
-    snprintf(b, sizeof b, "%s  %s BACK", s.hint, side_foc > 4 ? "<" : ">");
+    const char *e = strstr(s.hint, "  ");   // the slot's first key, the way back, then the rest
+    if (e) snprintf(b, sizeof b, "%.*s  %s BACK%s", (int)(e - s.hint), s.hint, side_foc > 4 ? "<" : ">", e);
+    else snprintf(b, sizeof b, "%s  %s BACK", s.hint, side_foc > 4 ? "<" : ">");
     return b;
 }

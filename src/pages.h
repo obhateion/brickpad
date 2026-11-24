@@ -120,8 +120,8 @@ static void draw_fx2(void) {
     fx2_picture(wx0 + 20, 153, ww - 40, ph, f, ec);
     fx2_live(wx0 + 20, 153, ww - 40, ph, f, ec);
     for (int i = 0; i < n; i++) fx2_card(wx0 + (i % cols) * kw, y0 + (i / cols) * (h + 8), kw - 8, h, f, c[i], i == fx2_cur, ec);
-    if (fx2_cur < 0) draw_footer("EDIT CHANGE  L1/R1 SLOT  Y BACK  EDIT+<> TYPE  X ON/OFF  OPT+EDIT REMOVE");
-    else draw_footer("EDIT+ARROWS VALUE  L1/R1 SLOT  Y BACK  X ON/OFF  OPT+EDIT DEFAULT");
+    if (fx2_cur < 0) draw_footer("EDIT CHANGE  EDIT+<> TYPE  ^ TABS");
+    else draw_footer("EDIT+ARROWS VALUE  ^ TABS  OPT+EDIT DEFAULT");
 }
 
 // ---- MOD: its list (LFO, AUTOMATION, DUCK), as PATTERN's ----
@@ -172,7 +172,7 @@ static void draw_lfo2(void) {
         if (on) ui_focus(lr_name[r], b, hi > lo ? (v - lo) * 100 / (hi - lo) : -1, ec);
         knob_draw(x, y, kp - 8, 170, lr_name[r], b, hi > lo ? (float)(v - lo) / (hi - lo) : 0, lo < 0 ? 0.5f : 0, on, ec, &cx, &cy, &kr);
     }
-    draw_footer(lrow == LR_TARGET ? "EDIT PICK ON SOUND  EDIT+<> TARGET  L1/R1 LFO  Y BACK  OPT+EDIT UNLINK" : "EDIT+ARROWS VALUE  L1/R1 LFO  Y BACK  OPT+EDIT LFO OFF");
+    draw_footer(lrow == LR_TARGET ? "EDIT PICK ON SOUND  EDIT+<> TARGET  ^ TABS" : "EDIT+ARROWS VALUE  ^ TABS  OPT+EDIT LFO OFF");
 }
 
 // ---- MOD > AUTOMATION (A19): A1-A4 as tabs (L1/R1; UP: the tab, EDIT+<> its target), the lane over the whole pattern ----
@@ -213,7 +213,7 @@ static void draw_auto2(void) {
     ftext(wx0, 664, FT_M, C_DIM, b);
     if (st >= 0) { if (al->v[st] != AUTO_EMPTY) snprintf(b, sizeof b, "step %d \004 %d%%", st + 1, al->v[st]); else snprintf(b, sizeof b, "step %d", st + 1);
         ftext(wx0 + ww - ftext_w(FT_M, b), 664, FT_M, C_WHITE, b); }
-    draw_footer(srow == 0 ? "EDIT+<> TARGET  EDIT PICK ON SOUND  Y BACK" : "EDIT POINT  X+^v BEND  Y BACK  EDIT+^v VALUE  L1/R1 LANE  OPT+EDIT CLEAR");
+    draw_footer(srow == 0 ? "EDIT+<> TARGET  EDIT PICK ON SOUND  v POINTS" : "EDIT POINT  EDIT+^v VALUE  ^ TABS");
 }
 
 // ---- MIX of a pad: its strip of the mixer as cards (the 1.2 rows: mrow, the column mcol = the pad) ----
@@ -250,6 +250,7 @@ static void draw_mix2(void) {
 }
 
 // ---- MIXER (HOME): the faders (A21) and a drawer at the side: returns, master, the pad's effects. L1/R1: closed, open, FREEZE (A23) ----
+enum { MXP_PADS, MXP_FREEZE = 4, MXP_N };   // the mixer's tab row (2026-11-24): PADS, RETURN A, RETURN B, MASTER, FREEZE
 static int mx_pg, mx_r, mx_fz;            // 0 the drawer closed, 1 open, 2 FREEZE; in the drawer: the row of a unit (0 level, 1-2 two parameters); FREEZE: the row
 static int v2_mixer(void) { return ui_cat < 0 && tab == T_MIX && !ducking && !perform; }
 static const int8_t mx_ret_k[3][2] = {{RV_SIZE, RV_DECAY}, {DL_TIME, DL_FB}, {MS_COMP, MS_LIM}};
@@ -288,15 +289,15 @@ static int mixer2_tap(void) {             // EDIT: on a pad opens or closes the 
 static void mx_db(char *b, float lin) { if (lin < 0.001f) snprintf(b, 8, "-INF"); else snprintf(b, 8, "%+.1f", 20 * log10f(lin)); }   // b: 8 chars
 static void mx_ctext(int cx, int y, int f, Col c, const char *s) { ftext(cx - ftext_w(f, s) / 2, y, f, c, s); }
 static void mx_strip(int s, int cx, int hw) {   // a pad: icon, its two inserts, sends A B (PROJECT > MIXER > STRIP EFFECTS), the fader and the meter, the fader in dB, the level now in dB
-    PadMix *pm = &song.mix.pad[s]; int on = s == mcol, has = has_sound(s), fx = ui_mxfx, top = fx ? 208 : 128, bot = 598, h = (bot - top) * clampi(song.t[s].vol, 0, 100) / 100; char b[8];
+    PadMix *pm = &song.mix.pad[s]; int on = s == mcol, has = has_sound(s), fx = ui_mxfx, top = fx ? 246 : 164, bot = 598, h = (bot - top) * clampi(song.t[s].vol, 0, 100) / 100; char b[8];
     Col c = has ? (on ? C_ORANGE : C_ENG(song.t[s].type)) : C_LINE;
-    if (on) rframe(cx - hw, 76, hw * 2, 638, 8, 3, C_WHITE, C_BG);
+    if (on) rframe(cx - hw, 118, hw * 2, 596, 8, 3, C_WHITE, C_BG);   // 2026-11-24: below the tab row (mx_row)
     rect(cx - 10, top, 14, bot - top, C_CELL, 1);
     snprintf(b, sizeof b, "%02d", s + 1); mx_ctext(cx, 650, FT_MB, on ? C_WHITE : C_DIM, b);
     if (!has) return;
-    icon(slot_icon(s), cx - 16, 84, song.t[s].mute ? C_DIM : pad_icol(s, on ? C_WHITE : C_GREY));
-    for (int i = 0; i < 2 && fx; i++) { int ty = pm->ins[i].type < FX_N ? pm->ins[i].type : 0; mx_ctext(cx, 120 + i * 20, FT_S, ty && pm->ins[i].on ? C_CAT(PC_FX) : C_DIM, fx_short[ty]); }
-    for (int i = 0; i < 2 && fx; i++) { int v = clampi(i ? pm->send_b : pm->send_a, 0, 100), y = 164 + i * 20, w = hw * 2 - 28;
+    icon(slot_icon(s), cx - 16, 124, song.t[s].mute ? C_DIM : pad_icol(s, on ? C_WHITE : C_GREY));
+    for (int i = 0; i < 2 && fx; i++) { int ty = pm->ins[i].type < FX_N ? pm->ins[i].type : 0; mx_ctext(cx, 158 + i * 20, FT_S, ty && pm->ins[i].on ? C_CAT(PC_FX) : C_DIM, fx_short[ty]); }
+    for (int i = 0; i < 2 && fx; i++) { int v = clampi(i ? pm->send_b : pm->send_a, 0, 100), y = 200 + i * 20, w = hw * 2 - 28;
         ftext(cx - hw + 6, y, FT_S, v ? C_WHITE : C_DIM, i ? "B" : "A"); rect(cx - hw + 20, y + 8, w, 5, C_LINE, 1); rect(cx - hw + 20, y + 8, w * v / 100, 5, C_CAT(PC_MIX), 1); }
     rect(cx - 10, bot - h, 14, h, c, 1); rect(cx - 18, bot - h - 5, 28, 10, C_WHITE, 1);
     meter_bar(cx + 13, top, 7, bot - top, mx_show[s]);
@@ -306,7 +307,7 @@ static void mx_strip(int s, int cx, int hw) {   // a pad: icon, its two inserts,
     if (song.t[s].mute) mx_ctext(cx, 678, FT_MB, C_RED, "M"); else if (pm->solo) mx_ctext(cx, 678, FT_MB, C_ORANGE, "S");
 }
 static void mx_tab(void) {                // the closed drawer: a tab at the edge with the master's meter
-    int tx = ui_drawer_left ? -8 : 980, ox = ui_drawer_left ? 2 : 982; char b[8];
+    int tx = ui_drawer_left ? -8 : 966, ox = ui_drawer_left ? 2 : 968; char b[8];   // the whole frame on the screen
     rframe(tx, 296, 52, 270, 8, 2, C_ORANGE, C_BG);
     ftext(ox + 14, 302, FT_S, C_ORANGE, ui_drawer_left ? "\004" : "\005");
     meter_bar(ox + 12, 332, 14, 184, mx_show[NSLOT + 2]);
@@ -317,11 +318,11 @@ static void mx_drawer(int dx) {           // open: REVERB, DELAY, MASTER as fade
     static const char *const cn[3] = {"REVERB", "DELAY", "MASTER"}, *const sn[3] = {"A", "B", "MST"}, *const pn[3][2] = {{"SIZE", "DECAY"}, {"TIME", "FEEDBACK"}, {"COMP", "LIMITER"}};
     int lo, hi, def, tx = ui_drawer_left ? dx + 318 : dx - 22; char b[48];
     rframe(tx, 330, 24, 90, 6, 2, C_ORANGE, C_BG); ftext(tx + 7, 364, FT_S, C_ORANGE, ui_drawer_left ? "\005" : "\004");
-    rframe(dx, 70, 320, 646, 8, 2, C_ORANGE, C_BG);
-    for (int u = 0; u < 3; u++) { int cx = dx + 56 + u * 104, on = mcol == NSLOT + u, top = 126, bot = 380; Col c = u == 2 ? th_cur[TC_SMP] : C_CAT(PC_MIX);
+    rframe(dx, 114, 320, 602, 8, 2, C_ORANGE, C_BG);
+    for (int u = 0; u < 3; u++) { int cx = dx + 56 + u * 104, on = mcol == NSLOT + u, top = 162, bot = 380; Col c = u == 2 ? th_cur[TC_SMP] : C_CAT(PC_MIX);
         int lv = u == 2 ? song.master : *unit_param(NSLOT + u, u ? DL_LEVEL : RV_LEVEL, &lo, &hi, &def), fh = (bot - top) * clampi(lv, 0, 100) / 100;
-        if (on && mx_r == 0) rframe(cx - 48, 76, 96, 356, 6, 3, C_WHITE, C_BG);
-        mx_ctext(cx, 82, FT_S, on ? C_WHITE : C_GREY, cn[u]); mx_ctext(cx, 102, FT_S, C_DIM, sn[u]);
+        if (on && mx_r == 0) rframe(cx - 48, 118, 96, 314, 6, 3, C_WHITE, C_BG);
+        mx_ctext(cx, 122, FT_S, on ? C_WHITE : C_GREY, cn[u]); mx_ctext(cx, 140, FT_S, C_DIM, sn[u]);
         rect(cx - 14, top, 18, bot - top, C_CELL, 1); rect(cx - 14, bot - fh, 18, fh, c, 1); rect(cx - 22, bot - fh - 5, 34, 10, C_WHITE, 1);
         meter_bar(cx + 16, top, 8, bot - top, mx_show[NSLOT + u]);
         mx_db(b, lv / 100.f); mx_ctext(cx, 386, FT_S, C_WHITE, b);
@@ -344,31 +345,44 @@ static void mx_drawer(int dx) {           // open: REVERB, DELAY, MASTER as fade
         else if (pm->spare[DK_SRC]) { snprintf(b, sizeof b, "PAD %d %d%%", pm->spare[DK_SRC], pm->spare[DK_AMT]); vc = C_ORANGE; } else snprintf(b, sizeof b, "OFF");
         ftext(dx + 16, y, FT_S, C_GREY, rn[i]); ftext(dx + 304 - ftext_w(FT_S, b), y, FT_S, vc, b); }
 }
+// 2026-11-24 (user: a hidden page is a dead end): the mixer's pages as a tab row on each of them, as everywhere else
+static int mix_at(void) { return v2_unit() ? 1 + fx_unit - NSLOT : mx_pg == 2 ? MXP_FREEZE : MXP_PADS; }
+static void mix_goto(int i) {
+    if (i >= 1 && i <= 3) { mcol = fx_unit = NSLOT + i - 1; frow = fcol = 0; set_tab(T_FX); ui_cat = -1; return; }
+    set_tab(T_MIX); ui_cat = -1; mx_r = 0; mrow = MX_VOL;
+    if (i == MXP_FREEZE) { mx_pg = 2; mx_fz = 0; } else { mx_pg = 0; mcol = sel; }
+}
+static void mx_row(void) {
+    static const char *const nm[MXP_N] = {"PADS", "RETURN A", "RETURN B", "MASTER", "FREEZE"}; int at = mix_at(), tw = 971 / MXP_N;
+    for (int i = 0; i < MXP_N; i++) { int x = 26 + i * tw, on = i == at; Col ec = i == 3 ? th_cur[TC_SMP] : C_CAT(PC_MIX);
+        if (on) rrect(x, 72, tw - 10, 36, 8, ec);
+        ftext(x + (tw - 10) / 2 - ftext_w(FT_MB, nm[i]) / 2, 78, FT_MB, on ? C_BG : C_DIM, nm[i]); }
+}
 static void draw_mixer2(void) {
     mixer2_fix();
-    mx_meters();
-    if (mx_pg == 0 && !any_sound()) { ui_empty(26, 200, 971, 300, "NOTHING TO MIX YET", "PADS: EDIT on an empty pad picks an engine"); draw_footer("Y BACK  L1/R1 DRAWER, FREEZE"); return; }
+    mx_meters(); mx_row();
+    if (mx_pg == 0 && !any_sound()) { ui_empty(26, 200, 971, 300, "NOTHING TO MIX YET", "PADS: EDIT on an empty pad picks an engine"); draw_footer("^ PAGES  Y BACK"); return; }
     if (mx_pg != 2) {                     // the drawer lies over the strips (2026-11-14, user: nothing narrows); they slide so the pad stays in view
         static int off; int open = mx_pg == 1, cs = mcol < NSLOT ? mcol : sel, vis = open ? 8 : NSLOT;
         if (cs < off) off = cs; if (cs >= off + vis) off = cs - vis + 1; off = clampi(off, 0, NSLOT - vis);
         float e = anim(&mx_anim, open, 200);   // the drawer slides in from its side (2026-11-21, user: every drawer moves)
         int xc = ui_drawer_left ? 90 : 50, xo = ui_drawer_left ? 387 : 50, x0 = xc + (int)((xo - xc) * e);
-        for (int s = 0; s < NSLOT; s++) mx_strip(s, x0 + (s - off) * 78, 37);
+        for (int s = 0; s < NSLOT; s++) if (x0 + (s - off) * 78 - 37 >= 0) mx_strip(s, x0 + (s - off) * 78, 37);   // none half off the left edge
         if (e > 0) mx_drawer(ui_drawer_left ? -(int)((1 - e) * 340) : 704 + (int)((1 - e) * 340)); else mx_tab();
-        draw_footer(!open ? "EDIT DRAWER  EDIT+^v LEVEL  Y MUTE  X SOLO  L1/R1 FREEZE" : mcol < NSLOT ? "EDIT CLOSE  EDIT+^v LEVEL  Y MUTE  X SOLO"
+        draw_footer(!open ? "EDIT DRAWER  EDIT+^v LEVEL  ^ PAGES" : mcol < NSLOT ? "EDIT CLOSE  EDIT+^v LEVEL  OPT MUTE/SOLO"
                     : "EDIT ALL PARAMETERS  EDIT+^v VALUE  Y CLOSE  <> UNIT, PADS");
     } else {                              // A23: the pads with a sound, live or frozen; EXPORT last; the DSP load
         int n = 0, ss[NSLOT]; for (int s = 0; s < NSLOT; s++) if (has_sound(s)) ss[n++] = s;
         int top = clampi(mx_fz - 3, 0, n + 1 > 6 ? n + 1 - 6 : 0);
-        for (int r = 0; r < 6 && top + r <= n; r++) { int i = top + r, y = 78 + r * 96, on = i == mx_fz; char b[40];
-            rrect(26, y, 971, 80, 8, on ? C_SELBG : C_CELL);
+        for (int r = 0; r < 6 && top + r <= n; r++) { int i = top + r, y = 122 + r * 86, on = i == mx_fz; char b[40];   // below the tab row
+            rrect(26, y, 971, 76, 8, on ? C_SELBG : C_CELL);
             if (i == n) { ftext(48, y + 26, FT_LB, C_WHITE, "EXPORT"); ftext(974 - ftext_w(FT_M, "song \003 WAV"), y + 28, FT_M, C_DIM, "song \003 WAV"); continue; }
             int s = ss[i]; snprintf(b, sizeof b, "%02d %.16s", s + 1, slot_name(s) ? slot_name(s) : "EMPTY"); ftext(48, y + 26, FT_LB, C_WHITE, b);
             if (frozen(s)) { const char *f = "\002 frozen"; ftext(974 - ftext_w(FT_M, f), y + 28, FT_M, C_ENG(3), f); } else ftext(974 - ftext_w(FT_M, "live"), y + 28, FT_M, C_DIM, "live"); }
         int ld = (int)(engine_load() * 100); char b[8]; snprintf(b, sizeof b, "%d%%", ld);
         ftext(26, 660, FT_M, C_DIM, "CPU"); rect(102, 668, 780, 8, C_LINE, 1); rect(102, 668, 780 * clampi(ld, 0, 100) / 100, 8, ld >= 85 ? C_RED : th_cur[TC_SMP], 1);
         ftext(997 - ftext_w(FT_MB, b), 658, FT_MB, C_WHITE, b);
-        draw_footer(mixer2_fz_pad() < 0 ? "EDIT EXPORT  Y BACK  L1/R1 PAGE" : "EDIT FREEZE  Y BACK  L1/R1 PAGE");
+        draw_footer(mixer2_fz_pad() < 0 ? "EDIT EXPORT  ^ PAGES  Y BACK" : "EDIT FREEZE  ^ PAGES  Y BACK");
     }
 }
 
@@ -450,7 +464,7 @@ static void draw_scenes(void) {
             int u = has && pat_used(&g->t[s].pat[clampi(g->t[s].cur, 0, NPAT - 1)]);
             disc2(x, cy, u ? 9 : has ? 6 : 3, has ? C_ENG(g->t[s].type) : C_LINE); } }
     if (rows > 6) { int th = 6 * 104 - 14, tw = th * 6 / rows; rect(1004, 80, 4, th, C_CELL, 1); rect(1004, 80 + (th - tw) * top / (rows - 6), 4, tw, C_DIM, 1); }
-    draw_footer(sc_cur >= n ? "EDIT NEW EMPTY  X COPY OF THE OPEN ONE  Y BACK" : "EDIT LAUNCH  X COPY  OPT+EDIT DELETE  Y BACK  F1/F2 HOME");
+    draw_footer(sc_cur >= n ? "EDIT NEW EMPTY  OPT COPY OF THE OPEN ONE  Y BACK" : "EDIT LAUNCH  OPT COPY  OPT+EDIT DELETE");
 }
 
 // ---- PROJECT > INTERFACE > PAD MENU = TREE (the mockup's map, A-04): the hub drawn as the whole app: HOME's screens, the pad,
@@ -556,9 +570,7 @@ static void draw_prj2(void) {
 static int v2_unit(void) { return tab == T_FX && fx_unit >= NSLOT; }
 static void draw_unit2(void) {
     int u = fx_unit, n = unit_nparams(u), half = (n + 1) / 2; Col ec = u == NSLOT + 2 ? th_cur[TC_SMP] : C_CAT(PC_MIX);
-    static const char *const un[3] = {"A \003 REVERB", "B \003 DELAY", "MASTER"};
-    for (int i = 0; i < 3; i++) { int x = 26 + i * 324, on = NSLOT + i == u; if (on) rrect(x, 70, 314, 34, 8, ec);
-        ftext(x + 157 - ftext_w(FT_MB, un[i]) / 2, 75, FT_MB, on ? C_BG : C_DIM, un[i]); }
+    mx_row();                            // 2026-11-24: the mixer's tab row (PADS RETURN A RETURN B MASTER FREEZE)
     int h = half <= 4 ? 136 : 108, dy = h + 12;
     for (int k = 0; k < n; k++) { int c = k >= half, r = c ? k - half : k, x = c ? 518 : 32, y = 118 + r * dy, on = fcol == c && frow == r, lo, hi, def; char b[16];
         int v = *unit_param(u, k, &lo, &hi, &def); unit_pstr(u, k, v, b);
@@ -566,7 +578,7 @@ static void draw_unit2(void) {
         if (on) { rframe(x, y, 473, h, 8, 4, ec, C_CELL); ui_focus(nm, b, hi - lo > 1 ? (v - lo) * 100 / (hi - lo) : -1, ec); } else rrect(x, y, 473, h, 8, C_CELL);
         ftext(x + 20, y + 12, FT_M, C_DIM, nm); ftext(x + 453 - ftext_w(FT_XB, b), y + 10, FT_XB, C_WHITE, b);
         if (hi - lo > 1) { rect(x + 20, y + h - 26, 433, 8, C_LINE, 1); rect(x + 20, y + h - 26, 433 * clampi(v - lo, 0, hi - lo) / (hi - lo), 8, ec, 1); } }
-    draw_footer("EDIT+ARROWS VALUE  L1/R1 UNIT  Y BACK  EDIT ON/OFF  OPT+EDIT DEFAULT");
+    draw_footer("EDIT+ARROWS VALUE  ^ PAGES  Y BACK  EDIT ON/OFF  OPT+EDIT DEFAULT");
 }
 
 // ---- KEYS (MENU twice): the open pad on twelve buttons, the scale's degrees; the tiles of HOME, the notes on them ----
@@ -592,5 +604,5 @@ static void draw_keys2(void) {
     snprintf(b, sizeof b, "%s %s", note_name[tk], scale_name[ts]); int x = 26 + ftext(26, 636, FT_LB, C_WHITE, b) + 20;
     x += ftext(x, 640, FT_M, own ? ec : C_DIM, own ? "of the pad" : "of the project") + 30;
     snprintf(b, sizeof b, "octave %+d", koct); ftext(x, 640, FT_M, C_DIM, b);
-    draw_footer("BUTTONS PLAY  MENU BACK  SHIFT+^v OCTAVE  SHIFT+<> SCALE  SHIFT+L1/R1 KEY  MENU+PLAY RECORD");
+    draw_footer("BUTTONS PLAY  SHIFT+OPT LEAVE  SHIFT+^v OCTAVE  SHIFT+<> SCALE  SHIFT+L1/R1 KEY  MENU+PLAY RECORD");
 }

@@ -207,7 +207,7 @@ static int qbar_key(int k, int down) {    // the cursor on the bar: 1 = the key 
     if (k == K_PLAY || k == K_SHIFT || k == K_MENU || k == K_F1 || k == K_F2) return 0;
     if (!down) return 1;
     if (k == K_LEFT || k == K_RIGHT) { if (qb_cur < qb_n) qa_release(qb_top[qb_cur]); qb_cur = clampi(qb_cur + (k == K_RIGHT ? 1 : -1), 0, QB_HANDLE); }
-    else if (!ui_qbar && k == K_DOWN && qb_cur == QB_HANDLE) qd_toggle(1);   // down from the handle pulls the drawer
+    // 2026-11-24 (user): DOWN always leaves the bar, the handle too; its drawer opens with EDIT (or X again)
     else if (k == K_OPT || k == (ui_qbar ? K_UP : K_DOWN)) {   // back: down to the strips at the top, OPTION straight to the page
         qb_focus = 0; if (!midi_clk_in) tempo_mul = 1.f; if (k == K_OPT) used[K_OPT] = 1;
         if (k != K_OPT && !ui_qbar && strips_here()) { strip_focus = strip_on() ? 2 : 1; sec_cur = ui_cat >= 0 ? ui_cat : hub_cur; }

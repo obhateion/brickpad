@@ -12,6 +12,7 @@ _Static_assert(sizeof(Song) == 301612 + NSLOT * NPAT * 6 + NSLOT * NLFO * 8 + NS
 static int len_lo(void) { return 1; }      // MIN/MAX LENGTH are gone (2026-11-09): a clip may be 1..NSTEP steps
 static int len_hi(void) { return NSTEP; }
 #define GROW_MAX 64                      // v3: the cursor grows a clip a bar at a time up to here (LENGTH still goes to NSTEP)
+static int ui_qbar;                       // the quick bar at the bottom (defined with the other ui.cfg fields below)
 #include <SDL2/SDL.h>
 #include <stdarg.h>
 #include <stddef.h>
@@ -1750,7 +1751,7 @@ static void seq_move(int k) {
         // next bar (past the end the clip grows a whole bar), ^ from the top row the bar before
         Pattern *p = cur_pat(sel); int len = p->len, c = cur_step(), d = k == K_RIGHT ? 1 : k == K_LEFT ? -1 : k == K_DOWN ? 8 : -8, n = c + d;
         if ((k == K_LEFT && c % 8 == 0) || (k == K_RIGHT && c % 8 == 7)) return;
-        if (k == K_DOWN && n >= len && c % 16 >= 8 && len < GROW_MAX) {
+        if (k == K_DOWN && n >= len && c % 16 >= 8 && len < GROW_MAX && !ui_qbar) {   // the bar at the bottom: DOWN reaches it (LEN/GRID grows)
             edit_begin(); p->len = (uint8_t)(len / 16 * 16 + 16 > GROW_MAX ? GROW_MAX : len / 16 * 16 + 16); toast_length("LENGTH", p->len);
             if (n >= p->len) n = p->len - 1;
         }
@@ -2860,7 +2861,7 @@ static void tab_step(int d) {            // F1 left, F2 right, round: GRID SEQ+I
     static const int order[4] = {T_GRID, T_SEQ, T_FX, T_MIX};
     {                                    // UI v2: HOME is PADS, SCENES, MIXER, PROJECT (also F1+F2); the pad's pages are inside the pad
         // PROJECT left the circle (user, 2026-11-14): only F1+F2 opens it, from anywhere, and comes back to that very screen
-        int at = tab == T_MIX ? 2 : tab == T_GRID && scening ? 1 : 0, to = (at + (d > 0 ? 1 : 2)) % 3;
+        int at = tab == T_MIX || v2_unit() ? 2 : tab == T_GRID && scening ? 1 : 0, to = (at + (d > 0 ? 1 : 2)) % 3;   // RETURN A/B, MASTER are the MIXER's
         set_tab(to == 2 ? T_MIX : T_GRID); scening = to == 1; if (to == 2 && sel < NSLOT) mcol = sel;
         return;
     }
@@ -3149,10 +3150,7 @@ static void roll_key(int k, int down) {
     int last = (T - 1) / rl_snap * rl_snap;
     if (held[K_SHIFT]) { rl_t = clampi(rl_t + dx * RL_COLS * rl_snap, 0, last); rl_n = clampi(rl_n + 12 * dy, 0, 127);
         rl_v0 += dx * RL_COLS * rl_snap; rl_n0 += 12 * dy; roll_view(); return; }
-    if (dx > 0 && rl_t >= last && p->len < GROW_MAX) {   // v3: past the end the clip grows a bar (16 steps)
-        edit_begin(); p->len = (uint8_t)(p->len / 16 * 16 + 16 > GROW_MAX ? GROW_MAX : p->len / 16 * 16 + 16); toast_length("LENGTH", p->len);
-        T = roll_ticks(p); last = (T - 1) / rl_snap * rl_snap;
-    }
+    // 2026-11-24: past the end the arrow goes onto the side slots (as on STEPS); the clip grows on LEN/GRID (EDIT+^v a bar)
     if (dx < 0 && p->len > 16) {         // back out of an empty last bar: it goes
         int bt = roll_ticks(p) * ((p->len - 1) / 16 * 16) / p->len, any = 0;
         for (int j = 0; j < NNOTE; j++) if (p->roll[j].len && p->roll[j].start + p->roll[j].len > bt) any = 1;
@@ -3709,7 +3707,8 @@ static void key_event1(int k, int down) {
     if (ctxing) { ctx_key(k, down); return; }
     if (qpicking) { qp_key(k, down); return; }   // PROJECT > SETTINGS > BAR BUTTONS
     if (held[K_MENU] && k == K_UP && y_back_here()) { if (down) { used[K_MENU] = 1; sim_key(K_Y, -1); } return; }   // v3: Y's way back
-    if ((k == K_L1 || k == K_R1 || k == K_L2 || k == K_R2) && !sim_on && !perform && !ui_simple && !ui_over() && !naming && !exporting && !asking && !cfm && !learning) {
+    if ((k == K_L1 || k == K_R1 || k == K_L2 || k == K_R2) && !sim_on && !perform && !ui_simple && !ui_over() && !naming && !exporting && !asking && !cfm && !learning
+        && !held[K_SHIFT] && tab != T_PRJ) {   // SHIFT+L2 undo, SHIFT+L1/R1 the grid, PROJECT's held nudge stay theirs
         if (down) { int d = k == K_R1 || k == K_R2 ? 1 : -1; qb_focus = strip_focus = tab_focus = 0;   // v3: L/R page as F1/F2 do
             if (in_pad()) cat_step(d); else { ui_cat = -1; tab_step(d); } }
         return; }
@@ -3898,12 +3897,12 @@ static void key_event1(int k, int down) {
     if (v2_lfo() && (k == K_L1 || k == K_R1)) { lcol = (lcol + (k == K_R1 ? 1 : NLFO - 1)) % NLFO; return; }   // UI v2 (A18): the next LFO
     if (v2_auto() && (k == K_L1 || k == K_R1)) { lane = L_A1 + (lane - L_A1 + (k == K_R1 ? 1 : NAUTO - 1)) % NAUTO; return; }   // A19: the next lane
     if (v2_fx() && (k == K_L1 || k == K_R1)) { fx2_slot ^= 1; fx2_cur = -1; fx2_sync(); return; }   // UI v2 (A17): the other insert
+    if (v2_unit() && (k == K_L1 || k == K_R1)) { mix_goto((mix_at() + (k == K_R1 ? 1 : MXP_N - 1)) % MXP_N); return; }   // the mixer's tab row
     if (tab == T_FX && (k == K_L1 || k == K_R1)) { fx_unit_step(k == K_R1 ? 1 : -1); return; }
     if (tab == T_FX && k == K_Y && fx_unit < NSLOT) { fx_page = !fx_page; return; }   // FX <> MOD
     if (v2_mix() && (k == K_L1 || k == K_R1)) return;   // MIX of a pad: one page
-    if (v2_unit() && (k == K_L1 || k == K_R1)) { fx_unit = NSLOT + (fx_unit - NSLOT + (k == K_R1 ? 1 : 2)) % 3; frow = fcol = 0; return; }
     if (v2_unit() && k == K_Y) { int u = fx_unit; set_tab(T_MIX); mx_pg = 1; mcol = u; mx_r = 0; mrow = MX_VOL; return; }   // back to the drawer
-    if (v2_mixer() && (k == K_L1 || k == K_R1)) { mixer2_page(k == K_R1 ? 1 : -1); return; }   // UI v2: the faders, the drawer open, FREEZE
+    if (v2_mixer() && (k == K_L1 || k == K_R1)) { mix_goto((mix_at() + (k == K_R1 ? 1 : MXP_N - 1)) % MXP_N); return; }   // 2026-11-24: PADS RETURN A RETURN B MASTER FREEZE
     if (tab == T_MIX && (k == K_L1 || k == K_R1)) { mcol = k == K_R1 ? (mcol < NSLOT ? (mcol / 4 + 1) * 4 : 0) : (mcol < 4 ? NSLOT : mcol <= NSLOT ? (mcol - 1) / 4 * 4 : NSLOT); if (mcol > NSLOT + 2) mcol = 0; if (mcol < NSLOT) sel = mcol; return; }
     if (ui_cat == PC_SOUND && tab == T_SEQ && (k == K_L1 || k == K_R1)) { sound_page_step(k == K_R1 ? 1 : -1); return; }   // SOUND: the page
     if (tab == T_SEQ && (k == K_L1 || k == K_R1) && held[K_SHIFT] && srow >= 1 && srow <= 2 && ui_cat != PC_SOUND) {   // the grid (2026-11-19, user: "a grid size in NOTE mode")
@@ -3915,19 +3914,19 @@ static void key_event1(int k, int down) {
 }
 // v3: an arrow towards the quick bar that moved nothing on the page (its edge) puts the cursor on the bar. The cursors of
 // every page are compared before and after; windows keep their keys.
+static int ch_row, ch_col, ch_slot;      // chords.h
 static int qb_edge(int k, int down) {
-    if (!down || qb_focus || strip_focus || tab_focus || x_latch || v_latch || ctxing || !(k == K_UP && (!ui_qbar || strips_here() || page_tabs()) || k == K_DOWN && ui_qbar) || perform || ui_over() || chording || ui_simple || learning || exporting || asking || cfm || naming) return 0;
+    if (!down || qb_focus || strip_focus || tab_focus || x_latch || v_latch || ctxing || !(k == K_UP && (!ui_qbar || strips_here() || page_tabs()) || k == K_DOWN && ui_qbar) || perform || ui_over() || ui_simple || learning || exporting || asking || cfm || naming) return 0;
     for (int i = K_OPT; i < K_N; i++) if (held[i] && i != k) return 0;
     return 1;
 }
 static void cur_snap(int *a) {
     int v[] = {tab, sel, srow, scol, lane, gb_cur, mrow, mcol, mx_r, mx_pg, hub_cur, hubbing, tr_lv, tr_pg, tr_0, fx2_slot, fx_unit, fx_page,
                lcol, lrow, jcur, jcol, jsec, pm_cur, mm_cur, mix2_cur, dk_row, dk_col, dk_pt, sc_cur, scn_cur, ui_cat, patmenu, modmenu,
-               recpage, scening, spage, sl_r, sl_c, ted_row, ted_col, pcur, ab_pg, cl_deep, rolling, rl_t, rl_n, rl_v0, rl_n0, sp_cur, sp_pg[0], sp_pg[1], sp_pg[2], sp_pg[3], fx2_cur, mx_fz};
+               recpage, scening, spage, sl_r, sl_c, ted_row, ted_col, pcur, ab_pg, cl_deep, rolling, rl_t, rl_n, rl_v0, rl_n0, sp_cur, sp_pg[0], sp_pg[1], sp_pg[2], sp_pg[3], fx2_cur, mx_fz, frow, fcol, ch_row, ch_col};
     memcpy(a, v, sizeof v); a[63] = (int)(sizeof v / sizeof *v);
 }
 static int side_key(int k, int down); static int side_page(void); static int side_enter(int k); static int side_land_mark(void); static void side_land(int before);   // side.h
-static int ch_row, ch_col, ch_slot;      // chords.h
 static void key_event2(int k, int down);
 static int side_edge(int k, int down) {   // a plain arrow across on a page with slots: its edge may lead onto them
     if (!down || (k != K_LEFT && k != K_RIGHT) || !side_page() || x_latch || v_latch || ctxing || qb_focus || qd_open || qpicking || strip_focus || tab_focus
@@ -4046,11 +4045,11 @@ static void draw_grid(void) {
         if (c0 > c1) { tt = c0; c0 = c1; c1 = tt; } if (r0 > r1) { tt = r0; r0 = r1; r1 = tt; }
         frame(GX + c0 * DX - 6, GY + r0 * DY - 6, (c1 - c0) * DX + CW + 12, (r1 - r0) * DY + CH + 12, 2, C_ORANGE);
     }
-    char missing[96]; snprintf(missing, sizeof missing, "MISSING %.32s  %s", file_base(slot_want[sel]), engine_sample(sel) ? "EDIT OPEN" : "EDIT LOAD");
-    draw_footer(perform ? "PAD CLIP/HIT  SHIFT+PAD OTHER  PLAY PAD CLIP  SHIFT+F1/F2 SCENE"
-                        : gsel_on() ? "PLAY ALL SELECTED  Y MUTE  SHIFT+Y FREEZE  ARROW ENDS IT"
+    char missing[96]; snprintf(missing, sizeof missing, "%s  OPT MENU", engine_sample(sel) ? "EDIT OPEN" : "EDIT LOAD");   // the card says MISSING and the file
+    draw_footer(perform ? "PAD CLIP/HIT  SHIFT+OPT LEAVE  PLAY PAD CLIP  SHIFT+PAD OTHER  SHIFT+F1/F2 SCENE"
+                        : gsel_on() ? "PLAY ALL SELECTED  OPT MUTE  ARROW ENDS IT"
                         : slot_want[sel][0] ? missing
-                        : has_sound(sel) ? "EDIT OPEN  X CLIP  PLAY ALL  Y MUTE  SHIFT+Y FREEZE  SHIFT+DPAD SEL  SHIFT+X NAME"
+                        : has_sound(sel) ? "EDIT OPEN  OPT MENU  PLAY ALL  SHIFT+DPAD SEL"
                                              : "EDIT CHOOSE ENGINE  MENU PADS");
 }
 static void slice_label(char *b, const Pattern *p, int i, int ns) {   // "16+": the step also plays what follows slice 16
@@ -4134,8 +4133,7 @@ static void draw_roll(void) {
     else snprintf(b, sizeof b, "%s", nm);
     ftext(wx0 + ww - ftext_w(FT_S, b), 694, FT_S, C_WHITE, b);
     if (ui_qbar) draw_phones(850, 16);   // v3: MON on the quick bar at the top
-    draw_footer(i >= 0 ? "EDIT DELETE  EDIT+ARROWS LENGTH/PITCH  Y BACK  R2 HEAR  X+ARROWS VEL/CHANCE  L1/R1 GRID  OPT+<> NEXT  SHIFT+X RANDOM"
-                       : "EDIT NOTE  L1/R1 GRID  Y BACK  OPT+<> NEXT  X+EDIT CHORD  SHIFT+ARROWS PAGE  SHIFT+X RANDOM");
+    draw_footer(i >= 0 ? "EDIT DELETE  EDIT+ARROWS LENGTH/PITCH  OPT+<> NEXT" : "EDIT NOTE  OPT+<> NEXT  SHIFT+ARROWS PAGE");
 }
 #include "chords.h"
 #include "sub.h"
