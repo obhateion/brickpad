@@ -81,6 +81,15 @@ static void t_old_file(void) {             // an 0x12 file written by hand: a pa
     engine_release_key(40); engine_release_key(41); pump(200); unsolo();
     CHECK(!bad && pk > 0.01, "the converted pad sounds (peak %.3f)", pk);
 }
+static void t_freeze(void) {             // FREEZE renders a WAVE pad offline (the export's way): a loop that is heard
+    int s = -1; for (int j = 0; j < NSLOT; j++) if (song.t[j].type == 1 && pat_used(&song.t[j].pat[song.t[j].cur])) { s = j; break; }
+    CHECK(s >= 0, "a WAVE pad with steps"); if (s < 0) return;
+    int ok = frz_render(s), n = 0; const float *d = engine_freeze_get(s, song.t[s].cur, &n); double pk = 0; int bad = 0;
+    for (long i = 0; d && i < 2L * n; i++) { if (!isfinite(d[i])) bad++; else if (fabs(d[i]) > pk) pk = fabs(d[i]); }
+    printf("freeze pad %d: %d frames, peak %.3f\n", s + 1, n, pk);
+    CHECK(ok && n > 0 && !bad && pk > 0.01, "frozen WAVE pad: %d frames, peak %.4f, %d bad", n, pk, bad);
+    frz_drop(s);
+}
 static int find_wave(void) { for (int s = 0; s < NSLOT; s++) if (song.t[s].type == 1) return s; return -1; }
 static void t_pages(int s) {               // every page of SOUND, every card moved, the pictures drawn
     sel = s; set_tab(T_SEQ); cat_open(PC_SOUND); sound_sync(); pump(2); draw_ok();
@@ -213,6 +222,7 @@ int main(void) {
     CHECK(wave_ready && wstore.t[0].d && wstore.t[WT_NBUILT - 1].d, "the tables are built before any pad plays");
     prj_load("projects/DEMO/NEON.bpp"); pump(4);
     t_convert();
+    t_freeze();
     int s = find_wave(); CHECK(s >= 0, "a WAVE pad");
     if (s >= 0) { t_pages(s); t_learn(s); t_tables(s); t_notes(s); t_mod(s); }
     prj_load("projects/DEMO/NEON.bpp"); pump(4);

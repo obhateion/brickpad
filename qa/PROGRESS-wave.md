@@ -15,7 +15,7 @@ Branch `synth-integrate` (from workflow-v3 + synth-wave). Updated with every pus
 - [x] 3 UI: SOUND pages for WAVE (sound.h `snd_wav`: OSC A, OSC B, UNISON, SUB, FILTER, ENV, LFO, MATRIX, VOICE, ARP;
   pictures, the MATRIX list and the TABLE browser in `src/wvui.h`); LFO TARGET / matrix DEST by pointing at a card
   (LEARN); names, footers, HELP, hints say WAVE.
-- [x] 4a qa/qa_wave_ui.c ALL OK; every qa/*.c ALL OK (fixed on the way, both older than this branch: `lane_list` read past
+- [x] 4a qa/qa_wave_ui.c ALL OK (now with a FREEZE of a WAVE pad); all 17 qa/*.c ALL OK, tests/qa_wave.c ALL OK (fixed on the way, both older than this branch: `lane_list` read past
   its lists since SUB went (qa_nav, qa_quick crashed); OPT+EDIT on a SOUND card of a roll pad cleared the roll).
 
 - [x] 5 docs: docs/WAVE.md (sections 7, 8, 10, 11 as wired, with the GRAND -> WAVE table), CHANGELOG, README (EN, RU),
