@@ -48,6 +48,7 @@ static int ftext(int x, int y, int f, Col c, const char *s) {   // y: the top of
     SDL_SetTextureColorMod(t, c.r, c.g, c.b);
     for (; *s; s++, x += v->w) {
         int ch = (unsigned char)*s, g = ch >= 32 && ch <= 127 ? ch - 32 : ch == 1 ? 96 : ch == 2 ? 97 : -1;
+        if (ch >= 128) { x -= v->w; continue; }   // 2026-11-25 QA: UTF-8 in a file name ("\xe2\x9c\xa7SPECTRE") takes no room
         if (ch == 3) g = 98;             // the middle dot
         if (ch == 4) g = 99;             // the arrow
         if (ch == 5) g = 100;            // the arrow to the left
@@ -58,7 +59,7 @@ static int ftext(int x, int y, int f, Col c, const char *s) {   // y: the top of
     }
     return x - x0;
 }
-static int ftext_w(int f, const char *s) { return (int)strlen(s) * fv2[f].w; }
+static int ftext_w(int f, const char *s) { int n = 0; for (; *s; s++) n += (unsigned char)*s < 128; return n * fv2[f].w; }   // the bytes drawn
 static void ftext_wrap(int x, int y, int w, int lines, int f, Col c, const char *s) {   // words over up to `lines` lines of width w
     int per = w / fv2[f].w; char b[160];
     for (int l = 0; l < lines && *s; l++) { int n = (int)strlen(s);

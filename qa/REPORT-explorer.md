@@ -32,3 +32,6 @@ calls and checks: cursor stuck / far jumps, outlines over other elements or text
    right half of the centred label. Fix: the label moves left of the badges (`knob_draw` `kd_right`, `src/sound.h:262`).
 7. **Drawer: the MORE card's title under the first tile's outline.** X X, the cursor on RESAMPLE: the outline (y 76)
    cut into "MORE" (y 62..79). Fix: the tiles start at y 84 like MASTER's (`qd_layout`, `src/quick.h:275`).
+8. **UTF-8 file names: blank cells before the name, cut too early.** NEON's pads 1-3 are "✧SPECTRE", "✧CYBRSNARE",
+   "✧UFO": `ftext()` skipped the 3 bytes of ✧ but still advanced 3 cells, and `ftext_w()`/`fit()` counted them, so HOME
+   showed "   SPECTRE" and "CYBRS..". Fix: bytes >= 128 take no room in `ftext()` and `ftext_w()` (`src/ui.h:46,62`).
