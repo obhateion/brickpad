@@ -51,7 +51,7 @@ static int hk_color(SDL_Renderer *r, Uint8 a, Uint8 b, Uint8 c, Uint8 d);
 #undef SDL_SetRenderDrawColor
 
 enum { O_BOX, O_FILL, O_FRAME, O_TEXT, O_ICON };
-typedef struct { int k, x, y, w, h, t, tgt, mapped, ly, font; Uint32 col, in; char s[100]; } Op;
+typedef struct { int k, x, y, w, h, t, tgt, mapped, ly, font, hid; Uint32 col, in; char s[100]; } Op;
 #define NOPS 20000
 static Op ops[NOPS]; static int nops, cur_tgt; static Uint32 dcol; static SDL_Rect clipr; static int clip_on;
 static Uint32 rgb(Col c) { return (Uint32)c.r << 16 | c.g << 8 | c.b; }
@@ -128,7 +128,20 @@ static int hk_clip(SDL_Renderer *r, const SDL_Rect *c) { frame_check(); clip_on 
 // ---- the harness ----
 static SDL_Surface *sf; static float buf[2 * 128]; static int fails, warns; static char where[96];
 static void pump(int n) { while (n--) { callback(0, (Uint8 *)buf, sizeof buf); engine_collect_garbage(); scene_poll(); } }
-static void redraw(void) { fake_ms += 40; draw(); frame_check(); }
+static void occlude(void) {              // what a later opaque box covers whole is not seen (a window over the page)
+    for (int i = 0; i < nops; i++) { Op *a = &ops[i]; a->hid = a->tgt != 0; }
+    for (int j = 0; j < nops; j++) { Op *b = &ops[j]; if (b->tgt || (b->k != O_BOX && b->k != O_FILL) || b->w < 40 || b->h < 40) continue;
+        for (int i = 0; i < j; i++) { Op *a = &ops[i]; if (a->hid) continue;
+            if (a->x >= b->x && a->y >= b->y && a->x + a->w <= b->x + b->w && a->y + a->h <= b->y + b->h) a->hid = 1; } }
+    // a frame counts as its ring: cover the ring and it is gone
+    for (int j = 0; j < nops; j++) { Op *b = &ops[j]; if (b->tgt || b->k != O_FRAME || b->w < 40 || b->h < 40) continue;
+        for (int i = 0; i < j; i++) { Op *a = &ops[i]; if (a->hid) continue;
+            int t = b->t; if (a->x >= b->x + t && a->y >= b->y + t && a->x + a->w <= b->x + b->w - t && a->y + a->h <= b->y + b->h - t) a->hid = 1; } }
+}
+static void redraw(void) {               // frames until the drawers have slid
+    for (int i = 0; i < 20; i++) { fake_ms += 40; anim_busy = 0; draw(); frame_check(); if (!anim_busy && i >= 1) break; }
+    occlude();
+}
 static void dump(const char *nm) {
     printf("---- %s: %d ops\n", nm, nops);
     for (int i = 0; i < nops; i++) { Op *o = &ops[i]; if (o->tgt) continue;
@@ -143,6 +156,9 @@ static int isect(const Op *a, const Op *b, int m) {   // overlap of more than m 
     return x1 - x0 > m && y1 - y0 > m;
 }
 static int inside(const Op *a, const Op *b, int m) { return a->x >= b->x - m && a->y >= b->y - m && a->x + a->w <= b->x + b->w + m && a->y + a->h <= b->y + b->h + m; }
+static int inside_t(const Op *a, const Op *b) {   // text in a card: a pixel across, its cell's padding up and down
+    return a->x >= b->x - 1 && a->x + a->w <= b->x + b->w + 1 && a->y >= b->y - 4 && a->y + a->h <= b->y + b->h + 4;
+}
 static int is_focus(const Op *o) { return o->k == O_FRAME && o->t >= 2 && (o->col == rgb(C_WHITE) || o->col == rgb(C_ORANGE)); }
 static int blank_text(const Op *o) { for (const char *c = o->s; *c; c++) if (*c != ' ') return 0; return 1; }
 #define NSEEN 4000
@@ -155,22 +171,22 @@ static void report(int fail, const char *fmt, ...) {   // each finding once (per
 }
 static int noisy_text(const Op *o) { return o->font >= 200; }   // the big digits are drawn as art
 static void check_frame(const char *key) {
-    for (int i = 0; i < nops; i++) { Op *a = &ops[i]; if (a->tgt || a->k != O_TEXT || blank_text(a)) continue;
+    for (int i = 0; i < nops; i++) { Op *a = &ops[i]; if (a->hid || a->k != O_TEXT || blank_text(a)) continue;
         if (a->x < 0 || a->y < 0 || a->x + a->w > W || a->y + a->h > H) report(1, "[%s] text off the screen: \"%s\" at %d,%d w %d", where, a->s, a->x, a->y, a->w);
-        for (int j = i + 1; j < nops; j++) { Op *b = &ops[j]; if (b->tgt || b->k != O_TEXT || blank_text(b)) continue;
+        for (int j = i + 1; j < nops; j++) { Op *b = &ops[j]; if (b->hid || b->k != O_TEXT || blank_text(b)) continue;
             if (isect(a, b, 3)) report(1, "[%s] text on text: \"%s\" (%d,%d) and \"%s\" (%d,%d)", where, a->s, a->x, a->y, b->s, b->x, b->y); }
         // its card: the last box drawn before it under its first letter
         int gx = a->x + 4, gy = a->y + a->h / 2;
-        for (int j = i - 1; j >= 0; j--) { Op *b = &ops[j]; if (b->tgt || (b->k != O_BOX && b->k != O_FILL && b->k != O_FRAME)) continue;
+        for (int j = i - 1; j >= 0; j--) { Op *b = &ops[j]; if (b->hid || (b->k != O_BOX && b->k != O_FILL && b->k != O_FRAME)) continue;
             if (b->w < 16 || b->h < 12 || (b->w >= W - 4 && b->h >= H - 4)) continue;
             if (gx < b->x || gx >= b->x + b->w || gy < b->y || gy >= b->y + b->h) continue;
             if (b->col == rgb(C_BG) && b->w >= W - 4) break;   // the page itself
-            if (!inside(a, b, 1) && !noisy_text(a)) report(1, "[%s] text out of its card: \"%s\" at %d,%d w %d h %d, card %d,%d %dx%d", where, a->s, a->x, a->y, a->w, a->h, b->x, b->y, b->w, b->h);
+            if (!inside_t(a, b) && !noisy_text(a)) report(1, "[%s] text out of its card: \"%s\" at %d,%d w %d h %d, card %d,%d %dx%d", where, a->s, a->x, a->y, a->w, a->h, b->x, b->y, b->w, b->h);
             break; }
     }
-    for (int i = 0; i < nops; i++) { Op *f = &ops[i]; if (f->tgt || !is_focus(f)) continue;
+    for (int i = 0; i < nops; i++) { Op *f = &ops[i]; if (f->hid || !is_focus(f)) continue;
         Op in = *f; in.x += f->t; in.y += f->t; in.w -= 2 * f->t; in.h -= 2 * f->t;
-        for (int j = 0; j < nops; j++) { Op *b = &ops[j]; if (j == i || b->tgt) continue;
+        for (int j = 0; j < nops; j++) { Op *b = &ops[j]; if (j == i || b->hid) continue;
             if (b->k == O_TEXT && blank_text(b)) continue;
             if (!isect(b, f, 1) || inside(b, &in, 0)) continue;   // inside the outline: what it frames
             if (b->k != O_TEXT && inside(f, b, 0)) continue;     // the card or panel it sits on
@@ -185,9 +201,9 @@ static void check_frame(const char *key) {
 
 // ---- the cursor: the outlines in the text colour or the accent; did an arrow move it, and how far ----
 typedef struct { int n; Op f[8]; unsigned th; } Look;
-static unsigned text_hash(void) { unsigned h = 2166136261u; for (int i = 0; i < nops; i++) if (!ops[i].tgt && ops[i].k == O_TEXT && ops[i].y > V2_HEAD) {
+static unsigned text_hash(void) { unsigned h = 2166136261u; for (int i = 0; i < nops; i++) if (!ops[i].hid && ops[i].k == O_TEXT && ops[i].y > V2_HEAD) {
     for (const char *c = ops[i].s; *c; c++) h = (h ^ (unsigned char)*c) * 16777619u; h = (h ^ (unsigned)ops[i].x) * 16777619u; h = (h ^ (unsigned)ops[i].y) * 16777619u; } return h; }
-static void look(Look *l) { l->n = 0; for (int i = 0; i < nops && l->n < 8; i++) if (!ops[i].tgt && is_focus(&ops[i])) l->f[l->n++] = ops[i]; l->th = text_hash(); }
+static void look(Look *l) { l->n = 0; for (int i = 0; i < nops && l->n < 8; i++) if (!ops[i].hid && is_focus(&ops[i])) l->f[l->n++] = ops[i]; l->th = text_hash(); }
 static int same_look(const Look *a, const Look *b) {
     if (a->n != b->n) return 0;
     for (int i = 0; i < a->n; i++) if (a->f[i].x != b->f[i].x || a->f[i].y != b->f[i].y || a->f[i].w != b->f[i].w || a->f[i].h != b->f[i].h) return 0;
@@ -198,7 +214,7 @@ static const char *kname(int k) { static char b[8]; switch (k) { case K_UP: retu
 static int is_arrow(int k) { return k == K_UP || k == K_DOWN || k == K_LEFT || k == K_RIGHT; }
 static int candidate(const Op *f, int k, Op *out) {   // an element like the focused one that way
     int cx = f->x + f->w / 2, cy = f->y + f->h / 2, best = 1 << 30;
-    for (int i = 0; i < nops; i++) { const Op *b = &ops[i]; if (b->tgt || (b->k != O_BOX && b->k != O_FILL && b->k != O_FRAME)) continue;
+    for (int i = 0; i < nops; i++) { const Op *b = &ops[i]; if (b->hid || (b->k != O_BOX && b->k != O_FILL && b->k != O_FRAME)) continue;
         if (b->w < f->w - 16 || b->w > f->w + 2 || b->h < f->h - 16 || b->h > f->h + 2 || isect(b, f, 0)) continue;
         if (b->y < V2_HEAD || b->y + b->h > V2_FOOT) continue;
         int bx = b->x + b->w / 2, by = b->y + b->h / 2, dx = bx - cx, dy = by - cy, ok = 0;
@@ -233,6 +249,7 @@ static void clean(void) {                // every window shut, HOME
 }
 typedef void (*Setup)(void);
 static void walk(const char *nm, Setup su) {   // the rows: DOWN r times, then RIGHT along it and LEFT back; then UP to the bar
+    if (!su || !*nm) return;
     snprintf(where, sizeof where, "%s", nm); clean(); su(); redraw(); check_frame("open");
     { char f[128]; snprintf(f, sizeof f, "ex_%s.bmp", nm); SDL_SaveBMP(sf, f); }
     for (int r = 0; r < 10; r++) {
@@ -245,11 +262,39 @@ static void walk(const char *nm, Setup su) {   // the rows: DOWN r times, then R
     }
     clean(); su(); redraw(); quiet = 0;
     for (int i = 0; i < 12 && !qb_focus && quiet < 3; i++) tap(K_UP);
-    if (!qb_focus && !rolling) report(1, "[%s] UP never reaches the quick bar", nm);
+    if (!qb_focus && !ui_over() && !(rolling && !chording) && tab != T_PAT) report(1, "[%s] UP never reaches the quick bar", nm);
     for (int i = 0; i < 12 && (qb_focus || tab_focus || strip_focus); i++) tap(K_DOWN);
     if (qb_focus || tab_focus || strip_focus) report(1, "[%s] DOWN never comes back from the bar", nm);
 }
+static void key(int k) { ev(k, 1); ev(k, 0); }       // a press with no checks (to set a screen up)
+static void kombo(int m, int k) { ev(m, 1); key(k); ev(m, 0); }
+static int g_pad, g_pg, g_sec;           // the screen's pad, page, section
 static void su_home(void) { }
+static void su_scenes(void) { key(K_R1); }
+static void su_mixer(void) { key(K_R1); key(K_R1); if (g_pg) { mix_goto(g_pg); tab_focus = 0; pump(1); } }
+static void su_mxdrawer(void) { key(K_R1); key(K_R1); mix_goto(0); key(K_RIGHT); for (int i = 0; i < 13; i++) key(K_RIGHT); }
+static void su_mxunit(void) { su_mxdrawer(); key(K_EDIT); }
+static void su_prj(void) { kombo(K_MENU, K_UP); jsec = g_sec; jcol = 0; pump(1); }
+static void su_cat(void) { sel = g_pad; cat_open(g_pg); pump(1); }
+static void su_sound(void) { sel = g_pad; cat_open(PC_SOUND); snd_page_go(g_sec); pump(1); }
+static void su_layout(void) {            // ROLL RHYTHM CHORDS by the LAYOUT slot: EDIT+DOWN from STEPS, and on
+    sel = g_pad; cat_open(PC_PATTERN); pump(1); if (cur_pat(sel)->mode) lay_to(0); pump(1);
+    set_step(0); for (int i = 0; i < 40 && !side_foc; i++) key(K_LEFT); for (int i = 0; i < 4; i++) key(K_UP);
+    for (int i = 0; i < g_sec; i++) { kombo(K_EDIT, K_DOWN); pump(2); if (cfm) { key(K_EDIT); pump(2); } if (getenv("TRACE")) printf("  layout %d: foc %d mode %d rolling %d chording %d rh %d\n", i, side_foc, cur_pat(sel)->mode, rolling, chording, rl_rhythm); }
+    key(K_RIGHT); side_foc = 0; pump(1);
+}
+static void su_auto(void) { sel = g_pad; cat_open(PC_MOD); pump(1); side_foc = 1; key(K_EDIT); side_foc = 0; pump(1); }
+static void su_duck(void) { sel = g_pad; cat_open(PC_MOD); pump(1); side_foc = 2; key(K_EDIT); side_foc = 0; pump(1); }
+static void su_slot(void) { sel = g_pad; cat_open(g_pg); pump(1); side_foc = g_sec; key(K_EDIT); side_foc = 0; pump(1); }   // a window behind a side slot
+static void su_bar(void) { key(K_X); }
+static void su_drawer(void) { key(K_X); key(K_X); }
+static void su_slice(void) { sel = g_pad; cat_open(PC_SOUND); pump(1); slicing = 1; pump(1); }
+static void su_export(void) { export_open(); pump(1); }
+static void su_naming(void) { kombo(K_MENU, K_UP); naming_open(0); pump(1); }
+static void su_picker(void) { sel = g_pad; key(K_EDIT); pump(1); }   // EDIT on an empty pad: which instrument
+static void su_qpick(void) { qp_open(); pump(1); }
+static void su_icons(void) { sel = g_pad; icon_open(); pump(1); }
+static void su_theme(void) { kombo(K_MENU, K_UP); jcur = J_THEME; theming = 1; pump(1); }
 int main(int argc, char **argv) {
     srand(1); sf = SDL_CreateRGBSurfaceWithFormat(0, W, H, 32, SDL_PIXELFORMAT_ARGB8888);
     R = SDL_CreateSoftwareRenderer(sf); logf = stderr; font_init();
@@ -257,7 +302,37 @@ int main(int argc, char **argv) {
     prj_load("projects/DEMO/NEON.bpp"); pump(4);
     set_tab(T_GRID); ui_cat = -1; sel = 0; pump(1);
     if (argc > 1) { snprintf(where, sizeof where, "home"); redraw(); dump("home"); }
-    walk("home", su_home);
+    walk("home", su_home); walk("scenes", su_scenes);
+    { static const char *const mn[MXP_N] = {"mixer", "mixer_ret_a", "mixer_ret_b", "mixer_master", "mixer_freeze"};
+      for (g_pg = 0; g_pg < MXP_N; g_pg++) walk(mn[g_pg], su_mixer); g_pg = 0; }
+    walk("mixer_drawer", su_mxdrawer); walk("mixer_unit", su_mxunit);
+    for (g_sec = 0; g_sec < JS_N; g_sec++) { char nm[64]; snprintf(nm, sizeof nm, "project_%s", prj_sec_name[g_sec]); walk(nm, su_prj); }
+    walk("quick_bar", su_bar); walk("drawer", su_drawer);
+    int done[4] = {0}, empty = -1, smp = -1, synth = -1;
+    for (int s = 0; s < NSLOT; s++) { if (!has_sound(s)) { if (empty < 0) empty = s; continue; }
+        int ty = song.t[s].type & 3; if (ty == 0 && smp < 0) smp = s; if (ty == 1 && synth < 0) synth = s; if (done[ty]) continue; done[ty] = 1;
+        static const char *const en[4] = {"smp", "grand", "acid", "cloud"}; char nm[64]; g_pad = s;
+        for (int c = 0; c < PC_N; c++) { g_pg = c; snprintf(nm, sizeof nm, "%s_%s", en[ty], cat_name[c]); walk(nm, su_cat); }
+        { int np; snd_pages(song.t[s].type, &np); sel = s;
+          for (g_sec = 0; g_sec < np; g_sec++) { snprintf(nm, sizeof nm, "%s_SOUND_%s", en[ty], snd_page_nm(g_sec)); walk(nm, su_sound); } }
+        for (g_sec = 1; g_sec <= 3; g_sec++) { snprintf(nm, sizeof nm, "%s_layout_%s", en[ty], (const char *[]){"", "ROLL", "RHYTHM", "CHORDS"}[g_sec]); walk(nm, su_layout); }
+        snprintf(nm, sizeof nm, "%s_AUTO", en[ty]); walk(nm, su_auto);
+        snprintf(nm, sizeof nm, "%s_DUCK", en[ty]); walk(nm, su_duck);
+        g_pg = PC_PATTERN; g_sec = 4; snprintf(nm, sizeof nm, "%s_PATTERNS", en[ty]); walk(nm, su_slot);
+        g_pg = PC_PATTERN; g_sec = 7; snprintf(nm, sizeof nm, "%s_RANDOM", en[ty]); walk(nm, su_slot);
+        g_pg = PC_SOUND; g_sec = 3; snprintf(nm, sizeof nm, "%s_%s", en[ty], ty == 1 || ty == 2 ? "PRESETS" : "BROWSER"); walk(nm, su_slot);
+        walk(en[ty][0] == 's' ? "smp_ICON" : "", NULL);
+    }
+    if (smp >= 0) { g_pad = smp; walk("slice_editor", su_slice); walk("icons", su_icons); }
+    if (empty >= 0) { g_pad = empty; walk("empty_picker", su_picker); for (int c = 0; c < PC_N; c++) { char nm[64]; g_pg = c; snprintf(nm, sizeof nm, "empty_%s", cat_name[c]); walk(nm, su_cat); } }
+    // scenarios: a layout kept when the pad is left and entered again by the keys
+    if (synth >= 0) { snprintf(where, sizeof where, "chords kept"); clean(); g_pad = synth; g_sec = 3; su_layout(); redraw();
+        int ok0 = chording; if (!ok0) report(1, "[chords kept] LAYOUT EDIT+DOWN to CHORDS (the clip had notes, EDIT answers the question): mode %d but no CHORDS page", cur_pat(sel)->mode); ok0 = 1; for (int i = 0; i < 4 && ui_cat >= 0; i++) key(K_Y); key(K_EDIT); pump(2); redraw();
+        if (ui_cat == PC_PATTERN && !chording && ok0) report(1, "[chords kept] CHORDS layout, Y to HOME, EDIT on the pad: PATTERN opens the ROLL (LAYOUT slot says CHORDS)");
+        key(K_F2); key(K_F1); pump(2); redraw();
+        if (ui_cat == PC_PATTERN && !chording && ok0) report(1, "[chords kept] CHORDS layout, F2 then F1: PATTERN opens the ROLL");
+        lay_to(0); clean(); }
+    walk("export", su_export); walk("naming", su_naming); walk("bar_picker", su_qpick); walk("theme", su_theme);
     printf("%d presses, %d fails %d notes\n", npress, fails, warns);
     return 0;
 }

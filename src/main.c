@@ -2761,7 +2761,7 @@ static void cfm_do(void) {
           snprintf(b, sizeof b, "%d PADS CLEARED", n); toast(b); }
         break;
     case CF_PART: pad_reset(cfm_arg, cfm_part); toast("CLEARED"); break;
-    case CF_CHORD: pat_mode_set(2, 1); break;   // YES: the notes go, the chords start on an empty clip
+    case CF_CHORD: pat_mode_set(2, 1); if (ui_cat == PC_PATTERN && !chording) chord_open(); break;   // YES: the notes go, the chords start on an empty clip (and show)
     case CF_PRJ: prj_reset_sec(cfm_arg); snprintf(b, sizeof b, "%s RESET", cfm_arg < 0 ? "RECORD" : prj_sec_name[cfm_arg]); toast(b); break;
     case CF_SCENE:
         if (cfm_arg != scn_cur) { scene_del(cfm_arg); break; }
@@ -2777,7 +2777,7 @@ static void scene_kill_tick(void) {      // the open scene that was deleted: gon
     if (i != scn_cur) scene_del(i);
 }
 static void cfm_key(int k, int down) {
-    if (!down) { if (k == K_EDIT && !used[K_EDIT]) { if (cfm_cur == 0) cfm_do(); else { if (cfm == CF_CHORD) pat_mode_set(2, 0); cfm = 0; } } return; }   // CHORDS, NO: over the notes
+    if (!down) { if (k == K_EDIT && !used[K_EDIT]) { if (cfm_cur == 0) cfm_do(); else { if (cfm == CF_CHORD) { pat_mode_set(2, 0); if (ui_cat == PC_PATTERN && !chording) chord_open(); } cfm = 0; } } return; }   // CHORDS, NO: over the notes
     if (k != K_EDIT) used[k] = 1;   // EDIT acts on its release
     if (k == K_LEFT || k == K_RIGHT || k == K_UP || k == K_DOWN) cfm_cur = !cfm_cur;
     else if (k == K_Y || k == K_OPT) cfm = 0;

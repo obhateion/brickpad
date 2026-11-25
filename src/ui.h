@@ -306,7 +306,7 @@ static void cat_open(int c) {
     hub_cur = c; ui_cat = c;
     if (c == PC_PATTERN && is_auto(lane)) lane = lane_first();
     if (c == PC_PATTERN && (srow < 1 || srow > 2)) { srow = 1; scol = 0; }
-    if (c == PC_PATTERN && cur_pat(sel)->mode) roll_open();   // v3: PATTERN is its layout; PATTERNS and RECORD are in OPTION's menu
+    if (c == PC_PATTERN && cur_pat(sel)->mode) { roll_open(); if (cur_pat(sel)->mode == 2) chord_open(); }   // v3: PATTERN is its layout (2026-11-25 QA: CHORDS too, not the roll)
     if (c == PC_SOUND) { srow = 3; scol = 0; cl_deep = 0; gb_cur = 0; }
     if (c == PC_FX || c == PC_MOD) { fx_unit = sel; fx_page = c == PC_MOD; }
     if (c == PC_MIX) mcol = sel;
