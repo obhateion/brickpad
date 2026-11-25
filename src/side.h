@@ -36,7 +36,7 @@ static int side_fill(int pg, int i, SideSlot *s) {   // 0: the place is empty
     case 0: s->name = "LAYOUT"; snprintf(s->v1, 16, "%s", p->mode == 1 ? (rl_rhythm ? "RHYTHM" : "ROLL") : p->mode == 2 ? "CHORDS" : "STEPS"); s->vc = C_CAT(PC_PATTERN);
         s->hint = "EDIT NEXT  EDIT+^v PICK"; return 1;   // STEPS ROLL RHYTHM CHORDS
     case 1: s->name = "LEN/GRID"; snprintf(s->v1, 16, "%d", p->len); snprintf(s->v2, 16, "%s", div_name[p->div % 6]);
-        s->hint = pg == SD_ROLL ? "EDIT+^v LENGTH  EDIT+<> SNAP  EDIT FINE" : "EDIT+^v LENGTH  EDIT+<> GRID  EDIT FINE"; return 1;
+        s->hint = "EDIT+^v A BAR  EDIT+<> A STEP  EDIT GRID"; return 1;   // 2026-11-25 (user): no hidden fine mode, the cursor stays here
     case 2: if (pg == SD_CHORDS) { s->name = "CHORD LEN"; snprintf(s->v1, 16, "%s", ch_len_name[ch_len]); s->hint = "EDIT NEXT LENGTH"; return 1; }
         if (pg == SD_ROLL) { s->name = "GRID"; snprintf(s->v1, 16, "%s", rg_name[rl_gtype]); s->vc = rl_gtype ? C_ORANGE : C_WHITE; s->hint = "EDIT STRAIGHT/TRIPLET/DOTTED/FREE"; return 1; }
         s->name = "DOUBLE"; snprintf(s->v1, 16, "x2"); s->hint = "EDIT DOUBLE THE CLIP"; return 1;
@@ -113,7 +113,9 @@ static void side_press(int pg, int i) {   // EDIT on a slot
     Pattern *p = cur_pat(sel);
     if (side_pat(pg)) switch (i) {
     case 0: lay_to((lay_at() + 1) % 4); return;
-    case 1: v_latch = 1; side_foc = 0; toast("ARROWS: LENGTH (^v A BAR)"); return;   // the fine length, as OPTION's LENGTH was
+    case 1: if (pg == SD_ROLL) sim_key(K_R1, -1);   // EDIT: the next grid (the roll: its snap; STEPS: the clip's division), round
+            else if (pg == SD_STEPS) { Pattern *q = cur_pat(sel); edit_begin(); q->div = (uint8_t)((q->div + 1) % 6); char b[32]; snprintf(b, sizeof b, "GRID %s", div_name[q->div]); toast(b); }
+            return;
     case 2: if (pg == SD_CHORDS) sim_key(K_X, -1);
             else if (pg == SD_ROLL) { rl_gtype = (rl_gtype + 1) % RG_N; if (rl_gtype == RG_DOTTED && !rl_gi) rl_gi = 1; rl_snap = rl_snap_of(rl_gtype, rl_gi);
                 rl_t = rl_t / rl_snap * rl_snap; rl_v0 = rl_v0 / rl_snap * rl_snap; toast(rg_name[rl_gtype]); }
@@ -142,11 +144,9 @@ static void side_turn(int pg, int i, int k) {   // EDIT+arrows on a slot
         return; }
     if (i == 0 && (k == K_UP || k == K_DOWN)) lay_to((lay_at() + (k == K_DOWN ? 1 : 3)) % 4);
     else if (i == 6 && pg == SD_CHORDS && (k == K_LEFT || k == K_RIGHT)) { int n = ch_nslots(p); ch_slot = (ch_slot + (k == K_RIGHT ? 1 : n - 1)) % n; }
-    else if (i == 1 && pg == SD_ROLL && (k == K_LEFT || k == K_RIGHT)) sim_key(k == K_RIGHT ? K_R1 : K_L1, -1);   // the roll's own grid (snap)
-    else if (i == 1) {
-        if (k == K_UP || k == K_DOWN) { act_pattern_len_step(sel, c, k == K_UP ? 16 : -16); toast_length("LENGTH", cur_pat(sel)->len); }
-        else { act_pattern_div_step(sel, c, k == K_RIGHT ? 1 : -1); char b[32]; snprintf(b, sizeof b, "GRID %s", div_name[cur_pat(sel)->div % 6]); toast(b); }
-        seq_clamp();
+    else if (i == 1) {                    // LENGTH: ^v a bar, <> a step (2026-11-25, user: 16 went 17 with ^)
+        int l0 = p->len, l1 = k == K_UP ? (l0 / 16 + 1) * 16 : k == K_DOWN ? (l0 - 1) / 16 * 16 : l0 + (k == K_RIGHT ? 1 : -1);
+        l1 = clampi(l1, 1, NSTEP); if (l1 != l0) act_pattern_len_step(sel, c, l1 - l0); toast_length("LENGTH", cur_pat(sel)->len); seq_clamp();
     }
 }
 static int side_key(int k, int down) {    // 1: the key was the slot's

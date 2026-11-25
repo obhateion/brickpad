@@ -100,7 +100,8 @@ static void fx2_card(int x, int y, int w, int h, const FxSlot *f, FxCard cd, int
     if (cd.row == 9) { if (on) ui_focus(lb, v, -1, ec); seg_draw(x, y, w, h, lb, v, (const char *const *)mod_mode_name, 3, clampi(val, 0, 2), on, ec); return; }   // MODE: three names
     if (cd.side && (f->type == FX_COMP || f->type == FX_RING)) { if (on) ui_focus(lb, v, -1, ec); val_draw(x, y, w, h, lb, v, on, ec); return; }   // KEY / SOURCE: a pad
     int cx, cy, r; float fz = lo < 0 && hi > 0 ? (float)-lo / (hi - lo) : 0;   // v3: a knob, as on SOUND
-    knob_draw(x, y, w, h, lb, v, hi > lo ? (float)clampi(val - lo, 0, hi - lo) / (hi - lo) : 0, fz, on, ec, &cx, &cy, &r);
+    float f0 = hi > lo ? (float)clampi(val - lo, 0, hi - lo) / (hi - lo) : 0; int tg = cd.row >= 2 && cd.row - 2 < 6 && !cd.side ? (fx2_slot ? LT_INS2 : LT_INS1) + cd.row - 2 : -1;   // 2026-11-25: modulated, Serum's way
+    knob_draw(x, y, w, h, lb, v, mod_live(fx_unit, tg, f0), fz, on, ec, &cx, &cy, &r); mod_rings(fx_unit, tg, f0, cx, cy, r);
 }
 static void draw_fx2(void) {
     PadMix *pm = &song.mix.pad[fx_unit]; Col ec = C_CAT(PC_FX); fx2_sync();
@@ -125,7 +126,7 @@ static void draw_fx2(void) {
 
 // ---- MOD > LFO (A18): LFO 1-4 as tabs (L1/R1), its shape, seven cards (the 1.2 rows: lrow) ----
 static int v2_lfo(void) { return ui_cat == PC_MOD && tab == T_FX && fx_unit < NSLOT && fx_page; }
-static const int8_t lfo2_ord[LR_N] = {LR_TARGET, LR_SHAPE, LR_RATE, LR_DEPTH, LR_SYNC, LR_TRIG, LR_PHASE};   // A18's four first
+static const int8_t lfo2_ord[LR_N] = {LR_TARGET, LR_SHAPE, LR_RATE, LR_DEPTH, LR_SYNC, LR_POL, LR_TRIG, LR_PHASE};   // A18's four first; POL by CLOCK
 static int lfo2_pos(void) { for (int i = 0; i < LR_N; i++) if (lfo2_ord[i] == lrow) return i; return 0; }
 static void lfo2_move(int k) {
     int p = lfo2_pos(); if (k == K_UP && p < kg_cols(LR_N)) return;   // the knobs in kg_cols columns (ui.h)
@@ -164,6 +165,7 @@ static void draw_lfo2(void) {
         if (r == LR_DEPTH) { lo = -100; hi = 100; v = L->depth; } else if (r == LR_PHASE) { hi = 100; v = L->phase; } else if (r == LR_RATE && !L->sync) { hi = 100; v = L->rate; }
         if (on) ui_focus(lr_name[r], b, hi > lo ? (v - lo) * 100 / (hi - lo) : -1, ec);
         if (r == LR_SYNC) { toggle_draw(x, y, kw, kh, lr_name[r], "FREE", "TEMPO", L->sync != 0, on, ec); if (on) ui_focus(lr_name[r], b, -1, ec); continue; }   // two states: a switch
+        if (r == LR_POL) { toggle_draw(x, y, kw, kh, lr_name[r], "BI", "UNI", (L->spare & 1) != 0, on, ec); if (on) ui_focus(lr_name[r], b, -1, ec); continue; }
         if (r == LR_TARGET || r == LR_SHAPE || r == LR_TRIG) { val_draw(x, y, kw, kh, lr_name[r], b, on, ec); if (on) ui_focus(lr_name[r], b, -1, ec); continue; }   // names: a value card
         knob_draw(x, y, kw, kh, lr_name[r], b, hi > lo ? (float)(v - lo) / (hi - lo) : 0, lo < 0 ? 0.5f : 0, on, ec, &cx, &cy, &kr);
     }

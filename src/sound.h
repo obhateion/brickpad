@@ -237,6 +237,28 @@ static void knob_arc(int cx, int cy, int r, int t, float a0, float a1, Col c) { 
 }
 // The knob alone, for any page: f = where the value sits 0..1, z = where its arc starts (0, or the middle for +/- values).
 // Returns the angle of the value, for rings drawn round it.
+// 2026-11-25 (user, Serum): a modulated knob. The needle shows the value NOW (its LFOs and automation move it on screen);
+// a notch on the rim keeps the set value; each LFO draws its range as an arc outside the knob in the MOD colour: from the
+// set value one way (UNIPOLAR, the depth's sign gives the way) or both ways (BIPOLAR); automation puts its dot on the rim.
+static float mod_live(int pad, int tg, float f) {   // f: the set value 0..1; the value the engine plays now
+    if (tg < 0) return f;
+    if (song.t[pad].on || engine_playing()) { const AutoLane *al = song.aut[pad][song.t[pad].cur];
+        for (int k = 0; k < NAUTO; k++) if (al[k].target == tg) { float v = engine_auto(pad, k); if (v >= 0) f = v / 100.f; break; } }
+    for (int j = 0; j < NLFO; j++) { const Lfo *L = &song.lfo[pad][j]; if (L->target == tg && L->depth) f += engine_lfo(pad, j) * L->depth / 100.f; }
+    return f < 0 ? 0 : f > 1 ? 1 : f;
+}
+static void mod_rings(int pad, int tg, float f, int cx, int cy, int r) {
+    if (tg < 0) return; float a = 135 + 270 * f; int any = 0; Col mc = C_CAT(PC_MOD);
+    for (int j = 0, ring = 0; j < NLFO; j++) { const Lfo *L = &song.lfo[pad][j]; if (L->target != tg || !L->depth) continue;
+        float sp = 270.f * abs(L->depth) / 100, a0, a1, rr = r + 8 + ring++ * 5; any = 1;
+        if (L->spare & 1) { if (L->depth > 0) { a0 = a; a1 = a + sp; } else { a0 = a - sp; a1 = a; } } else { a0 = a - sp; a1 = a + sp; }
+        if (a0 < 135) a0 = 135; if (a1 > 405) a1 = 405; if (a1 > a0) knob_arc(cx, cy, (int)rr, 4, a0, a1, mc); }
+    const AutoLane *al = song.aut[pad][song.t[pad].cur];
+    for (int k = 0; k < NAUTO; k++) if (al[k].target == tg) { any = 1; float v = engine_auto(pad, k); float av = v >= 0 ? 135 + 270 * v / 100 : a;
+        disc2(cx + (int)((r + 9) * cosf(av * 0.0174533f)), cy + (int)((r + 9) * sinf(av * 0.0174533f)), 5, C_ORANGE); break; }
+    if (any) { float c = cosf(a * 0.0174533f), sn = sinf(a * 0.0174533f);   // the set value: a notch on the rim
+        line(cx + (int)((r - 2) * c), cy + (int)((r - 2) * sn), cx + (int)((r + 6) * c), cy + (int)((r + 6) * sn), 3, C_WHITE); }
+}
 static float knob_draw(int x, int y, int w, int h, const char *lb, char *v, float f, float z, int on, Col ec, int *kcx, int *kcy, int *kr) {
     if (on) rframe(x, y, w, h, 8, 3, ec, C_CELL); else rrect(x, y, w, h, 8, C_CELL);
     char l2[16]; snprintf(l2, sizeof l2, "%.13s", lb);
@@ -337,14 +359,9 @@ static void snd_knob(int x, int y, int w, int h, int p, int on, Col ec) {
         ftext(x + (w - ftext_w(FT_S, lb)) / 2, y + 8, FT_S, on ? C_WHITE : C_DIM, lb);
         rrect(x + 20, y + h / 2 - 18, w - 40, 36, 8, C_SELBG); ftext(x + w / 2 - ftext_w(FT_MB, v) / 2, y + h / 2 - fv2[FT_MB].h / 2, FT_MB, C_WHITE, v);
     } else {
-        int cx, cy, r; float a = knob_draw(x, y, w, h, lb, v, f, lo < 0 && hi > 0 ? (float)-lo / (hi - lo) : 0, on, ec, &cx, &cy, &r);
-        int b = auto_bind_target(p);
-        if (b >= 0) {                     // what moves it
-            for (int j = 0; j < NLFO; j++) { const Lfo *lf = &song.lfo[sel][j]; if (lf->target != b || !lf->depth) continue;
-                float sw = 270.f * abs(lf->depth) / 100 / 2; knob_arc(cx, cy, r + 9, 3, a - sw < 135 ? 135 : a - sw, a + sw > 405 ? 405 : a + sw, C_WHITE); }
-            const AutoLane *al = song.aut[sel][song.t[sel].cur];
-            for (int k = 0; k < NAUTO; k++) if (al[k].target == b) { disc2(cx + (int)((r + 9) * cosf(a * 0.0174533f)), cy + (int)((r + 9) * sinf(a * 0.0174533f)), 6, C_CAT(PC_MOD)); break; }
-        }
+        int b = auto_bind_target(p); float fl = mod_live(sel, b, f);   // the knob turns with its LFOs and automation, as on Serum
+        int cx, cy, r; knob_draw(x, y, w, h, lb, v, fl, lo < 0 && hi > 0 ? (float)-lo / (hi - lo) : 0, on, ec, &cx, &cy, &r);
+        mod_rings(sel, b, f, cx, cy, r);
     }
     char tg[4][4]; int nt = snd_tags(p, tg), tx = x + w - 6 - nt * 30;   // A1 / L1 badges in the top corner, off the ring (2026-11-24)
     for (int i = 0; i < nt; i++) { Col bc = tg[i][0] == 'A' ? C_CAT(PC_MOD) : C_WHITE; rrect(tx + i * 30, y + 6, 26, 18, 4, bc); ftext(tx + i * 30 + 13 - ftext_w(FT_S, tg[i]) / 2, y + 6, FT_S, C_BG, tg[i]); }

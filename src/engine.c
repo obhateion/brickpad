@@ -222,6 +222,7 @@ static void lfo_run(int n, double tempo) {
             st->ph += hz * n / SR;
             if (st->ph >= 1) { st->ph -= floor(st->ph); st->armed = 0; if (!st->rng) st->rng = 0x9E3779B9u ^ (uint32_t)(s * 7 + j);
                 st->prev = st->sh; st->sh = fx_rand(&st->rng); }
+            if (L->spare & 1) o = (o + 1) * 0.5f;   // UNIPOLAR (2026-11-25): 0..1, the depth's sign gives the way
             st->out = o; lfo_view[s][j] = o;
             float a = o * L->depth / 100.f; int tg = L->target;
             if (tg == LT_PITCH) pitch += a * 12; else if (tg == LT_VOL) vol += a; else if (tg == LT_PAN) pan += a;

@@ -50,8 +50,9 @@ int main(void) {
     { Pattern *p = cur_pat(sel); int d0 = p->div;
       combo(K_EDIT, K_UP); CHECK(p->len == 32, "EDIT+UP: a bar longer");
       combo(K_EDIT, K_DOWN); CHECK(p->len == 16, "EDIT+DOWN: a bar shorter");
-      combo(K_EDIT, K_RIGHT); CHECK(p->div != d0, "EDIT+RIGHT: the grid");
-      combo(K_EDIT, K_LEFT); CHECK(p->div == d0, "EDIT+LEFT: the grid back"); }
+      combo(K_EDIT, K_RIGHT); CHECK(p->len == 17, "EDIT+RIGHT: a step longer");   // 2026-11-25: <> a step, EDIT the grid
+      combo(K_EDIT, K_LEFT); CHECK(p->len == 16, "EDIT+LEFT: a step shorter");
+      tap(K_EDIT); CHECK(p->div != d0 && side_foc == 2, "EDIT: the next grid, the cursor stays"); p->div = (uint8_t)d0; }
     shot("side_2_len.bmp");
     tap(K_RIGHT); CHECK(!side_foc && cur_step() == 8, "RIGHT: back on step 9");
     tap(K_DOWN); CHECK(cur_pat(sel)->len == 32 && cur_step() == 16, "DOWN from the bottom row grows a bar");

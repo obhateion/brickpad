@@ -496,7 +496,7 @@ static void song_sanitize(void) {
         for (int j = 0; j < NLFO; j++) { Lfo *L = &song.lfo[s][j];
             if (L->target >= LT_ENG + LT_ENGN || (L->target > LT_SENDB && L->target < LT_INS1) || (L->target >= LT_INS1 + 6 && L->target < LT_INS2) || (L->target >= LT_INS2 + 6 && L->target < LT_ENG)) L->target = 0;
             if (L->shape >= LS_N) L->shape = 0; L->sync = L->sync ? 1 : 0; if (L->sync ? L->rate >= LFO_NSYNC : L->rate > 100) L->rate = L->sync ? 8 : 50;
-            KEEP(L->depth, -100, 100); if (L->retrig > NSLOT + 1) L->retrig = 0; if (L->phase > 100) L->phase = 0; L->spare = 0; }
+            KEEP(L->depth, -100, 100); if (L->retrig > NSLOT + 1) L->retrig = 0; if (L->phase > 100) L->phase = 0; L->spare &= 1; }   // spare bit 0: UNIPOLAR
         for (int q = 0; q < NPAT; q++) for (int a = 0; a < NAUTO; a++) { AutoLane *al = &song.aut[s][q][a];
             if (al->target >= LT_ENG + LT_ENGN || (al->target > LT_SENDB && al->target < LT_INS1) || (al->target >= LT_INS1 + 6 && al->target < LT_INS2) || (al->target >= LT_INS2 + 6 && al->target < LT_ENG)) al->target = 0;
             al->smooth = al->smooth ? 1 : 0; for (int i = 0; i < NSTEP; i++) { if (al->v[i] != AUTO_EMPTY) KEEP(al->v[i], 0, 100); KEEP(song.acurve[s][q][a][i], -100, 100); } }   // a file from before CLOUD DEEP: the defaults, the same sound
@@ -3428,7 +3428,7 @@ static int v2_fx(void); static void fx2_move(int k); static int v2_lfo(void); st
 static void fx_move(int k) {
     if (v2_fx()) { fx2_move(k); return; }
     if (v2_lfo()) { lfo2_move(k); return; }
-    if (fx_unit < NSLOT && fx_page) { if (k == K_LEFT || k == K_RIGHT) lcol = (lcol + (k == K_RIGHT ? 1 : NLFO - 1)) % NLFO; else lrow = clampi(lrow + (k == K_DOWN ? 1 : -1), 0, 6); return; }   // 7 rows (LR_N, below)
+    if (fx_unit < NSLOT && fx_page) { if (k == K_LEFT || k == K_RIGHT) lcol = (lcol + (k == K_RIGHT ? 1 : NLFO - 1)) % NLFO; else lrow = clampi(lrow + (k == K_DOWN ? 1 : -1), 0, 7); return; }   // 7 rows (LR_N, below)
     if (fx_unit < NSLOT) {
         if (frow == 8) { if (k == K_UP) { frow = 7; fcol = fcol >= 2; } else if (k == K_LEFT || k == K_RIGHT) fcol = clampi(fcol + (k == K_RIGHT ? 1 : -1), 0, 3); return; }
         if (k == K_RIGHT) { if (!fx_sub && fx_multi_row(fcol, frow)) fx_sub = 1; else if (fcol == 0) { fcol = 1; fx_sub = 0; } return; }
@@ -3488,8 +3488,8 @@ static void fx_delete(void) {
 }
 // ---------- MOD page of the FX tab: 4 LFOs per pad (2026-11-09; user: in the FX tab for now, Y switches FX/MOD) ----------
 static int lcol, lrow;                   // the LFO column and its row
-enum { LR_TARGET, LR_SHAPE, LR_SYNC, LR_RATE, LR_DEPTH, LR_TRIG, LR_PHASE, LR_N };
-static const char *const lr_name[LR_N] = {"TARGET", "SHAPE", "CLOCK", "RATE", "DEPTH", "START", "PHASE"};
+enum { LR_TARGET, LR_SHAPE, LR_SYNC, LR_RATE, LR_DEPTH, LR_TRIG, LR_PHASE, LR_POL, LR_N };   // POL (2026-11-25, Serum): BIPOLAR / UNIPOLAR
+static const char *const lr_name[LR_N] = {"TARGET", "SHAPE", "CLOCK", "RATE", "DEPTH", "START", "PHASE", "POLARITY"};
 static const char *const ls_name[LS_N] = {"SINE", "TRIANGLE", "SAW UP", "SAW DOWN", "SQUARE", "S&H", "SMOOTH", "DUCK"};
 static const char *const gb_pn[14] = {"OSC 1", "OSC 2", "TUNE 2", "DETUNE", "MIX", "NOISE", "CUTOFF", "RESO", "ENV", "ATTACK", "DECAY", "SUSTAIN", "RELEASE", "GLIDE"};
 static const char *const ab_pn[11] = {"WAVE", "TUNE", "CUTOFF", "RESO", "ENV MOD", "DECAY", "ACCENT", "DIST TYPE", "DRIVE", "DIST TONE", "DIST MIX"};
@@ -3527,6 +3527,7 @@ static void lfo_value(int d, int big) {
     case LR_DEPTH: L->depth = (int8_t)clampi(L->depth + d * (big ? 10 : 1), -100, 100); break;
     case LR_TRIG: L->retrig = (uint8_t)((L->retrig + (d < 0 ? -1 : 1) + NSLOT + 2) % (NSLOT + 2)); break;   // FREE RUN, EACH NOTE, NOTE OF PAD 1..12
     case LR_PHASE: L->phase = (uint8_t)((L->phase + d * (big ? 10 : 1) + 101) % 101); break;
+    case LR_POL: L->spare ^= 1; break;
     }
 }
 static void lfo_str(int s, int j, int row, char *b) {
@@ -3537,6 +3538,7 @@ static void lfo_str(int s, int j, int row, char *b) {
     case LR_SYNC: snprintf(b, 24, "%s", L->sync ? "TEMPO" : "FREE"); break;
     case LR_RATE: if (L->sync) snprintf(b, 24, "%s", L->rate < NDIV ? div_label[L->rate] : L->rate == NDIV ? "2 BARS" : "4 BARS"); else snprintf(b, 24, "%.2fHZ", 0.02 * pow(1000, L->rate / 100.0)); break;
     case LR_DEPTH: snprintf(b, 24, "%+d", L->depth); break;
+    case LR_POL: snprintf(b, 24, "%s", L->spare & 1 ? "UNIPOLAR" : "BIPOLAR"); break;
     case LR_TRIG: if (L->retrig >= 2) snprintf(b, 24, "PAD %d NOTE", L->retrig - 1); else snprintf(b, 24, "%s", L->retrig ? "EACH NOTE" : "FREE RUN"); break;
     default: snprintf(b, 24, "%d", L->phase);
     }
