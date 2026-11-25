@@ -1214,7 +1214,7 @@ static int lane_list(int *l) {           // the lanes this pad has: a sampler sl
     static const int smp_l[] = {L_TRIG, L_VEL, L_PROB, L_SLICE}, gb_l[] = {L_TRIG, L_VEL, L_PROB},   // TRIG holds the note too (2026-11-09)
                      ab_l[] = {L_TRIG, L_VEL, L_PROB, L_ACC, L_SLD};
     static const int sls_l[] = {L_SLICE, L_TRIG, L_VEL, L_PROB};   // a sliced sample: SLC first (2026-11-12, user)
-    int ty = song.t[sel].type; const int *src = ty == 2 ? ab_l : ty ? gb_l : track_nslices(sel) > 1 ? sls_l : smp_l; int n = ty == 2 ? 6 : ty ? 4 : track_nslices(sel) > 1 ? 5 : 4;   // UI v2: no SLICE lane without slices
+    int ty = song.t[sel].type; const int *src = ty == 2 ? ab_l : ty ? gb_l : track_nslices(sel) > 1 ? sls_l : smp_l; int n = ty == 2 ? 5 : ty ? 3 : 4;   // UI v2: no SLICE lane without slices (2026-11-25 QA: the counts lost SUB too; they read past the lists)
     if (song.t[sel].pat[song.t[sel].cur].mode) n = 1;   // ROLL: the roll itself (NOTE) and the automation lanes   // CLOUD: as GRAND
     for (int i = 0; i < n; i++) l[i] = src[i];
     for (int a = 0; a < NAUTO; a++) l[n++] = L_A1 + a;   // automation lanes on every pad
