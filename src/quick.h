@@ -388,6 +388,7 @@ static void qp_key(int k, int down) {
     if (d) qp_cur = clampi(qp_cur + d, 0, nv - 1);
     else if (k == K_UP && qp_cur >= COLS) qp_cur -= COLS;
     else if (k == K_DOWN && qp_cur + COLS < nv) qp_cur += COLS;
+    else if (k == K_DOWN && qp_cur / COLS < (nv - 1) / COLS) qp_cur = nv - 1;   // the short last row (cloud QA)
 }
 static void qp_draw(void) {
     float e = anim(&qp_anim, qpicking, 200); if (e <= 0) return;

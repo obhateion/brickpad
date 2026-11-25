@@ -262,7 +262,9 @@ static void mixer2_move(int k) {
         if (k == K_LEFT || k == K_RIGHT) { int p = (ui_drawer_left ? (mcol >= NSLOT ? mcol - NSLOT : mcol + 3) : mcol) + (k == K_RIGHT ? 1 : -1);
             if (p < 0 || p > NSLOT + 2) return;
             mcol = ui_drawer_left ? (p < 3 ? p + NSLOT : p - 3) : p;
-            if (mcol < NSLOT && !has_sound(mcol) && any_sound()) { mixer2_move(k); return; }   // 2026-11-24: an empty strip is passed over
+            if (mcol < NSLOT && !has_sound(mcol) && any_sound()) {   // 2026-11-24: an empty strip is passed over (a loop: the recursion ran away at the edge, cloud QA)
+                int d = k == K_RIGHT ? 1 : -1, q = mcol; while (q >= 0 && q < NSLOT && !has_sound(q)) q += d;
+                if (q >= 0 && q < NSLOT) mcol = q; else if (d > 0) { mcol = ui_drawer_left ? sel : NSLOT; if (mx_pg == 0 && mcol >= NSLOT) { mx_pg = 1; mx_r = 0; } } else mcol = sel; }
             if (mcol < NSLOT) sel = mcol; else if (mx_pg == 0) { mx_pg = 1; mx_r = 0; } }
         else if (mcol >= NSLOT) { if (k == K_UP && mx_r) mx_r--; else if (k == K_DOWN && mx_r < 2) mx_r++; }
         mrow = mcol >= NSLOT && mx_r ? MX_PAN : MX_VOL; return; }

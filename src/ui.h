@@ -31,8 +31,14 @@ static void kg_move(int k, int n, int *cur) {   // the cursor in such a grid; -1
     if (*cur < 0) { if (k == K_DOWN && n) *cur = 0; return; }
     if (k == K_LEFT) { if (*cur % c) (*cur)--; }
     else if (k == K_RIGHT) { if (*cur % c < c - 1 && *cur + 1 < n) (*cur)++; }
-    else if (k == K_DOWN) { if (*cur + c < n) *cur += c; else if (*cur / c < (n - 1) / c) *cur = n - 1; }
-    else *cur = *cur >= c ? *cur - c : -1;
+    else {                                // UP / DOWN: the card nearest by its place on screen (the last row is centred; 2026-11-25, cloud QA)
+        int r = *cur / c, rows = (n + c - 1) / c, to = r + (k == K_DOWN ? 1 : -1);
+        if (to < 0) { *cur = -1; return; } if (to >= rows) return;
+        int in_r = r == rows - 1 ? n - r * c : c, in_t = to == rows - 1 ? n - to * c : c;   // cards in each row
+        int x2 = 2 * (*cur % c) + (c - in_r), best = 0, bd = 1 << 30;   // centres in half cards
+        for (int i = 0; i < in_t; i++) { int d = abs(2 * i + (c - in_t) - x2); if (d < bd) { bd = d; best = i; } }
+        *cur = to * c + best;
+    }
 }
 
 // ---- the kit of the mockups: text in their sizes, rounded cards, the header and the footer ----
