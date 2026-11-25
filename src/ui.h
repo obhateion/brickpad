@@ -48,6 +48,7 @@ static int ftext(int x, int y, int f, Col c, const char *s) {   // y: the top of
     SDL_SetTextureColorMod(t, c.r, c.g, c.b);
     for (; *s; s++, x += v->w) {
         int ch = (unsigned char)*s, g = ch >= 32 && ch <= 127 ? ch - 32 : ch == 1 ? 96 : ch == 2 ? 97 : -1;
+        if (ch >= 128) { x -= v->w; continue; }   // 2026-11-25 QA: UTF-8 in a file name ("\xe2\x9c\xa7SPECTRE") takes no room
         if (ch == 3) g = 98;             // the middle dot
         if (ch == 4) g = 99;             // the arrow
         if (ch == 5) g = 100;            // the arrow to the left
@@ -58,7 +59,7 @@ static int ftext(int x, int y, int f, Col c, const char *s) {   // y: the top of
     }
     return x - x0;
 }
-static int ftext_w(int f, const char *s) { return (int)strlen(s) * fv2[f].w; }
+static int ftext_w(int f, const char *s) { int n = 0; for (; *s; s++) n += (unsigned char)*s < 128; return n * fv2[f].w; }   // the bytes drawn
 static void ftext_wrap(int x, int y, int w, int lines, int f, Col c, const char *s) {   // words over up to `lines` lines of width w
     int per = w / fv2[f].w; char b[160];
     for (int l = 0; l < lines && *s; l++) { int n = (int)strlen(s);
@@ -73,7 +74,9 @@ static void rrect(int x, int y, int w, int h, int r, Col c) {   // a filled roun
         SDL_RenderDrawLine(R, x + in, y + i, x + w - 1 - in, y + i);
     }
 }
+static int cur_dim;                      // draw(): the cursor is on the bar, a white outline on the page is drawn dim
 static void rframe(int x, int y, int w, int h, int r, int t, Col c, Col inside) {   // a rounded outline t thick
+    if (cur_dim && t >= 2 && c.r == C_WHITE.r && c.g == C_WHITE.g && c.b == C_WHITE.b) c = C_DIM;
     rrect(x, y, w, h, r, c); rrect(x + t, y + t, w - 2 * t, h - 2 * t, r > t ? r - t : 1, inside);
 }
 static int v2_fx(void); static int fx2_slot; static int scene_count(void); static int v2_mixer(void); static int mx_pg; static int v2_lfo(void); static int v2_auto(void); static void modmenu_open(void); static void ui_path(char *b, int n); static const char *snd_page_name(void); static void snd_page_count(char *b, int n);   // sound.h
@@ -306,7 +309,7 @@ static void cat_open(int c) {
     hub_cur = c; ui_cat = c;
     if (c == PC_PATTERN && is_auto(lane)) lane = lane_first();
     if (c == PC_PATTERN && (srow < 1 || srow > 2)) { srow = 1; scol = 0; }
-    if (c == PC_PATTERN && cur_pat(sel)->mode) roll_open();   // v3: PATTERN is its layout; PATTERNS and RECORD are in OPTION's menu
+    if (c == PC_PATTERN && cur_pat(sel)->mode) { roll_open(); if (cur_pat(sel)->mode == 2) chord_open(); }   // v3: PATTERN is its layout (2026-11-25 QA: CHORDS too, not the roll)
     if (c == PC_SOUND) { srow = 3; scol = 0; cl_deep = 0; gb_cur = 0; }
     if (c == PC_FX || c == PC_MOD) { fx_unit = sel; fx_page = c == PC_MOD; }
     if (c == PC_MIX) mcol = sel;

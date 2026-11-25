@@ -1,34 +1,11 @@
 // BrickPad - Copyright (c) 2026 Timothy Gurto (obhateion). All rights reserved. See LICENSE.
-// The synth voice ACID plays (SynthV, the PolyBLEP oscillators, the saturating ladder), and what is left of GRAND.
-// 2026-11-25 (user): WAVE (src/wave.h) took GRAND's place as Track.type 1; GRAND's DSP, DEEP page, PATCH bay and
-// presets are gone. Its parameters stay here as names and ranges only: an old project's GRAND pad (Track.sp,
-// Song.gx) is read once and becomes a WAVE sound (wv_from_grand in main.c).
+// The synth voice ACID plays (SynthV, the PolyBLEP oscillators, the saturating ladder).
+// 2026-11-25 (user): WAVE (src/wave.h) took GRAND's place as Track.type 1; GRAND is gone, old projects do not open.
 // main.c includes it too: the guard keeps one copy when tests join both files.
 #ifndef BP_SYNTH_H
 #define BP_SYNTH_H
 #include <math.h>
 #include <string.h>
-enum { SP_OSC1, SP_OSC2, SP_TUNE2, SP_DETUNE, SP_MIX, SP_NOISE, SP_CUTOFF, SP_RESO, SP_ENV, SP_ATTACK, SP_DECAY,
-       SP_SUSTAIN, SP_RELEASE, SP_GLIDE, SP_N, SP_MARK = 15 };   // TUNE2 -24..24 semis, DETUNE 0..50 cents, ENV -100..100
-#define SP_INIT 0x5A                     // sp[SP_MARK]: the parameters were set up once
-// GRAND DEEP (was Y on GRAND's panel): Song.gx[slot][GX_*].
-enum { GX_LRATE, GX_LSYNC, GX_LWAVE, GX_LPITCH, GX_LCUT, GX_LPWM, GX_O1OCT, GX_O2OCT, GX_SYNC, GX_HP, GX_KBT, GX_VCA,
-       GX_SPRING, GX_ARP, GX_AMODE, GX_AOCT, GX_ARATE, GX_AGATE, GX_ATTEN, GX_N, GX_MARK = 31 };   // ATTEN -100..100 (PATCH)   // ARP on, UP DOWN ORDER UP/DOWN, octaves 1..3, a division, gate %   // SPRING: the spring reverb's MIX (0 off)   // LSYNC 0 FREE else a division (NDIV); LWAVE TRI SQR SAW RAMP S&H; O1OCT 32' 16' 8' 4'; O2OCT 16' 8' 4' 2'; KBT OFF HALF FULL; VCA ENV GATE
-#define GX_INIT 0x5F
-static const int8_t gx_def[32] = {50, 0, 0, 0, 0, 0, 2, 1, 0, 0, 1, 0, 0, 0, 0, 0, 2, 50, [GX_MARK] = GX_INIT};
-static void gx_defaults(int8_t *gx) { memcpy(gx, gx_def, 32); }
-static void gx_range(int k, int *lo, int *hi) {
-    *lo = 0; *hi = 100;
-    if (k == GX_LSYNC) *hi = 12; else if (k == GX_LWAVE) *hi = 4; else if (k == GX_O1OCT || k == GX_O2OCT) *hi = 3;
-    else if (k == GX_SYNC || k == GX_ARP) *hi = 1; else if (k == GX_VCA) *hi = 2; /* VCA ENV GATE DRONE */ else if (k == GX_KBT || k == GX_AOCT) *hi = 2; else if (k == GX_AMODE) *hi = 3;
-    else if (k == GX_ARATE) *hi = 11; else if (k == GX_AGATE) *lo = 10; else if (k == GX_ATTEN) *lo = -100;
-}
-static void sp_range(int k, int *lo, int *hi) {
-    *lo = 0; *hi = 100;
-    if (k == SP_OSC1 || k == SP_OSC2) *hi = 3;
-    else if (k == SP_TUNE2) { *lo = -24; *hi = 24; } else if (k == SP_DETUNE) *hi = 50; else if (k == SP_ENV) *lo = -100;
-}
-
 typedef struct {
     double ph1, ph2;                     // oscillator phases 0..1
     float freq, target;                  // Hz now and where GLIDE goes
@@ -71,14 +48,4 @@ static inline float sy_osc(int w, double ph, double dt) {
     }
     }
 }
-static inline float sy_time(int x) { return 0.001f * powf(10000.f, x / 100.f); }   // 0..100 -> 1 ms .. 10 s (GRAND's times, for the conversion)
-
-// GRAND's defaults (a warm bass-lead): an old GRAND pad that was never touched converts from these.
-static void synth_defaults(int8_t *sp) {
-    memset(sp, 0, 16);
-    sp[SP_OSC1] = 1; sp[SP_OSC2] = 2; sp[SP_TUNE2] = -12; sp[SP_DETUNE] = 6; sp[SP_MIX] = 40; sp[SP_NOISE] = 0;
-    sp[SP_CUTOFF] = 45; sp[SP_RESO] = 25; sp[SP_ENV] = 45; sp[SP_ATTACK] = 0; sp[SP_DECAY] = 62; sp[SP_SUSTAIN] = 50;
-    sp[SP_RELEASE] = 50; sp[SP_GLIDE] = 0; sp[SP_MARK] = SP_INIT;
-}
-
 #endif

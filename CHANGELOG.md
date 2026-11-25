@@ -8,10 +8,12 @@
   8 voices or MONO with LEGATO and GLIDE; an arpeggiator; QUALITY ECO (default) or HIGH. Ten SOUND pages with live
   pictures (the table at POS, the filter's curve, the envelopes, the LFO, the voices); LFO TARGET and matrix DEST by
   pointing at a card. Pad LFOs and automation reach OSC A/B, SUB, NOISE, FILTER and ENV1. 20 factory presets.
-- Old projects: every GRAND pad opens as a WAVE sound made from its settings (waves as table positions, TUNE 2 / DETUNE,
-  MIX, NOISE, the ladder with its envelope, ADSR, GLIDE, MONO/POLY, GRAND DEEP's ranges, sync, key tracking, LFO and
-  ARP); LFOs and automation on its knobs follow. GRAND's HP filter, SPRING and PATCH cables have no counterpart. Format
-  0x13 (WAVE's 256 bytes per pad appended); GRAND user presets convert when presets.cfg is read.
+- Only the current project format opens (2026-11-25): older .bpp files are not converted any more (the GRAND -> WAVE,
+  roll-timing and old-scene conversions are gone). Opening one shows OLD PROJECT FORMAT: NOT OPENED and the open project
+  stays. The demo projects in `demo/` are saved in the new format (`qa/mkfix.c` did it once).
+- Cloud explorer fixes: PATTERN on ACID / WAVE / CLOUD pads and sliced samples no longer reads past the lane list
+  (crash); the CHORDS layout opens CHORDS; one cursor while the quick bar has it; roll cell mark; RHYTHM outline on top;
+  ACID knob badges beside the label; drawer title; UTF-8 pad names take no extra room. `qa/qa_explore.c`.
 - Fixed: OPT+EDIT on a SOUND card of a pad whose clip is a piano roll cleared the roll instead of resetting the card; the
   lane tabs read past their list since the SUB lane went (a crash in some screens).
 

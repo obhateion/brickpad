@@ -11,7 +11,7 @@
 #define NSTEP 128
 #define NPAT 16
 #define NOTE_NONE (-128)
-#define STATE_MAGIC 0xB2B20013   // 0xB2B20012 = without WAVE (wv; type 1 was GRAND, 2026-11-25), 0xB2B20011 = roll ticks of 1/128 (RT 4; 2026-11-24 the roll is 1/384 for triplets), 0xB2B20010 = without the PRB modes (2026-11-20), 0xB2B2000F = without the SUB cells (2026-11-20), 0xB2B2000E = without pname/smx/dkx/dkc (2026-11-11),  0xB2B2000D = automation without bends, 0xB2B2000C = step notes as scale degrees, 0xB2B2000B = without lnote/gx/gp, 0xB2B2000A = without ACID DEEP, 0xB2B20009 = without automation, 0xB2B20008 = without LFOs, 0xB2B20007 = without follow actions, 0xB2B20006 = without the mixer (prefixes of this layout), 0xB2B20005 = without the piano roll
+#define STATE_MAGIC 0xB2B20013   // 2026-11-25 (user): the only format that opens; older files are not converted any more
 #define NNOTE 96                 // piano-roll notes per pattern
 #define RT 12                    // roll ticks per 1/32: note start and length are in 1/384 notes (2026-11-24: was 4, 1/128; 12 holds triplets and dotted)
 
@@ -70,7 +70,7 @@ typedef struct {
     uint8_t icon, icon_hi;          // 0 AUTO (by sound type), else icon id + 1 (src/icons.h); icon_hi bits 2..7: its colour (0 AUTO,
                                     // else a theme colour, ui: icon_col); use track_icon/track_set_icon/track_icol/track_set_icol
     int8_t type;                    // 0 SAMPLER, 1 WAVE (parameters in Song.wv; GRAND before 2026-11-25), 2 ACID (ap), 3 CLOUD (cp, plays the sample)
-    int8_t sp[16];                  // GRAND's parameters (SP_* in src/synth.h): only read once, to make a WAVE sound of an old pad
+    int8_t sp[16];                  // spare (GRAND's parameters until 2026-11-25)
     int8_t ap[12];                  // ACID parameters, see AP_* in src/acid.h (kept apart: switching loses nothing)
     int8_t cp[7];                   // CLOUD parameters, see CP_* in src/cloud.h (the last free bytes of the old reserved[])
     char path[256];
@@ -130,7 +130,7 @@ typedef struct {
     AutoLane aut[NSLOT][NPAT][NAUTO];   // automation per pattern (appended 2026-11-09)
     int8_t ax[NSLOT][16];           // ACID's hidden ACID DEEP page per pad (AX_* in src/acid.h; appended 2026-11-09)
     int8_t lnote[NSLOT];            // the note OPTION and EDIT play on a pad's panel, semitones from its usual one (appended 2026-11-09)
-    int8_t gx[NSLOT][32];           // GRAND's GRAND DEEP page (GX_* in src/synth.h): read once to convert an old pad to WAVE
+    int8_t gx[NSLOT][32];           // spare (GRAND DEEP until 2026-11-25)
     uint8_t gp[NSLOT][8][2];        // GRAND's PATCH cables (gone with GRAND, 2026-11-25; the bytes keep the layout)
     int8_t acurve[NSLOT][NPAT][NAUTO][NSTEP];   // automation: the BEND of the segment from each point to the next (appended 2026-11-10)
     int8_t mbx[NSLOT][NINS][6];     // MULTIBAND extras per insert: MB_* in src/fx.h, dB, 0 = as before (appended 2026-11-10)

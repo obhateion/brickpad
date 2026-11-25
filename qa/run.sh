@@ -2,7 +2,7 @@
 # usage: sh run.sh BINARY OUT.txt [STEPS] : runs the harness in a fresh /tmp folder with NEON and its 4 samples
 B=$(cd "$(dirname "$1")" && pwd)/$(basename "$1"); O=$2; N=${3:-2000}; P=/userdata/roms/ports/brickpad
 D=/tmp/golden/run.$$; rm -rf $D; mkdir -p $D/projects/DEMO; cd $D || exit 1
-cp $P/projects/DEMO/NEON.bpp projects/DEMO/
+cp /userdata/claude/brickpad-git/demo/NEON.bpp projects/DEMO/   # 2026-11-25: the fixture lives in the repo
 python3 -I -c "
 import re,os,shutil,sys
 d=open('projects/DEMO/NEON.bpp','rb').read()

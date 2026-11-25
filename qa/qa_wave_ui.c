@@ -1,6 +1,6 @@
-// WAVE on the pads (2026-11-25): GRAND's pads become WAVE, the SOUND pages, the notes, the file. Prints ALL OK.
+// WAVE on the pads (2026-11-25): the SOUND pages, the notes, the file; an old format does not open. Prints ALL OK.
 // Build as the other qa_*: cc -O0 -std=gnu11 -w -Isrc qa/qa_wave_ui.c src/sample.c -lSDL2 -lm -lpthread -o qa_wave_ui
-// Run in a folder with projects/DEMO/NEON.bpp (an 0x12 file: four GRAND pads, 6..9) and samples/.
+// Run in a folder with projects/DEMO/NEON.bpp (the current format: four WAVE pads, 6..9) and samples/.
 #include <unistd.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -36,50 +36,23 @@ static void next_page(void) { tab_focus = 1; tap(K_RIGHT); tap(K_DOWN); tab_focu
 static void solo(int s) { for (int j = 0; j < NSLOT; j++) { song.t[j].on = j == s; song.mix.pad[j].solo = j == s; } }
 static void unsolo(void) { for (int j = 0; j < NSLOT; j++) song.mix.pad[j].solo = 0; }
 
-static void t_convert(void) {              // NEON's GRAND pads: WAVE now, from their own settings, and they sound
+static void t_neon(void) {                 // NEON's WAVE pads (6..9): each has its block and sounds
     int n1 = 0;
-    for (int s = 0; s < NSLOT; s++) { const Track *t = &song.t[s]; const int8_t *wp = song.wv[s];
-        if (t->type != 1) continue; n1++;
+    for (int s = 0; s < NSLOT; s++) { const int8_t *wp = song.wv[s];
+        if (song.t[s].type != 1) continue; n1++;
         CHECK(wp[WP_MARK] == WP_INIT, "pad %d: no WAVE block", s + 1);
-        CHECK(t->sp[SP_MARK] == SP_INIT, "pad %d: GRAND's own values are kept", s + 1);
-        int8_t ref[WP_N]; wv_from_grand(ref, t->sp, t->voice, song.gx[s]);
-        CHECK(!memcmp(ref, wp, WP_N), "pad %d: the block is the conversion of its GRAND settings", s + 1);
-        CHECK(wp[WP_F_TYPE] == WF_LADDER && abs(wp[WP_F_CUT] - t->sp[SP_CUTOFF]) <= 2, "pad %d: ladder at GRAND's cutoff (%d vs %d)", s + 1, wp[WP_F_CUT], t->sp[SP_CUTOFF]);
-        CHECK(wp[WP_B + WO_SEMI] == t->sp[SP_TUNE2] || wp[WP_B + WO_WARP] == WW_SYNC, "pad %d: TUNE 2 -> B SEMI", s + 1);
-        CHECK(wp[WP_ENV1 + WE_SUS] == t->sp[SP_SUSTAIN] || song.gx[s][GX_VCA], "pad %d: SUSTAIN", s + 1);
-        CHECK((wp[WP_POLY] > 1) == (t->voice == 1), "pad %d: MONO / POLY", s + 1);
-        CHECK(wp[WP_A + WO_TABLE] <= 1 && wp[WP_B + WO_TABLE] <= 1, "pad %d: BASIC or PWM", s + 1);
         double pk, rms; int bad; solo(s); engine_transport(1); render((long)(4 * 4 * 60.0 / song.tempo * SR), &pk, &rms, &bad); engine_transport(0); engine_stop_all(); pump(40);
-        printf("pad %d (was GRAND): peak %.3f rms %.4f (%.1f dB)\n", s + 1, pk, rms, 20 * log10(rms + 1e-9));
+        printf("pad %d (WAVE): peak %.3f rms %.4f (%.1f dB)\n", s + 1, pk, rms, 20 * log10(rms + 1e-9));
         CHECK(!bad && pk > 0.01 && pk < 1.5, "pad %d: 4 bars finite and heard (peak %.4f, %d bad)", s + 1, pk, bad);
     }
     unsolo(); CHECK(n1 >= 4, "NEON has %d WAVE pads, 4 expected", n1);
 }
-static void t_old_file(void) {             // an 0x12 file written by hand: a pad with every GRAND DEEP option that converts
-    int s = 2; Track *t = &song.t[s]; t->type = 1; synth_defaults(t->sp); gx_defaults(song.gx[s]);
-    t->sp[SP_OSC1] = 3; t->sp[SP_OSC2] = 1; t->sp[SP_TUNE2] = 7; t->sp[SP_MIX] = 30; t->sp[SP_NOISE] = 12; t->voice = 1;
-    song.gx[s][GX_SYNC] = 1; song.gx[s][GX_LPITCH] = 20; song.gx[s][GX_LCUT] = 50; song.gx[s][GX_LPWM] = 40; song.gx[s][GX_LWAVE] = 4; song.gx[s][GX_ARP] = 1; song.gx[s][GX_AMODE] = 3;
-    song.lfo[s][0] = (Lfo){LT_ENG + SP_CUTOFF, LS_SINE, 0, 50, 40, 0, 0, 0}; song.lfo[s][1] = (Lfo){LT_ENG + LT_DEEP + GX_LRATE, LS_SINE, 0, 50, 40, 0, 0, 0};
-    memset(song.wv[s], 0, WP_N); song.magic = 0xB2B20012;
-    mkdir("projects", 0777); FILE *f = fopen("projects/OLDG.bpp", "wb"); fwrite(&song, offsetof(Song, wv), 1, f); fclose(f);   // the old layout ends before wv
-    prj_load("projects/OLDG.bpp"); pump(4);
-    const int8_t *wp = song.wv[s];
-    CHECK(song.magic == STATE_MAGIC && t->type == 1 && wp[WP_MARK] == WP_INIT, "old file: pad 3 is WAVE");
-    CHECK(wp[WP_A + WO_TABLE] == 1 && wp[WP_A + WO_POS] == 85, "PULSE -> PWM table at 10 %% (%d %d)", wp[WP_A + WO_TABLE], wp[WP_A + WO_POS]);
-    CHECK(wp[WP_B + WO_TABLE] == 0 && wp[WP_B + WO_POS] == 67, "SAW -> BASIC saw");
-    CHECK(wp[WP_A + WO_LEVEL] == 70 && wp[WP_B + WO_LEVEL] == 30 && wp[WP_NOISE_LEVEL] == 12, "MIX, NOISE");
-    CHECK(wp[WP_B + WO_WARP] == WW_SYNC && wp[WP_B + WO_WAMT] > 0 && wp[WP_B + WO_SEMI] == 0, "HARD SYNC -> B on A's pitch, SYNC warp (%d %d)", wp[WP_B + WO_WARP], wp[WP_B + WO_WAMT]);
-    CHECK(wp[WP_POLY] == 8 && wp[WP_ARP] == 1 && wp[WP_ARP_MODE] == 3, "POLY, ARP");
-    CHECK(wp[WP_LFO1 + WL_SHAPE] == WLS_SH, "LFO S&H");
-    int routes = 0, pitch = 0, cut = 0, pos = 0;
-    for (int i = 0; i < WM_SLOTS; i++) { const int8_t *m = wp + WP_MTX + 4 * i; if (!m[WM_SRC]) continue; routes++;
-        if (m[WM_DST] - 1 == WP_A + WO_SEMI || m[WM_DST] - 1 == WP_B + WO_SEMI) pitch++; if (m[WM_DST] - 1 == WP_F_CUT) cut++; if (m[WM_DST] - 1 == WP_A + WO_POS) pos++; }
-    CHECK(pitch == 2 && cut == 1 && pos == 1 && routes == 4, "GRAND DEEP's LFO as 4 matrix routes (%d: pitch %d cut %d pwm %d)", routes, pitch, cut, pos);
-    CHECK(song.lfo[s][0].target == LT_ENG + WP_F_CUT, "a pad LFO on CUTOFF stays on CUTOFF (%d)", song.lfo[s][0].target);
-    CHECK(song.lfo[s][1].target == 0, "a pad LFO on GRAND DEEP is let go");
-    double pk, rms; int bad; solo(s); engine_trig_key(s, 1.f, 0, -1, 40); engine_trig_key(s, 1.f, 4, -1, 41); render(SR / 2, &pk, &rms, &bad);
-    engine_release_key(40); engine_release_key(41); pump(200); unsolo();
-    CHECK(!bad && pk > 0.01, "the converted pad sounds (peak %.3f)", pk);
+static void t_old_file(void) {             // 2026-11-25 (user): an older format does not open; the open project stays
+    Song keep = song; song.magic = 0xB2B20012;
+    mkdir("projects", 0777); FILE *f = fopen("projects/OLDG.bpp", "wb"); fwrite(&song, offsetof(Song, wv), 1, f); fclose(f);
+    song = keep; prj_load("projects/OLDG.bpp"); pump(4);
+    CHECK(song.magic == STATE_MAGIC, "old file: not opened as a project");
+    CHECK(strstr(msg, "OLD PROJECT FORMAT") != NULL, "old file: the toast says so (%s)", msg);
 }
 static void t_freeze(void) {             // FREEZE renders a WAVE pad offline (the export's way): a loop that is heard
     int s = -1; for (int j = 0; j < NSLOT; j++) if (song.t[j].type == 1 && pat_used(&song.t[j].pat[song.t[j].cur])) { s = j; break; }
@@ -221,7 +194,7 @@ int main(void) {
     srand(1); song_defaults(); prj_startup(); pump(1);
     CHECK(wave_ready && wstore.t[0].d && wstore.t[WT_NBUILT - 1].d, "the tables are built before any pad plays");
     prj_load("projects/DEMO/NEON.bpp"); pump(4);
-    t_convert();
+    t_neon();
     t_freeze();
     int s = find_wave(); CHECK(s >= 0, "a WAVE pad");
     if (s >= 0) { t_pages(s); t_learn(s); t_tables(s); t_notes(s); t_mod(s); }

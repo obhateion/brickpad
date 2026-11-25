@@ -271,10 +271,12 @@ static void mod_rings(int pad, int tg, float f, int cx, int cy, int r) {
     if (any) { float c = cosf(a * 0.0174533f), sn = sinf(a * 0.0174533f);   // the set value: a notch on the rim
         line(cx + (int)((r - 2) * c), cy + (int)((r - 2) * sn), cx + (int)((r + 6) * c), cy + (int)((r + 6) * sn), 3, C_WHITE); }
 }
+static int kd_right;                     // the badges' left edge: the label stays left of it (snd_knob)
 static float knob_draw(int x, int y, int w, int h, const char *lb, char *v, float f, float z, int on, Col ec, int *kcx, int *kcy, int *kr) {
     if (on) rframe(x, y, w, h, 8, 3, ec, C_CELL); else rrect(x, y, w, h, 8, C_CELL);
-    char l2[16]; snprintf(l2, sizeof l2, "%.13s", lb);
-    ftext(x + (w - ftext_w(FT_S, l2)) / 2, y + 8, FT_S, on ? C_WHITE : C_DIM, l2);
+    char l2[16]; snprintf(l2, sizeof l2, "%.13s", lb); int lx = x + (w - ftext_w(FT_S, l2)) / 2;
+    if (kd_right && lx + ftext_w(FT_S, l2) > kd_right - 4) lx = kd_right - 4 - ftext_w(FT_S, l2) < x + 6 ? x + 6 : kd_right - 4 - ftext_w(FT_S, l2);   // off the A1/L1 badges (2026-11-25 QA)
+    ftext(lx, y + 8, FT_S, on ? C_WHITE : C_DIM, l2);
     int cx = x + w / 2, cy = y + 30 + (h - 70) / 2, r = (h - 70) / 2 - 8; if (r > 72) r = 72; if (r > w / 2 - 24) r = w / 2 - 24;   // the knob grows with its card; room for its mod ring
     float a = 135 + 270 * f, a0 = 135 + 270 * z;
     knob_arc(cx, cy, r, 6, 135, 405, C_LINE);
@@ -376,7 +378,8 @@ static void snd_knob(int x, int y, int w, int h, int p, int on, Col ec) {
         rrect(x + 20, y + h / 2 - 18, w - 40, 36, 8, C_SELBG); ftext(x + w / 2 - ftext_w(FT_MB, v) / 2, y + h / 2 - fv2[FT_MB].h / 2, FT_MB, C_WHITE, v);
     } else {
         int b = auto_bind_target(p); float fl = mod_live(sel, b, f);   // the knob turns with its LFOs and automation, as on Serum
-        int cx, cy, r; knob_draw(x, y, w, h, lb, v, fl, lo < 0 && hi > 0 ? (float)-lo / (hi - lo) : 0, on, ec, &cx, &cy, &r);
+        int cx, cy, r; { char t2[4][4]; int n2 = snd_tags(p, t2); kd_right = n2 ? x + w - 6 - n2 * 30 : 0; }
+        knob_draw(x, y, w, h, lb, v, fl, lo < 0 && hi > 0 ? (float)-lo / (hi - lo) : 0, on, ec, &cx, &cy, &r); kd_right = 0;
         mod_rings(sel, b, f, cx, cy, r);
     }
     char tg[4][4]; int nt = snd_tags(p, tg), tx = x + w - 6 - nt * 30;   // A1 / L1 badges in the top corner, off the ring (2026-11-24)
