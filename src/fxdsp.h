@@ -28,26 +28,6 @@ static inline float fx_read(const float *d, float pos) {   // pos frames behind.
     int a = (int)pos; float f = pos - a; int b = (a + 1) & (FXD - 1);
     return d[a & (FXD - 1)] + (d[b] - d[a & (FXD - 1)]) * f;
 }
-// SPRING (GRAND's spring reverb, 2026-11-10): two springs, a delay each with 12 allpasses in the loop
-#define SPN 4096
-typedef struct { float d[2][SPN]; int w; float ap[2][12], lp[2], dc[2]; } SpringState;
-static void spring_run(SpringState *s, float *b, int n, int mix) {
-    static const int len[2] = {1777, 1999};   // 37 and 42 ms
-    float m = mix / 100.f, fb = 0.72f, a = 0.62f, lpa = 1 - expf(-2 * (float)M_PI * 3500.f / SR);
-    for (int k = 0; k < n; k++) {
-        float x = 0.5f * (b[2 * k] + b[2 * k + 1]), o[2];
-        for (int c = 0; c < 2; c++) {
-            float y = s->d[c][(s->w - len[c]) & (SPN - 1)];
-            for (int j = 0; j < 12; j++) { float z = s->ap[c][j], q = -a * y + z; s->ap[c][j] = y + a * q; y = q; }
-            s->lp[c] += (y - s->lp[c]) * lpa; y = s->lp[c];
-            s->dc[c] += (y - s->dc[c]) * 0.002f; y -= s->dc[c];   // no slow drift in the loop
-            s->d[c][s->w] = fx_tanh(x + fb * y);
-            o[c] = y;
-        }
-        s->w = (s->w + 1) & (SPN - 1);
-        b[2 * k] = b[2 * k] * (1 - 0.4f * m) + o[0] * m * 1.3f; b[2 * k + 1] = b[2 * k + 1] * (1 - 0.4f * m) + o[1] * m * 1.3f;
-    }
-}
 static inline float fx_lfo_sin(double ph) { return sinf((float)(ph * 2 * M_PI)); }
 static inline void fx_svf(float *z, float g, float k, float x, float *lp, float *hp) {   // TPT state variable, 12 dB
     float a1 = 1 / (1 + g * (g + k)), a2 = g * a1, a3 = g * a2, v3 = x - z[1], v1 = a1 * z[0] + a2 * v3, v2 = z[1] + a2 * z[0] + a3 * v3;

@@ -11,7 +11,7 @@
 #define NSTEP 128
 #define NPAT 16
 #define NOTE_NONE (-128)
-#define STATE_MAGIC 0xB2B20012   // 0xB2B20011 = roll ticks of 1/128 (RT 4; 2026-11-24 the roll is 1/384 for triplets), 0xB2B20010 = without the PRB modes (2026-11-20), 0xB2B2000F = without the SUB cells (2026-11-20), 0xB2B2000E = without pname/smx/dkx/dkc (2026-11-11),  0xB2B2000D = automation without bends, 0xB2B2000C = step notes as scale degrees, 0xB2B2000B = without lnote/gx/gp, 0xB2B2000A = without ACID DEEP, 0xB2B20009 = without automation, 0xB2B20008 = without LFOs, 0xB2B20007 = without follow actions, 0xB2B20006 = without the mixer (prefixes of this layout), 0xB2B20005 = without the piano roll
+#define STATE_MAGIC 0xB2B20013   // 0xB2B20012 = without WAVE (wv; type 1 was GRAND, 2026-11-25), 0xB2B20011 = roll ticks of 1/128 (RT 4; 2026-11-24 the roll is 1/384 for triplets), 0xB2B20010 = without the PRB modes (2026-11-20), 0xB2B2000F = without the SUB cells (2026-11-20), 0xB2B2000E = without pname/smx/dkx/dkc (2026-11-11),  0xB2B2000D = automation without bends, 0xB2B2000C = step notes as scale degrees, 0xB2B2000B = without lnote/gx/gp, 0xB2B2000A = without ACID DEEP, 0xB2B20009 = without automation, 0xB2B20008 = without LFOs, 0xB2B20007 = without follow actions, 0xB2B20006 = without the mixer (prefixes of this layout), 0xB2B20005 = without the piano roll
 #define NNOTE 96                 // piano-roll notes per pattern
 #define RT 12                    // roll ticks per 1/32: note start and length are in 1/384 notes (2026-11-24: was 4, 1/128; 12 holds triplets and dotted)
 
@@ -69,8 +69,8 @@ typedef struct {
     int8_t scale, key;              // this pad's own key: 0 follows the project, else scale index + 1, pitch class + 1
     uint8_t icon, icon_hi;          // 0 AUTO (by sound type), else icon id + 1 (src/icons.h); icon_hi bits 2..7: its colour (0 AUTO,
                                     // else a theme colour, ui: icon_col); use track_icon/track_set_icon/track_icol/track_set_icol
-    int8_t type;                    // 0 SAMPLER, 1 GRAND (parameters in sp), 2 ACID (ap), 3 CLOUD (cp, plays the sample)
-    int8_t sp[16];                  // GRAND parameters, see SP_* in src/synth.h
+    int8_t type;                    // 0 SAMPLER, 1 WAVE (parameters in Song.wv; GRAND before 2026-11-25), 2 ACID (ap), 3 CLOUD (cp, plays the sample)
+    int8_t sp[16];                  // GRAND's parameters (SP_* in src/synth.h): only read once, to make a WAVE sound of an old pad
     int8_t ap[12];                  // ACID parameters, see AP_* in src/acid.h (kept apart: switching loses nothing)
     int8_t cp[7];                   // CLOUD parameters, see CP_* in src/cloud.h (the last free bytes of the old reserved[])
     char path[256];
@@ -130,8 +130,8 @@ typedef struct {
     AutoLane aut[NSLOT][NPAT][NAUTO];   // automation per pattern (appended 2026-11-09)
     int8_t ax[NSLOT][16];           // ACID's hidden ACID DEEP page per pad (AX_* in src/acid.h; appended 2026-11-09)
     int8_t lnote[NSLOT];            // the note OPTION and EDIT play on a pad's panel, semitones from its usual one (appended 2026-11-09)
-    int8_t gx[NSLOT][32];           // GRAND's GRAND DEEP page (GX_* in src/synth.h; reserved 2026-11-09)
-    uint8_t gp[NSLOT][8][2];        // GRAND's PATCH cables: out jack, in jack (0 none; reserved 2026-11-09)
+    int8_t gx[NSLOT][32];           // GRAND's GRAND DEEP page (GX_* in src/synth.h): read once to convert an old pad to WAVE
+    uint8_t gp[NSLOT][8][2];        // GRAND's PATCH cables (gone with GRAND, 2026-11-25; the bytes keep the layout)
     int8_t acurve[NSLOT][NPAT][NAUTO][NSTEP];   // automation: the BEND of the segment from each point to the next (appended 2026-11-10)
     int8_t mbx[NSLOT][NINS][6];     // MULTIBAND extras per insert: MB_* in src/fx.h, dB, 0 = as before (appended 2026-11-10)
     char pname[NSLOT][16];          // the pad's own name, "" = the instrument's or the sample's (appended 2026-11-11)
@@ -140,6 +140,7 @@ typedef struct {
     uint8_t dkc[NSLOT][16];         // DUCK curve: the level at 16 points along the dip, 0 = fully ducked .. 100 = untouched
     SubStep sub[NSUB];              // SUB: steps whose cells differ from "all on, as the step" (appended 2026-11-20)
     JumpStep jmp[NJMP];             // PRB modes SUB and JUMP (appended 2026-11-20)
+    int8_t wv[NSLOT][256];          // WAVE's parameters per pad (WP_* in src/wave.h; appended 2026-11-25); WP_MARK != WP_INIT = not set up yet
 } Song;
 // SAMPLER DEEP: fades of a sampler voice, 0..100 -> v * v / 5 ms (0, 0.2 ms .. 2 s).
 // FADE IN at the start; FADE OUT before the end of what plays (the sample, END, a slice, a cut note);
@@ -235,7 +236,12 @@ void engine_freeze_on(int slot, int on); // the pad plays its recordings / plays
 void engine_capture(int slot, float *buf, long max);   // slot's sound after its inserts, before the strip, into buf from now on (-1 stops)
 long engine_captured(void);
 void engine_render(float *out, int frames);   // stereo float frames, as the device would get them (with the device paused)
-float engine_glfo(int slot);             // a GRAND pad's GRAND DEEP LFO now, -1..1 (0 when off)
+// WAVE (2026-11-25): the wavetables are built once (engine_start, or the first song_defaults); a user WAV goes into a
+// slot 12..31 through the audio thread (the old table comes back to engine_collect_garbage).
+void engine_wave_init(void);
+const void *engine_wstore(void);         // the WaveStore (src/wave.h), for names and pictures; read-only
+int engine_wave_table(int k, const char *path);   // load a WAV into table slot k (UI thread); 0 = ok
+int engine_wave_live(int slot, float *lvl, float *env, float *fc, float *pos);   // sounding voices: their levels (8), the newest's ENV1-3, cutoff (Hz), A/B POS
 int engine_want(int slot);                // what waits for the next quantum: 1 start, 0 stop, -1 nothing
 uint32_t engine_anchor(int slot);         // the 1/32 position where the slot's clip began: its step one
 void engine_set_anchor(int slot, uint32_t pos32);

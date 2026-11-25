@@ -2,20 +2,19 @@
 // A pad's sound parameters as data (UI v2, step 1): every P_* id that is a number has a value, a range and two steps
 // (EDIT+<> small, EDIT+^v big). Screens and the simple view read and set them through these, by pad and id.
 // What is not a plain number stays special in par_adjust: TYPE/SAMPLE/SOURCE (files), NORM, DIR/VOICE (toggles),
-// GRAIN/FLUX (0 = per mode), BPM (first touch takes the detected tempo), BARS (a list), the PATCH jacks.
+// GRAIN/FLUX (0 = per mode), BPM (first touch takes the detected tempo), BARS (a list). WAVE: P_WV + wp index (2026-11-25).
 // main.c includes this once, right before par_adjust.
 #pragma once
 
 static int par_get(int pad, int p) {     // the stored value; 0 for what is not a number
     const Track *t = &song.t[pad];
     if (p == P_SLWAY) return t->slices == 5 ? 1 : t->slices == 6 ? 2 : 0;
-    if (p >= P_PT) return 0;
-    if (p >= P_GX) return song.gx[pad][p - P_GX];
+    if (p == P_WENV) return wv_env; if (p == P_WLFO) return wv_lfo; if (p == P_WTGT) return 0;
+    if (p >= P_WV) return song.wv[pad][p - P_WV];
     if (p >= P_AX) return song.ax[pad][p - P_AX];
     if (p >= P_CX) return song.cx[pad][p - P_CX];
     if (p >= P_CL) return t->cp[p - P_CL];
     if (p >= P_AC) return t->ap[p - P_AC];
-    if (p >= P_SY) return t->sp[p - P_SY];
     if (p >= P_SX) return song.smx[pad][p - P_SX];
     switch (p) {
     case P_PITCH: return t->pitch; case P_FINE: return t->fine; case P_VOL: return t->vol; case P_PAN: return t->pan;
@@ -29,13 +28,12 @@ static int par_get(int pad, int p) {     // the stored value; 0 for what is not 
 static void par_limits(int pad, int p, int *lo, int *hi, int *step, int *big) {   // range and the two steps
     const Track *t = &song.t[pad]; *lo = 0; *hi = 100; *step = 1; *big = 10;
     if (p == P_SLWAY) { *hi = song.cut[pad].n ? 2 : 1; *big = 1; return; }   // BY HAND once the slice editor has made points
-    if (p >= P_PT) { *hi = 0; *big = 1; return; }
-    if (p >= P_GX) { int k = p - P_GX; gx_range(k, lo, hi); *big = *hi > 12 ? 10 : 1; return; }
+    if (p == P_WENV || p == P_WLFO || p == P_WTGT) { *hi = p == P_WENV ? 2 : p == P_WLFO ? 3 : 0; *big = 1; return; }
+    if (p >= P_WV) { int k = p - P_WV; wp_range(k, lo, hi); *big = *hi - *lo <= 24 ? (k < WP_SUB_LEVEL && (k & 15) == WO_SEMI ? 12 : 1) : 10; return; }   // SEMI: an octave
     if (p >= P_AX) { int k = p - P_AX; ax_range(k, lo, hi); *big = *hi > 4 ? 10 : 1; return; }
     if (p >= P_CX) { int k = p - P_CX; cx_range(k, lo, hi); *big = k == CX_PITCH ? 12 : *hi - *lo <= 4 ? 1 : 10; return; }
     if (p >= P_CL) return;
     if (p >= P_AC) { int k = p - P_AC; ap_range(k, lo, hi); *big = k == AP_TUNE ? 12 : k == AP_WAVE || k == AP_DTYPE ? 1 : 10; return; }
-    if (p >= P_SY) { int k = p - P_SY; sp_range(k, lo, hi); *big = k == SP_TUNE2 ? 12 : k <= SP_OSC2 ? 1 : 10; return; }
     if (p >= P_SX) return;
     switch (p) {
     case P_PITCH: *lo = -24; *hi = 24; *big = 12; break;
@@ -59,13 +57,12 @@ static void par_put(int pad, int p, int v) {   // stores a value already in rang
     Track *t = &song.t[pad];
     if (p == P_SLWAY) { static int8_t eq[NSLOT]; if (t->slices >= 1 && t->slices <= 4) eq[pad] = t->slices;   // the equal count, kept for the way back
         t->slices = (int8_t)(v == 1 ? 5 : v == 2 ? 6 : eq[pad] ? eq[pad] : 2); relayout(pad); return; }
-    if (p >= P_PT) return;
-    if (p >= P_GX) { song.gx[pad][p - P_GX] = (int8_t)v; song.gx[pad][GX_MARK] = GX_INIT; return; }
+    if (p == P_WENV) { wv_env = v; return; } if (p == P_WLFO) { wv_lfo = v; return; } if (p == P_WTGT) return;
+    if (p >= P_WV) { int k = p - P_WV; song.wv[pad][k] = (int8_t)v; if (k == WP_POLY) t->voice = v > 1; return; }   // VOICES: the pad's MONO / POLY follows (the roll)
     if (p >= P_AX) { song.ax[pad][p - P_AX] = (int8_t)v; song.ax[pad][AX_MARK] = AX_INIT; return; }
     if (p >= P_CX) { song.cx[pad][p - P_CX] = (int8_t)v; return; }
     if (p >= P_CL) { t->cp[p - P_CL] = (int8_t)v; return; }
     if (p >= P_AC) { t->ap[p - P_AC] = (int8_t)v; return; }
-    if (p >= P_SY) { t->sp[p - P_SY] = (int8_t)v; return; }
     if (p >= P_SX) { song.smx[pad][p - P_SX] = (int8_t)v; return; }
     switch (p) {
     case P_PITCH: t->pitch = (int8_t)v; break; case P_FINE: t->fine = (int8_t)v; break;
@@ -80,4 +77,4 @@ static void par_put(int pad, int p, int v) {   // stores a value already in rang
     case P_NORM: song.mix.pad[pad].spare[PM_NORM] = (int8_t)v; break;
     }
 }
-static int par_is_number(int p) { return p != P_SAMPLE && p != P_TYPE && p != P_SRC && p < P_PT; }
+static int par_is_number(int p) { return p != P_SAMPLE && p != P_TYPE && p != P_SRC && p != P_WENV && p != P_WLFO && p != P_WTGT; }

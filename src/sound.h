@@ -8,7 +8,9 @@
 
 static void gb_ring(int cx, int cy, int r, int t, Col c);
 static const char *par_hint(int p);      // hints.h: what a parameter does, one sentence
-enum { GF_NONE, GF_WAVE, GF_SLICES, GF_OSC, GF_FILTER, GF_ENV, GF_CLOUD, GF_PATCH, GF_ALL };
+static void wv_picture(int gfx, int x, int y, int w, int h, Col ec);   // wvui.h
+static void draw_matrix2(Col ec);
+enum { GF_NONE, GF_WAVE, GF_SLICES, GF_OSC, GF_FILTER, GF_ENV, GF_CLOUD, GF_ALL, GF_WTA, GF_WTB, GF_WUNI, GF_WSUB, GF_WFILT, GF_WENV, GF_WLFO, GF_WMTX, GF_WVOICE };   // GF_W*: WAVE (2026-11-25)
 // v3 (2026-11-20, user: "five pages of MORE is no way to jam"): pages by topic, at most ten knobs each, all on one screen;
 // MAIN shows the main curves side by side with the knobs that shape them. The engine is switched on the section strip
 // (EDIT held on SOUND), not from a page.
@@ -19,18 +21,27 @@ static const SndPage snd_smp[] = {
     {"SLICE/WARP", 8, GF_SLICES, {P_SLICES, P_SLWAY, P_WARP, P_NORM, P_BARS, P_BPM, P_GRAIN, P_FLUX}},
     {"AMP", 5, GF_WAVE, {P_SX + SX_FIN, P_SX + SX_FOUT, P_SX + SX_XFADE, P_VOL, P_PAN}},
 };
-static const SndPage snd_grd[] = {
-    {"MAIN", 10, GF_ALL, {P_SY + SP_OSC1, P_SY + SP_OSC2, P_SY + SP_DETUNE, P_SY + SP_MIX, P_SY + SP_CUTOFF, P_SY + SP_RESO, P_SY + SP_ENV,
-        P_SY + SP_ATTACK, P_SY + SP_DECAY, P_SY + SP_RELEASE}},
-    {"OSC", 9, GF_OSC, {P_SY + SP_OSC1, P_SY + SP_OSC2, P_GX + GX_O1OCT, P_GX + GX_O2OCT, P_SY + SP_TUNE2, P_SY + SP_DETUNE, P_SY + SP_MIX,
-        P_SY + SP_NOISE, P_GX + GX_SYNC}},
-    {"FILTER", 5, GF_FILTER, {P_SY + SP_CUTOFF, P_SY + SP_RESO, P_SY + SP_ENV, P_GX + GX_HP, P_GX + GX_KBT}},
-    {"ENV", 7, GF_ENV, {P_SY + SP_ATTACK, P_SY + SP_DECAY, P_SY + SP_SUSTAIN, P_SY + SP_RELEASE, P_SY + SP_GLIDE, P_VOICE, P_GX + GX_VCA}},
-    {"LFO", 6, GF_NONE, {P_GX + GX_LRATE, P_GX + GX_LSYNC, P_GX + GX_LWAVE, P_GX + GX_LPITCH, P_GX + GX_LCUT, P_GX + GX_LPWM}},
-    {"ARP", 5, GF_NONE, {P_GX + GX_ARP, P_GX + GX_AMODE, P_GX + GX_AOCT, P_GX + GX_ARATE, P_GX + GX_AGATE}},
-    {"PATCH", 0, GF_PATCH, {0}},
-    {"OUT", 4, GF_NONE, {P_PITCH, P_VOL, P_GX + GX_SPRING, P_GX + GX_ATTEN}},
+// WAVE (2026-11-25, docs/WAVE.md section 10 on the v3 pages): the oscillators with their table on top, the unison spread,
+// SUB and NOISE, the filter's curve, ENV and LFO with a selector card (1..3, 1..4: the cards follow it), the MATRIX as a
+// list of its 16 slots, the voices, the ARP. Cards: P_WV + wp index (ENV / LFO pages: ENV1 / LFO1's, moved by the selector).
+#define WVA(k) (P_WV + WP_A + WO_##k)
+#define WVB(k) (P_WV + WP_B + WO_##k)
+#define WVP(k) (P_WV + (k))
+static const SndPage snd_wav[] = {
+    {"OSC A", 10, GF_WTA, {WVA(ON), WVA(TABLE), WVA(POS), WVA(WARP), WVA(WAMT), WVA(LEVEL), WVA(OCT), WVA(SEMI), WVA(FINE), WVA(UNI)}},
+    {"OSC B", 10, GF_WTB, {WVB(ON), WVB(TABLE), WVB(POS), WVB(WARP), WVB(WAMT), WVB(LEVEL), WVB(OCT), WVB(SEMI), WVB(FINE), WVB(UNI)}},
+    {"UNISON", 10, GF_WUNI, {WVA(DET), WVA(WIDTH), WVA(PAN), WVA(PHASE), WVA(RAND), WVB(DET), WVB(WIDTH), WVB(PAN), WVB(PHASE), WVB(RAND)}},
+    {"SUB", 8, GF_WSUB, {WVP(WP_SUB_LEVEL), WVP(WP_SUB_SHAPE), WVP(WP_SUB_OCT), WVP(WP_SUB_PAN), WVP(WP_SUB_DIRECT), WVP(WP_NOISE_LEVEL), WVP(WP_NOISE_TYPE), WVP(WP_NOISE_DIRECT)}},
+    {"FILTER", 10, GF_WFILT, {WVP(WP_F_TYPE), WVP(WP_F_CUT), WVP(WP_F_RES), WVP(WP_F_DRIVE), WVP(WP_F_KEY), WVP(WP_F_ENV), WVP(WP_ENV2 + WE_ATT), WVP(WP_ENV2 + WE_DEC), WVP(WP_ENV2 + WE_SUS), WVP(WP_ENV2 + WE_REL)}},
+    {"ENV", 6, GF_WENV, {P_WENV, WVP(WP_ENV1 + WE_ATT), WVP(WP_ENV1 + WE_DEC), WVP(WP_ENV1 + WE_SUS), WVP(WP_ENV1 + WE_REL), WVP(WP_ENV1 + WE_CURVE)}},
+    {"LFO", 7, GF_WLFO, {P_WLFO, WVP(WP_LFO1 + WL_SHAPE), WVP(WP_LFO1 + WL_RATE), WVP(WP_LFO1 + WL_SYNC), WVP(WP_LFO1 + WL_TRIG), WVP(WP_LFO1 + WL_PHASE), P_WTGT}},
+    {"MATRIX", 0, GF_WMTX, {0}},
+    {"VOICE", 9, GF_WVOICE, {WVP(WP_POLY), WVP(WP_LEGATO), WVP(WP_GLIDE), WVP(WP_BEND), WVP(WP_VELSENS), WVP(WP_MASTER), WVP(WP_QUALITY), P_PITCH, P_VOL}},
+    {"ARP", 5, GF_NONE, {WVP(WP_ARP), WVP(WP_ARP_MODE), WVP(WP_ARP_OCT), WVP(WP_ARP_RATE), WVP(WP_ARP_GATE)}},
 };
+#undef WVA
+#undef WVB
+#undef WVP
 static const SndPage snd_acd[] = {
     {"MAIN", 10, GF_ALL, {P_AC + AP_WAVE, P_AC + AP_TUNE, P_AC + AP_CUTOFF, P_AC + AP_RESO, P_AC + AP_ENVMOD, P_AC + AP_DECAY, P_AC + AP_ACCENT,
         P_AC + AP_DRIVE, P_AC + AP_DMIX, P_VOL}},
@@ -49,7 +60,7 @@ static int sp_pg[4], sp_cur;             // the page of each engine, kept; the c
 
 static const SndPage *snd_pages(int type, int *n) {
     switch (type & 3) {
-    case 1: *n = (int)(sizeof snd_grd / sizeof *snd_grd); return snd_grd;
+    case 1: *n = (int)(sizeof snd_wav / sizeof *snd_wav); return snd_wav;
     case 2: *n = (int)(sizeof snd_acd / sizeof *snd_acd); return snd_acd;
     case 3: *n = (int)(sizeof snd_cld / sizeof *snd_cld); return snd_cld;
     }
@@ -59,17 +70,18 @@ static int snd_page_n(void) { int n; snd_pages(song.t[sel].type, &n); return n; 
 static const char *snd_page_nm(int i) { int n; const SndPage *pg = snd_pages(song.t[sel].type, &n); return pg[clampi(i, 0, n - 1)].name; }
 static const SndPage *snd_page(void) { int n; const SndPage *pg = snd_pages(song.t[sel].type, &n); return &pg[clampi(sp_pg[song.t[sel].type & 3], 0, n - 1)]; }
 static int snd_cards(const SndPage *pg, int *out) {   // the cards on show: what the mode does not use is left out
-    int c = 0; for (int i = 0; i < pg->n; i++) if (par_visible(pg->p[i])) out[c++] = pg->p[i];
+    int c = 0; for (int i = 0; i < pg->n; i++) { int p = pg->p[i];
+        if (pg->gfx == GF_WENV && p >= P_WV + WP_ENV1 && p < P_WV + WP_ENV2) p += wv_env * WE_N;   // the selector moves the cards
+        if (pg->gfx == GF_WLFO && p >= P_WV + WP_LFO1 && p < P_WV + WP_LFO2) p += wv_lfo * WL_N;
+        if (par_visible(p)) out[c++] = p; }
     return c;
 }
 static int v2_sound(void) { return ui_cat == PC_SOUND && tab == T_SEQ && !perform && srow >= 3; }
-// PATCH (A14): the outputs down the left, the inputs down the right; sp_cur 0..12 an output (JO_LFO..), 13..26 an input (JI_P1..)
-#define PT_NO (JO_N - 1)
-#define PT_NI (JI_N - 1)
-static int pt_jack(int cur) { return cur < PT_NO ? 1 + cur : 16 + 1 + (cur - PT_NO); }   // the P_PT offset of a row
+// MATRIX (WAVE): sp_cur = 4 * slot + column (SRC DEST AMT MODE), slots 0..15 in two pages of 8; -1 - k: MACRO k (0..4, the 5th the MODWHEEL)
+#define MX_CELLS (WM_SLOTS * 4)
 static int sound_par(void) {             // the parameter under the cursor; the picture stands for the file (or the presets)
     const SndPage *pg = snd_page(); int l[20], c = snd_cards(pg, l);
-    if (pg->gfx == GF_PATCH) return P_PT + pt_jack(clampi(sp_cur, 0, PT_NO + PT_NI - 1));
+    if (pg->gfx == GF_WMTX) return sp_cur < 0 ? P_WV + WP_MACRO1 + clampi(-1 - sp_cur, 0, 4) : P_WV + WP_MTX + clampi(sp_cur, 0, MX_CELLS - 1);
     if (sp_cur >= 0 && sp_cur < c) return l[sp_cur];
     return pg->gfx == GF_SLICES ? P_SLICES : song.t[sel].type == 3 ? P_SRC : P_SAMPLE;
 }
@@ -77,27 +89,28 @@ static void sound_sync(void) {           // after any change of pad, engine or m
     int n; const SndPage *pgs = snd_pages(song.t[sel].type, &n); int *pp = &sp_pg[song.t[sel].type & 3];
     *pp = clampi(*pp, 0, n - 1); srow = 3; scol = 0;
     const SndPage *pg = &pgs[*pp]; int l[20], c = snd_cards(pg, l);
-    cl_deep = pg->gfx == GF_PATCH ? 2 : 0;
-    if (pg->gfx == GF_PATCH) { sp_cur = clampi(sp_cur, 0, PT_NO + PT_NI - 1); return; }
+    cl_deep = 0;
+    if (pg->gfx == GF_WMTX) { sp_cur = clampi(sp_cur, -5, MX_CELLS - 1); return; }
     if (sp_cur >= c) sp_cur = c - 1;
     if (sp_cur < 0 && pg->gfx == GF_NONE) sp_cur = 0;
     if (sp_cur < -1) sp_cur = -1;
 }
 static void sound_page_step(int d) {     // L1/R1
     int n; snd_pages(song.t[sel].type, &n); int *pp = &sp_pg[song.t[sel].type & 3];
-    *pp = (*pp + d + n) % n; sp_cur = 0; pt_pick = 0;
+    *pp = (*pp + d + n) % n; sp_cur = 0;
     sound_sync();
 }
 static void snd_page_go(int i) {         // a page by its number (the tree)
-    int n; snd_pages(song.t[sel].type, &n); sp_pg[song.t[sel].type & 3] = clampi(i, 0, n - 1); sp_cur = 0; pt_pick = 0; sound_sync();
+    int n; snd_pages(song.t[sel].type, &n); sp_pg[song.t[sel].type & 3] = clampi(i, 0, n - 1); sp_cur = 0; sound_sync();
 }
 static void sound_move(int k) {          // the knobs; UP from the first row: the picture
     const SndPage *pg = snd_page(); int l[20], c = snd_cards(pg, l);
-    if (pg->gfx == GF_PATCH) {           // up and down a column; across: the row at the same height on the other side
-        int in = sp_cur >= PT_NO, r = in ? sp_cur - PT_NO : sp_cur, nr = in ? PT_NI : PT_NO;
-        if (k == K_UP && r > 0) r--; else if (k == K_DOWN && r < nr - 1) r++;
-        else if ((k == K_RIGHT && !in) || (k == K_LEFT && in)) { r = clampi((r * 2 + 1) * (in ? PT_NO : PT_NI) / (2 * nr), 0, (in ? PT_NO : PT_NI) - 1); in = !in; }
-        sp_cur = in ? PT_NO + r : r; return;
+    if (pg->gfx == GF_WMTX) {            // the macros' row on top, then a slot a row: up / down the slot, left / right the column
+        if (sp_cur < 0) { int m = -1 - sp_cur; if (k == K_LEFT && m > 0) m--; else if (k == K_RIGHT && m < 4) m++; else if (k == K_DOWN) { sp_cur = 0; return; } sp_cur = -1 - m; return; }
+        int sl = sp_cur / 4, col = sp_cur % 4;
+        if (k == K_UP) { if (sl == 0 || sl == 8) { sp_cur = -1 - clampi(col, 0, 4); return; } sl--; } else if (k == K_DOWN && sl < WM_SLOTS - 1) sl++;
+        else if (k == K_LEFT && col > 0) col--; else if (k == K_RIGHT && col < 3) col++;
+        sp_cur = 4 * sl + col; return;
     }
     if (sp_cur < 0) { if (k == K_DOWN && c) sp_cur = 0; return; }   // the knobs in kg_cols columns (ui.h)
     if (k == K_UP && sp_cur < kg_cols(c) && pg->gfx == GF_NONE) return;   // no picture above
@@ -108,6 +121,8 @@ static int sound_edit_arrow(int k) {     // EDIT+arrows on the picture: the samp
     if (snd_page()->gfx == GF_SLICES) return 0;   // SLICES: the count, as on its card
     if (song.t[sel].type == 3) return 0;          // CLOUD: its source's next file (P_SRC)
     if (!is_synth(sel) && (k == K_LEFT || k == K_RIGHT)) { edit_begin(); neighbour_file(sel, k == K_RIGHT ? 1 : -1); }
+    if (song.t[sel].type == 1 && (snd_page()->gfx == GF_WTA || snd_page()->gfx == GF_WTB) && (k == K_LEFT || k == K_RIGHT)) {   // WAVE: the next table
+        int p = P_WV + (snd_page()->gfx == GF_WTB ? WP_B : WP_A) + WO_TABLE; par_adjust(sel, p, k == K_RIGHT ? 1 : -1, 0); }
     return 1;
 }
 
@@ -182,25 +197,19 @@ static void snd_picture(const SndPage *pg, int x, int y, int w, int h, Col ec) {
         break;
     case GF_OSC:
         if (t->type == 2) { rect(x + 12, y + 10, w - 24, h - 20, C_BG, 1); snd_shape(x + 24, y + 22, w - 48, h - 44, t->ap[AP_WAVE] ? 2 : 1, ec); ftext(x + 22, y + 14, FT_S, C_DIM, "OSC"); }
-        else for (int o = 0; o < 2; o++) { int bx = x + 12 + o * (w - 12) / 2, bw = (w - 36) / 2;
-            rect(bx, y + 10, bw, h - 20, C_BG, 1); snd_shape(bx + 12, y + 30, bw - 24, h - 56, t->sp[o ? SP_OSC2 : SP_OSC1] & 3, ec);
-            ftext(bx + 10, y + 14, FT_S, C_DIM, o ? "OSC 2" : "OSC 1"); }
         break;
     case GF_FILTER:
-        if (t->type == 2) snd_filter(x + 12, y + 8, w - 24, h - 16, t->ap[AP_CUTOFF], t->ap[AP_RESO], ec);
-        else snd_filter(x + 12, y + 8, w - 24, h - 16, t->sp[SP_CUTOFF], t->sp[SP_RESO], ec);
+        snd_filter(x + 12, y + 8, w - 24, h - 16, t->ap[AP_CUTOFF], t->ap[AP_RESO], ec);
         break;
-    case GF_ENV: snd_env(x + 16, y + 8, w - 32, h - 16, t->sp[SP_ATTACK], t->sp[SP_DECAY], t->sp[SP_SUSTAIN], t->sp[SP_RELEASE], ec); break;
     case GF_ALL: {                        // v3 MAIN: the wave, the filter and the envelope side by side
-        int pw = (w - 48) / 3, ac = t->type == 2;
+        int pw = (w - 48) / 3;
         for (int i = 0; i < 3; i++) { int px = x + 12 + i * (pw + 12); rect(px, y + 10, pw, h - 20, C_BG, 1);
             ftext(px + 10, y + 14, FT_S, C_DIM, i == 0 ? "OSC" : i == 1 ? "FILTER" : "ENV"); }
-        if (ac) snd_shape(x + 24, y + 40, pw - 24, h - 66, t->ap[AP_WAVE] ? 2 : 1, ec);
-        else { snd_shape(x + 24, y + 40, pw - 24, h - 66, t->sp[SP_OSC1] & 3, ec); snd_shape(x + 24, y + 40, pw - 24, h - 66, t->sp[SP_OSC2] & 3, mix(ec, C_BG, 140)); }
-        snd_filter(x + 24 + pw, y + 34, pw - 24, h - 50, ac ? t->ap[AP_CUTOFF] : t->sp[SP_CUTOFF], ac ? t->ap[AP_RESO] : t->sp[SP_RESO], ec);
-        if (ac) snd_env(x + 40 + 2 * pw, y + 34, pw - 32, h - 50, 0, t->ap[AP_DECAY], 0, t->ap[AP_DECAY] / 2, ec);
-        else snd_env(x + 40 + 2 * pw, y + 34, pw - 32, h - 50, t->sp[SP_ATTACK], t->sp[SP_DECAY], t->sp[SP_SUSTAIN], t->sp[SP_RELEASE], ec);
+        snd_shape(x + 24, y + 40, pw - 24, h - 66, t->ap[AP_WAVE] ? 2 : 1, ec);
+        snd_filter(x + 24 + pw, y + 34, pw - 24, h - 50, t->ap[AP_CUTOFF], t->ap[AP_RESO], ec);
+        snd_env(x + 40 + 2 * pw, y + 34, pw - 32, h - 50, 0, t->ap[AP_DECAY], 0, t->ap[AP_DECAY] / 2, ec);
         break; }
+    default: wv_picture(pg->gfx, x, y, w, h, ec); break;   // WAVE's pages
     }
 }
 static void snd_live(const SndPage *pg, int x, int y, int w, int h) {   // what sounds now, over the picture (1.2 had it on its panels)
@@ -208,7 +217,7 @@ static void snd_live(const SndPage *pg, int x, int y, int w, int h) {   // what 
     if ((pg->gfx == GF_WAVE || pg->gfx == GF_SLICES) && t->type == 0 && engine_sample(sel)) {   // where each voice reads the sample
         float pos[8]; int k = engine_sample_live(sel, pos, 8), ww = w - 24 > 960 ? 960 : w - 24;
         for (int i = 0; i < k; i++) rect(x + 12 + (int)(pos[i] * ww), y + 8, 2, h - 36, C_ORANGE, 1);
-    } else if ((pg->gfx == GF_FILTER || pg->gfx == GF_ENV) && (t->type == 1 || t->type == 2) && engine_synth_live(sel, &env, &fc)) {
+    } else if ((pg->gfx == GF_FILTER || pg->gfx == GF_ENV) && t->type == 2 && engine_synth_live(sel, &env, &fc)) {
         if (pg->gfx == GF_FILTER) {       // the cutoff now, on the same scale as the picture's (20 Hz .. 20 kHz over 8..88 %)
             float f = log10f(fc > 20 ? fc / 20.f : 1.f) / 3; if (f > 1) f = 1;
             rect(x + 12 + (w - 24) * (8 + (int)(f * 80)) / 100, y + 14, 3, h - 28, C_ORANGE, 1);
@@ -226,7 +235,10 @@ static int snd_tags(int p, char tg[][4]) {   // the automation lanes (A1..) and 
 static const char *snd_label(int p) {
     switch (p) { case P_VOICE: return "MODE"; case P_DIR: return "DIRECTION"; case P_TYPE: return "ENGINE"; case P_VOL: return "VOLUME";
                  case P_SAMPLE: return "PRESETS"; case P_BPM: return "LOOP BPM"; case P_SLWAY: return "METHOD"; }
-    if (p == P_GX + GX_LRATE) return "LFO RATE"; if (p == P_GX + GX_LSYNC) return "LFO SYNC"; if (p == P_GX + GX_LWAVE) return "LFO WAVE";
+    if (p == P_WENV) return "ENVELOPE"; if (p == P_WLFO) return "LFO"; if (p == P_WTGT) return "TARGET";
+    if (p >= P_WV && p < P_WV + WP_SUB_LEVEL) { const char *pn = snd_page()->name;   // OSC A / B's cards: the page says which, elsewhere the name does
+        if (strcmp(pn, "OSC A") && strcmp(pn, "OSC B")) return wp_name(p - P_WV); }
+    if (p >= P_WV + WP_ENV2 && p < P_WV + WP_ENV3 && snd_page()->gfx == GF_WFILT) return wp_name(p - P_WV);   // FILTER: "ENV2 ATT"
     return par_name[p];
 }
 // v3 (2026-11-20, user: "round encoders like Serum"): a knob per parameter. The arc shows the value (from the middle for
@@ -304,7 +316,10 @@ static int snd_pair(int p, const char **a, const char **b) {   // a two-state SO
     if (p == P_VOICE) { *a = song.t[sel].type == 0 ? "GATE" : "MONO"; *b = "POLY"; return 1; }
     if (p == P_AC + AP_WAVE) { *a = "SAW"; *b = "SQUARE"; return 1; }
     if (p == P_AX + AX_SUBOCT) { *a = "-1 OCT"; *b = "-2 OCT"; return 1; }
-    return p == P_GX + GX_SYNC || p == P_GX + GX_ARP || p == P_CX + CX_FREEZE;
+    if (p == P_WV + WP_NOISE_TYPE) { *a = "WHITE"; *b = "PINK"; return 1; }
+    if (p == P_WV + WP_QUALITY) { *a = "ECO"; *b = "HIGH"; return 1; }
+    if (p == P_WV + WP_SUB_OCT) { *a = "-1 OCT"; *b = "-2 OCT"; return 1; }
+    return wv_is_pair(p) || p == P_CX + CX_FREEZE;
 }
 // 2026-11-24 (audit): a choice among 3..6 named values is a row of segments, the chosen one filled, its name on the value line
 static void seg_draw(int x, int y, int w, int h, const char *lb, const char *v, const char *const *nm, int n, int cur, int on, Col ec) {
@@ -325,15 +340,14 @@ static void seg_draw(int x, int y, int w, int h, const char *lb, const char *v, 
 static const char *const *snd_names(int p) {   // the choices of a list parameter, as short as they read
     static const char *const nrm[] = {"OFF", "PEAK", "LOUD"}, *const wrp[] = {"OFF", "BEATS", "REPITCH", "TONES", "TEXTURE", "COMPLEX"},
         *const slc[] = {"OFF", "4", "8", "16", "32"}, *const way[] = {"EQUAL", "TRANS", "BY HAND"}, *const brs[] = {"AUTO", "1", "2", "4", "8", "16"},
-        *const osc[] = {"TRI", "SAW", "SQR", "PULSE"}, *const o1[] = {"32'", "16'", "8'", "4'"}, *const o2[] = {"16'", "8'", "4'", "2'"},
-        *const lw[] = {"TRI", "SQR", "SAW", "RAMP", "S&H"}, *const kb[] = {"OFF", "HALF", "FULL"}, *const vca[] = {"ENV", "GATE", "DRONE"},
         *const am[] = {"UP", "DOWN", "ORDER", "UP/DN"}, *const ao[] = {"1", "2", "3"}, *const dt[] = {"DIODE", "TRANS", "TUBE", "FUZZ"},
+        *const sub[] = {"SINE", "TRI", "SQR", "SAW"}, *const trg[] = {"FREE", "RETRIG", "ONE"}, *const en[] = {"ENV1", "ENV2", "ENV3"}, *const lf[] = {"LFO1", "LFO2", "LFO3", "LFO4"},
         *const sw[] = {"SQR", "SINE", "TRI"}, *const wn[] = {"HANN", "TRI", "TUKEY", "PERC", "REV P"}, *const im[] = {"OCT+5", "OCT", "SCALE"},
         *const sy[] = {"FREE", "1/4", "1/8", "1/16", "1/32"}, *const sc[] = {"FWD", "REV", "PING"};
     switch (p) { case P_NORM: return nrm; case P_WARP: return wrp; case P_SLICES: return slc; case P_SLWAY: return way; case P_BARS: return brs; }
-    if (p == P_SY + SP_OSC1 || p == P_SY + SP_OSC2) return osc;
-    if (p == P_GX + GX_O1OCT) return o1; if (p == P_GX + GX_O2OCT) return o2; if (p == P_GX + GX_LWAVE) return lw; if (p == P_GX + GX_KBT) return kb;
-    if (p == P_GX + GX_VCA) return vca; if (p == P_GX + GX_AMODE) return am; if (p == P_GX + GX_AOCT) return ao; if (p == P_AC + AP_DTYPE) return dt;
+    if (p == P_WV + WP_ARP_MODE) return am; if (p == P_WV + WP_ARP_OCT) return ao; if (p == P_AC + AP_DTYPE) return dt;
+    if (p == P_WV + WP_SUB_SHAPE) return sub; if (p == P_WENV) return en; if (p == P_WLFO) return lf;
+    if (p >= P_WV + WP_LFO1 && p < P_WV + WP_POLY && (p - P_WV - WP_LFO1) % WL_N == WL_TRIG) return trg;
     if (p == P_AX + AX_SUBWAVE) return sw; if (p == P_CX + CX_WINDOW) return wn; if (p == P_CX + CX_SHMODE) return im; if (p == P_CX + CX_SYNC) return sy;
     if (p == P_CX + CX_SCAN) return sc;
     return NULL;
@@ -341,15 +355,17 @@ static const char *const *snd_names(int p) {   // the choices of a list paramete
 static int snd_list(int p, int *n, int *cur) {   // a parameter whose values are names: how many and which (BARS: AUTO 1 2 4 8 16)
     int lo, hi, st, bg, v; par_limits(sel, p, &lo, &hi, &st, &bg); v = par_get(sel, p);
     if (p == P_BARS) { static const int bv[6] = {0, 1, 2, 4, 8, 16}; *n = 6; *cur = 0; for (int i = 0; i < 6; i++) if (bv[i] == v) *cur = i; return 1; }
-    static const int ls[] = {P_NORM, P_WARP, P_SLICES, P_SLWAY, P_SY + SP_OSC1, P_SY + SP_OSC2, P_GX + GX_O1OCT, P_GX + GX_O2OCT, P_GX + GX_LWAVE, P_GX + GX_KBT,
-        P_GX + GX_VCA, P_GX + GX_AMODE, P_GX + GX_AOCT, P_AC + AP_DTYPE, P_AX + AX_SUBWAVE, P_CX + CX_WINDOW, P_CX + CX_SHMODE, P_CX + CX_SYNC, P_CX + CX_SCAN};
+    static const int ls[] = {P_NORM, P_WARP, P_SLICES, P_SLWAY, P_WV + WP_ARP_MODE, P_WV + WP_ARP_OCT, P_WV + WP_SUB_SHAPE, P_WENV, P_WLFO,
+        P_AC + AP_DTYPE, P_AX + AX_SUBWAVE, P_CX + CX_WINDOW, P_CX + CX_SHMODE, P_CX + CX_SYNC, P_CX + CX_SCAN};
     for (unsigned i = 0; i < sizeof ls / sizeof *ls; i++) if (ls[i] == p && hi - lo >= 1 && hi - lo <= 5) { *n = hi - lo + 1; *cur = clampi(v - lo, 0, hi - lo); return 1; }
+    if (p >= P_WV + WP_LFO1 && p < P_WV + WP_POLY && (p - P_WV - WP_LFO1) % WL_N == WL_TRIG) { *n = 3; *cur = clampi(v, 0, 2); return 1; }
     return 0;
 }
 static void snd_knob(int x, int y, int w, int h, int p, int on, Col ec) {
     { const char *a, *b; if (snd_pair(p, &a, &b)) { int lo, hi, st, bg; par_limits(sel, p, &lo, &hi, &st, &bg); int v = par_get(sel, p) - lo;
         toggle_draw(x, y, w, h, snd_label(p), a, b, v != 0, on, ec); if (on) ui_focus(snd_label(p), v ? (b ? b : "ON") : (a ? a : "OFF"), -1, ec); return; } }
     { int n, cur; if (snd_list(p, &n, &cur) && snd_names(p)) { char v[48]; par_str(sel, p, v, sizeof v); seg_draw(x, y, w, h, snd_label(p), v, snd_names(p), n, cur, on, ec); if (on) ui_focus(snd_label(p), v, -1, ec); return; } }
+    if (wv_is_list(p) || p == P_WTGT) { char v[48]; par_str(sel, p, v, sizeof v); val_draw(x, y, w, h, snd_label(p), v, on, ec); if (on) ui_focus(snd_label(p), v, -1, ec); return; }   // WAVE: TABLE, WARP, FILTER TYPE, SHAPE, SYNC... as names
     char v[96]; if (p == P_SAMPLE) snprintf(v, sizeof v, "OPEN"); else if (p == P_DIR) snprintf(v, sizeof v, "%s", song.t[sel].rev ? "\005" : "\004");
     else par_str(sel, p, v, sizeof v);
     const char *lb = snd_label(p);
@@ -367,59 +383,16 @@ static void snd_knob(int x, int y, int w, int h, int p, int on, Col ec) {
     for (int i = 0; i < nt; i++) { Col bc = tg[i][0] == 'A' ? C_CAT(PC_MOD) : C_WHITE; rrect(tx + i * 30, y + 6, 26, 18, 4, bc); ftext(tx + i * 30 + 13 - ftext_w(FT_S, tg[i]) / 2, y + 6, FT_S, C_BG, tg[i]); }
     if (on) ui_focus(lb, v, par_is_number(p) && hi > lo ? (int)(f * 100) : -1, ec);
 }
-static int pt_y(int j) { return j < 16 ? 150 + (j - 1) * 40 : 146 + (j - 17) * 37; }   // a jack's row
-static const char *pt_name(int j, char *b) {   // the label: the outputs without "OUT", as on A14
-    snprintf(b, 16, "%s", par_name[P_PT + j]); int l = (int)strlen(b);
-    if (l > 4 && !strcmp(b + l - 4, " OUT")) b[l - 4] = 0;
-    return b;
-}
-#define PT_XO (wx0 + 146)                // the jacks' columns in the work area (side slots)
-#define PT_XI (wx0 + ww - 197)
-static void pt_curve(int y0, int y1, Col c) {   // a cable from the left dot to the right one, an S as on A14
-    int px = PT_XO, py = y0, xm = (PT_XO + PT_XI) / 2;
-    for (int i = 1; i <= 32; i++) { float t = i / 32.f, u = 1 - t;
-        int x = (int)(u * u * u * PT_XO + 3 * u * u * t * xm + 3 * u * t * t * xm + t * t * t * PT_XI), y = (int)(u * u * u * y0 + 3 * u * u * t * y0 + 3 * u * t * t * y1 + t * t * t * y1);
-        line(px, py, x, y, 5, c); px = x; py = y; }
-}
-static void draw_patch2(Col ec) {
-    const uint8_t (*gp)[2] = song.gp[sel]; char b[16], s[96]; int cj = pt_jack(sp_cur);
-    Col cc[6] = {C_ENG(2), C_ENG(1), C_ENG(3), C_ENG(0), C_PLAY, C_RED}, out = C_ORANGE, in = C_ENG(3);
-    for (int k = 0; k < NCABLE; k++) if (gp[k][0] && gp[k][1]) pt_curve(pt_y(gp[k][0]), pt_y(16 + gp[k][1]), cc[k % 6]);
-    if (pt_pick) pt_curve(pt_y(pt_pick), cj >= 16 ? pt_y(cj) : pt_y(pt_pick), C_WHITE);   // the carried cable reaches for the cursor
-    for (int j = 1; j < JO_N; j++) { int y = pt_y(j), on = j == cj;
-        if (on) gb_ring(PT_XO, y, 20, 4, ec); if (pt_pick == j) gb_ring(PT_XO, y, 26, 3, C_WHITE);
-        disc2(PT_XO, y, 12, out); ftext(wx0 + 12, y - 12, FT_MB, on ? ec : C_WHITE, pt_name(j, b)); }
-    for (int i = 1; i < JI_N; i++) { int j = 16 + i, y = pt_y(j), on = j == cj;
-        if (on) gb_ring(PT_XI, y, 20, 4, ec);
-        disc2(PT_XI, y, 12, in); pt_name(j, b); ftext(wx0 + ww - 13 - ftext_w(FT_MB, b), y - 12, FT_MB, on ? ec : C_WHITE, b); }
-    s[0] = 0;                            // under the bay: the cursor's jack and where its cables go
-    if (pt_pick) snprintf(s, sizeof s, "%s \004 ...", pt_name(pt_pick, b));
-    else for (int k = 0, l; k < NCABLE; k++) { if (!gp[k][0] || !gp[k][1] || (cj < 16 ? gp[k][0] != cj : gp[k][1] != cj - 16)) continue;
-        char o[16], d[16]; l = (int)strlen(s); snprintf(s + l, sizeof s - l, "%s%s \004 %s", l ? "   " : "", pt_name(gp[k][0], o), pt_name(16 + gp[k][1], d));
-        if (gp[k][0] == JO_ATT || gp[k][1] == JI_ATT) { l = (int)strlen(s); snprintf(s + l, sizeof s - l, " \003 %d%%", song.gx[sel][GX_ATTEN]); } }
-    if (!s[0]) snprintf(s, sizeof s, "%s: no cable", pt_name(cj, b));
-    { int any = 0; for (int k = 0; k < NCABLE; k++) any |= gp[k][0] && gp[k][1];   // an empty bay says how (2026-11-24)
-      if (!any && !pt_pick) { const char *h1 = "EDIT an output on the left,", *h2 = "then EDIT an input on the right";
-        ftext(wx0 + ww / 2 - ftext_w(FT_M, h1) / 2, 380, FT_M, C_GREY, h1); ftext(wx0 + ww / 2 - ftext_w(FT_M, h2) / 2, 412, FT_M, C_GREY, h2); } }
-    ftext(wx0 + ww / 2 - ftext_w(FT_MB, s) / 2, 672, FT_MB, ec, s);
-    draw_footer(pt_pick ? "EDIT ON AN INPUT PLUG  Y DROP THE CABLE" : cj >= 16 ? "EDIT TAKE ITS CABLE  OPT+EDIT PULL IT  ^ TABS"
-                : "EDIT CABLE  OPT+EDIT PULL ITS CABLES  ^ TABS");
-}
+#include "wvui.h"                        // WAVE's pictures, the MATRIX list and the TABLE browser
 static int pic_h(const SndPage *pg) { return pg->gfx != GF_NONE; }
 // 2026-11-24 (user: no empty half screens): the pages without a picture of their own get one drawn from their values (the
 // cursor never stops on it: EDIT has nothing to open there). LFO its wave, ARP its steps, DIST its curve, VOICE its envelope,
 // OUT the level.
 static void snd_deco(const SndPage *pg, int x, int y, int w, int h, Col ec) {
-    const Track *t = &song.t[sel]; const int8_t *gx = song.gx[sel], *ax = song.ax[sel]; int ix = x + 24, iw = w - 48, iy = y + 20, ih = h - 40, px = 0, py = 0;
+    const Track *t = &song.t[sel]; const int8_t *wa = song.wv[sel], *ax = song.ax[sel]; int ix = x + 24, iw = w - 48, iy = y + 20, ih = h - 40, px = 0, py = 0;
     rrect(x, y, w, h, 8, C_CELL);
-    if (!strcmp(pg->name, "LFO")) {        // TRI SQR SAW RAMP S&H, two periods
-        unsigned r = 7; float hold = 0;
-        for (int i = 0; i <= iw; i += 3) { float ph = fmodf(i * 2.f / iw, 1.f), v;
-            switch (gx[GX_LWAVE] % 5) { case 0: v = ph < 0.5f ? 4 * ph - 1 : 3 - 4 * ph; break; case 1: v = ph < 0.5f ? 1 : -1; break;
-                case 2: v = 1 - 2 * ph; break; case 3: v = 2 * ph - 1; break; default: if (i % (iw / 8 + 1) < 3) { r = r * 1103515245u + 12345u; hold = ((r >> 16) & 255) / 127.5f - 1; } v = hold; }
-            int qx = ix + i, qy = iy + ih / 2 - (int)(v * (ih / 2 - 6)); if (i) line(px, py, qx, qy, 3, ec); px = qx; py = qy; }
-    } else if (!strcmp(pg->name, "ARP")) {  // the steps it plays: UP DOWN ORDER UP/DOWN over 1..3 octaves, the gate as the bar's width
-        int oct = gx[GX_AOCT] + 1, n = 4 * oct, mode = gx[GX_AMODE] % 4, steps = mode == 3 ? 2 * n - 2 : n, gate = clampi(gx[GX_AGATE], 5, 100), on = gx[GX_ARP];
+    if (!strcmp(pg->name, "ARP")) {        // the steps it plays: UP DOWN ORDER UP/DOWN over 1..3 octaves, the gate as the bar's width
+        int oct = wa[WP_ARP_OCT] % 3 + 1, n = 4 * oct, mode = wa[WP_ARP_MODE] % 4, steps = mode == 3 ? 2 * n - 2 : n, gate = clampi(wa[WP_ARP_GATE], 5, 100), on = wa[WP_ARP];
         if (steps > 24) steps = 24; int sw = iw / (steps ? steps : 1);
         for (int i = 0; i < steps; i++) { int k = mode == 1 ? n - 1 - i : mode == 3 ? (i < n ? i : 2 * n - 2 - i) : mode == 2 ? (i * 5 + 1) % n : i;
             int bh = (k + 1) * (ih - 10) / n; rrect(ix + i * sw, iy + ih - bh, sw * gate / 100 > 4 ? sw * gate / 100 - 2 : 4, bh, 4, on ? ec : mix(ec, C_CELL, 170)); }
@@ -445,9 +418,10 @@ static void draw_sound2(void) {
         int tw = ww / n, cx = wx0 + tw * i + tw / 2;
         if (i == cur) rrect(wx0 + tw * i, 73, tw - 10 > 184 ? 184 : tw - 10, 38, 8, ec);
         int px = i == cur ? wx0 + tw * i + (tw - 10 > 184 ? 184 : tw - 10) / 2 : cx - 5;
-        ftext(px - ftext_w(FT_MB, pgs[i].name) / 2, 80, FT_MB, i == cur ? C_BG : C_DIM, pgs[i].name);
+        int tf = ftext_w(FT_MB, pgs[i].name) <= tw - 12 ? FT_MB : FT_S;   // WAVE has ten pages: a smaller name where it must
+        ftext(px - ftext_w(tf, pgs[i].name) / 2, 80 + (tf == FT_S ? 4 : 0), tf, i == cur ? C_BG : C_DIM, pgs[i].name);
     }
-    if (pg->gfx == GF_PATCH) { draw_patch2(ec); return; }
+    if (pg->gfx == GF_WMTX) { draw_matrix2(ec); return; }
     int y0 = 127, ph = (c + kg_cols(c) - 1) / kg_cols(c) <= 1 ? 300 : 210;   // one row of knobs: a taller picture
     if (pg->gfx != GF_NONE) {            // the picture; the cursor on it: the file (the sampler, CLOUD) or the presets
         if (sp_cur < 0) rframe(wx0, 127, ww, ph, 8, 4, ec, C_CELL); else rrect(wx0, 127, ww, ph, 8, C_CELL);
@@ -458,14 +432,17 @@ static void draw_sound2(void) {
     for (int i = 0; i < c; i++) { int x, y, w, h; kg_cell(c, i, wx0, ww, y0, 700, &x, &y, &w, &h); snd_knob(x, y, w, h, l[i], i == sp_cur, ec); }
     if (learning) draw_footer("EDIT TAKE THIS PARAMETER  Y CANCEL");   // 2026-11-24: only keys that still work (L1/R1 page the sections)
     else if (sp_cur < 0) draw_footer(pg->gfx == GF_SLICES ? "EDIT SLICE EDITOR  EDIT+ARROWS SLICES  ^ TABS"
+                              : (pg->gfx == GF_WTA || pg->gfx == GF_WTB) ? "EDIT TABLES  EDIT+<> NEXT TABLE  ^ TABS  OPT LISTEN"
                               : is_synth(sel) && song.t[sel].type != 3 ? "EDIT PRESETS  ^ TABS  OPT LISTEN"
                               : "EDIT FILE  EDIT+<> NEXT FILE  ^ TABS");
     else { int p = sound_par();          // the cards with a key of their own say so
         draw_footer(p == P_BPM ? "EDIT TAP IN TIME  EDIT+ARROWS VALUE  ^ TABS"
                   : p == P_ROOT ? "EDIT SET AS PROJECT KEY  EDIT+ARROWS VALUE  ^ TABS"
+                  : p == P_WTGT ? "EDIT POINT AT A CARD: THIS LFO MOVES IT  ^ TABS"
                   : "EDIT+ARROWS VALUE  ^ TABS  OPT+EDIT DEFAULT"); }
 }
 static const char *snd_page_name(void) { return snd_page()->name; }
+static int snd_page_of(int gfx) { int n; const SndPage *pg = snd_pages(song.t[sel].type, &n); for (int i = 0; i < n; i++) if (pg[i].gfx == gfx) return i; return 0; }
 static void snd_page_count(char *b, int n) { int k; const SndPage *pgs = snd_pages(song.t[sel].type, &k); snprintf(b, n, "%d/%d", (int)(snd_page() - pgs) + 1, k); }
 
 // ---- SOUND > FILES (A11): the folders on the left, the files on the right ----
@@ -526,9 +503,9 @@ static void draw_browse2(void) {
 
 // ---- SOUND > PRESETS (A12): the categories as tabs, the presets of the one under the cursor ----
 static void draw_presets2(void) {
-    int idx[NPRESET + NUSERP + 1], n = pr_list(idx, NPRESET + NUSERP + 1); Col ec = C_ENG(song.t[sel].type);
+    int idx[PR_MAX], n = pr_list(idx, PR_MAX); Col ec = C_ENG(song.t[sel].type);
     pr_cur = clampi(pr_cur, 0, n - 1);
-    #define PR_CAT(j) (idx[j] < 0 || idx[j] >= 1000 ? 1 : 0)   // A12: two tabs, FACTORY and MINE (SAVE CURRENT and the user's)
+    #define PR_CAT(j) (idx[j] < 0 || (idx[j] >= 1000 && idx[j] < 2000) ? 1 : 0)   // A12: two tabs, FACTORY and MINE (SAVE CURRENT and the user's)
     int cur = PR_CAT(pr_cur);
     for (int t = 0; t < 2; t++) { int x = 26 + t * 492, on = t == cur; const char *nm = t ? "MINE" : "FACTORY";
         if (on) rrect(x, 76, 475, 38, 8, ec);
@@ -536,12 +513,12 @@ static void draw_presets2(void) {
     int a = 0; while (a < n && PR_CAT(a) != cur) a++;
     int e = a; while (e < n && PR_CAT(e) == cur) e++;
     enum { ROWS = 9, RH = 61 }; int top = clampi(pr_cur - a - ROWS / 2, 0, e - a > ROWS ? e - a - ROWS : 0);
-    static const char *const en[4] = {"SAMPLER", "GRAND", "ACID", "CLOUD"};
+    static const char *const en[4] = {"SAMPLER", "WAVE", "ACID", "CLOUD"};
     for (int r = 0; r < ROWS && a + top + r < e; r++) { int j = a + top + r, i = idx[j], y = 130 + r * RH, on = j == pr_cur;
-        const char *nm = i < 0 ? "+ SAVE CURRENT" : i >= 1000 ? upre[i - 1000].name : presets[i].name;
+        const char *nm = i < 0 ? "+ SAVE CURRENT" : pr_name(i);
         if (on) rrect(26, y, 971, 50, 8, C_SELBG);
         ftext(48, y + 12, on ? FT_LB : FT_M, i < 0 ? C_DIM : C_WHITE, nm);
-        const char *tg = i < 0 ? "" : i >= 1000 ? "USER" : en[song.t[sel].type & 3];
+        const char *tg = i < 0 ? "" : i >= 1000 && i < 2000 ? "USER" : en[song.t[sel].type & 3];
         ftext(974 - ftext_w(FT_M, tg), y + 13, FT_M, on ? ec : C_DIM, tg); }
     if (e - a > ROWS) { int th = ROWS * RH - 11, h = th * ROWS / (e - a); rect(1004, 130, 4, th, C_CELL, 1); rect(1004, 130 + (th - h) * top / (e - a - ROWS), 4, h, C_DIM, 1); }
     int i = idx[pr_cur];

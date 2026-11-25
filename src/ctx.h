@@ -73,7 +73,6 @@ static void xy_key(int k) {
         if (x_latch || v_latch) { x_latch = v_latch = 0; held[K_X] = 0; used[K_X] = 1; return; }   // X is let go with the latch
         if (qd_open) { qd_toggle(0); return; }
         if (qb_focus || strip_focus || tab_focus) { qb_focus = strip_focus = tab_focus = 0; if (!midi_clk_in) tempo_mul = 1.f; return; }
-        if (pt_pick) { pt_pick = 0; toast("CABLE DROPPED"); return; }   // PATCH: the carried cable only
         if (mlearn_par >= 0) { mlearn_par = -1; toast("MIDI LEARN CANCELLED"); return; }
         if (v2_mixer() && mx_pg == 1) { mx_pg = 0; if (mcol >= NSLOT) mcol = sel; return; }   // the drawer closes
         if (learning || y_back_here()) { sim_key(K_Y, -1); return; }   // windows and sub-pages: the old way back

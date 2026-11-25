@@ -35,13 +35,13 @@ static void act_scene(int d) { scene_step(d); }
 
 // clipboards: a whole pad (with its DEEP pages), a mixer strip (inserts, sends, VOL, PAN), a pattern
 static Track copy_slot; static Cuts copy_cut; static int have_slot; static Pattern clip_board; static int have_clip;
-static int8_t copy_cx[16], copy_ax[16], copy_gx[32]; static uint8_t copy_gp[16];
+static int8_t copy_cx[16], copy_ax[16], copy_wv[256];   // copy_wv: WAVE's block (2026-11-25)
 static PadMix strip_board; static int8_t strip_vol, strip_pan, strip_mbx[NINS][6]; static int have_strip;
-static void act_pad_copy(int s) { copy_slot = song.t[s]; copy_cut = song.cut[s]; memcpy(copy_cx, song.cx[s], 16); memcpy(copy_ax, song.ax[s], 16); memcpy(copy_gx, song.gx[s], 32); memcpy(copy_gp, song.gp[s], 16); have_slot = 1; toast("SLOT COPIED"); }
+static void act_pad_copy(int s) { copy_slot = song.t[s]; copy_cut = song.cut[s]; memcpy(copy_cx, song.cx[s], 16); memcpy(copy_ax, song.ax[s], 16); memcpy(copy_wv, song.wv[s], 256); have_slot = 1; toast("SLOT COPIED"); }
 static void act_pad_paste(int s) {
     if (!have_slot) return;
     push_undo(); int on = song.t[s].on; song.t[s] = copy_slot; song.cut[s] = copy_cut;
-    memcpy(song.cx[s], copy_cx, 16); memcpy(song.ax[s], copy_ax, 16); memcpy(song.gx[s], copy_gx, 32); memcpy(song.gp[s], copy_gp, 16);
+    memcpy(song.cx[s], copy_cx, 16); memcpy(song.ax[s], copy_ax, 16); memcpy(song.wv[s], copy_wv, 256);
     song.t[s].on = on; song.t[s].queued = -1; sync_samples(); toast("SLOT PASTED");
 }
 static void act_strip_copy(int s) { strip_board = song.mix.pad[s]; memcpy(strip_mbx, song.mbx[s], sizeof strip_mbx); strip_vol = song.t[s].vol; strip_pan = song.t[s].pan; have_strip = 1; toast("STRIP COPIED"); }

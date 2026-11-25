@@ -30,7 +30,7 @@ int deg_semis(int sc, int deg) {
 }
 
 typedef struct { int type, slot; float a, b; void *p; } Cmd;
-enum { CMD_COUNT, CMD_TRIG, CMD_TRIG_HELD, CMD_TRIG_CHAIN, CMD_RELEASE, CMD_SET_SAMPLE, CMD_TRANSPORT, CMD_STOP_ALL };
+enum { CMD_COUNT, CMD_TRIG, CMD_TRIG_HELD, CMD_TRIG_CHAIN, CMD_RELEASE, CMD_SET_SAMPLE, CMD_TRANSPORT, CMD_STOP_ALL, CMD_WTABLE };   // WTABLE: slot = table slot, p = the new WaveTable
 #define QN 512
 typedef struct { Cmd q[QN]; unsigned head, tail; } Queue;  // single producer, single consumer
 static Queue cmdq, trashq;
@@ -50,7 +50,8 @@ static int q_pop(Queue *q, Cmd *c) {
     return 1;
 }
 
-#include "synth.h"
+#include "synth.h"                       // ACID's voice and ladder (GRAND's own DSP went with it, 2026-11-25)
+#include "wave.h"
 #include "acid.h"
 #include "cloud.h"
 #include "fx.h"
@@ -62,14 +63,16 @@ typedef struct {
     double gst[2]; int gph[2], gsize, flux;   // TONES/TEXTURE grains
     unsigned age;
     int held;                            // listen voice: stops when the button is released
-    int synth; SynthV sy;                // 1 GRAND, 2 ACID (the synth makes the sound), 3 CLOUD (grains of s)
+    int synth; SynthV sy;                // 2 ACID (the synth makes the sound), 3 CLOUD (grains of s); WAVE (type 1) plays in wave[], not here
     CloudV cl;
     int fin, fout, el, cutx; double adv; // cutx: it was cut with room to fade, the end fade is not needed; sampler voices only (SAMPLER DEEP): fade-in and fade-out lengths in frames, frames played, what pos moves by per frame
 } Voice;
 
 static Sample *smp[NSLOT + 1];
-static float gl_buf[NSLOT][1024], gl_sh[NSLOT]; static double gl_ph[NSLOT]; static int gl_on[NSLOT]; static volatile float gl_now[NSLOT];   // GRAND DEEP LFOs
-static int gp_on[NSLOT];                // GRAND pads with PATCH cables
+// WAVE (2026-11-25, user: it takes GRAND's place as type 1): one instrument per pad with its own 8 voices, one store of
+// tables for all. The built-ins are made once on the UI thread (engine_wave_init) before a pad may play.
+static WaveInst wave[NSLOT]; static WaveStore wstore; static volatile int wave_ready;
+static int8_t wv_cap[256];               // a pad's parameters with what the CPU guard takes off (audio thread only)
 static Voice voices[NVOICE];
 static unsigned age_ctr;
 static int last_voice = -1;              // the voice start_voice just took, -1 none
@@ -117,7 +120,6 @@ static float strip_gl[NSLOT], strip_gr[NSLOT];
 static float mpk[NSLOT + 3];             // meters: pads, return A, return B, master (peak since the UI last read)
 #include "fxdsp.h"
 static FxState fxs[NSLOT][NINS];
-static SpringState spr[NSLOT]; static int spr_tail[NSLOT];   // GRAND's SPRING per pad, and how long it rings on
 static Reverb rvb; static Delay dly; static MasterState mst;
 static float snd_a[2 * MAXN], snd_b[2 * MAXN], ret[2 * MAXN];
 static float send_ga[NSLOT], send_gb[NSLOT], master_g = -1;
@@ -130,12 +132,12 @@ static volatile float lfo_view[NSLOT][NLFO];   // the UI draws them
 static uint8_t lfo_note[NSLOT], has_mod[NSLOT];
 static float mod_prev[NSLOT] = {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1};   // last buffer's pitch factor: the voices glide from it across the buffer (2026-11-12: steps crackled)
 static float mod_pitch[NSLOT] = {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1}, m_vol[NSLOT], m_pan[NSLOT], m_sa[NSLOT], m_sb[NSLOT];
-static int8_t m_sp[NSLOT][16], m_ap[NSLOT][12], m_cp[NSLOT][8], m_cx[NSLOT][16], m_ax[NSLOT][16], m_gx[NSLOT][32];
+static int8_t m_ap[NSLOT][12], m_cp[NSLOT][8], m_cx[NSLOT][16], m_ax[NSLOT][16], m_wv[NSLOT][256];   // m_wv: WAVE, LT_ENG + k = wp[k] (k < LT_ENGN)
 static FxSlot m_ins[NSLOT][NINS];
 static float lfo_beats(int i) { return i < NDIV ? div_beats[i] : i == NDIV ? 8.f : 16.f; }
 static void eng_range(int type, int k, int *lo, int *hi) {   // an engine parameter's range (cloud: cp then cx)
     *lo = 0; *hi = 100;
-    if (type == 1) sp_range(k, lo, hi); else if (type == 2) ap_range(k, lo, hi); else if (type == 3 && k >= CP_N) cx_range(k - CP_N, lo, hi);
+    if (type == 1) wp_range(k, lo, hi); else if (type == 2) ap_range(k, lo, hi); else if (type == 3 && k >= CP_N) cx_range(k - CP_N, lo, hi);
 }
 static int8_t mod_byte(int base, float add, int lo, int hi) { int v = (int)lrintf(base + add); return (int8_t)(v < lo ? lo : v > hi ? hi : v); }
 // The automation value of a lane at a fractional step (0..100), or -1: no value in the lane
@@ -239,13 +241,13 @@ static void lfo_run(int n, double tempo) {
         m_sa[s] = sa + (ov_sa >= 0 ? ov_sa / 100 - pmx->send_a / 100.f : 0); m_sb[s] = sb + (ov_sb >= 0 ? ov_sb / 100 - pmx->send_b / 100.f : 0);
         int lo, hi;
 #define BASE(ov, cur) ((ov) >= 0 ? lo + (ov) / 100.f * (hi - lo) : (float)(cur))
-        for (int k = 0; k < 16; k++) { if (k < SP_N && t->type == 1) { eng_range(1, k, &lo, &hi); m_sp[s][k] = mod_byte((int)lrintf(BASE(ov_eng[k], t->sp[k])), eng[k] * (hi - lo), lo, hi); } else m_sp[s][k] = t->sp[k]; }
+        memcpy(m_wv[s], song.wv[s], sizeof m_wv[s]);   // WAVE: OSC A, OSC B, SUB, NOISE, FILTER, ENV1 (wp 0..55) as targets
+        if (t->type == 1) for (int k = 0; k < LT_ENGN; k++) if (eng[k] != 0 || ov_eng[k] >= 0) { wp_range(k, &lo, &hi); if (lo < hi) m_wv[s][k] = mod_byte((int)lrintf(BASE(ov_eng[k], song.wv[s][k])), eng[k] * (hi - lo), lo, hi); }
         for (int k = 0; k < 12; k++) { if (k < AP_N && t->type == 2) { eng_range(2, k, &lo, &hi); m_ap[s][k] = mod_byte((int)lrintf(BASE(ov_eng[k], t->ap[k])), eng[k] * (hi - lo), lo, hi); } else m_ap[s][k] = t->ap[k]; }
         for (int k = 0; k < 7; k++) { lo = 0; hi = 100; m_cp[s][k] = k < CP_N && t->type == 3 ? mod_byte((int)lrintf(BASE(ov_eng[k], t->cp[k])), eng[k] * 100, 0, 100) : t->cp[k]; }
         for (int k = 0; k < 16; k++) { if (k < CX_N && t->type == 3) { cx_range(k, &lo, &hi); m_cx[s][k] = mod_byte((int)lrintf(BASE(ov_eng[CP_N + k], song.cx[s][k])), eng[CP_N + k] * (hi - lo), lo, hi); } else m_cx[s][k] = song.cx[s][k]; }
-        memcpy(m_ax[s], song.ax[s], 16); memcpy(m_gx[s], song.gx[s], 32);   // the DEEP pages: their knobs move too
+        memcpy(m_ax[s], song.ax[s], 16);   // the DEEP page: its knobs move too
         if (t->type == 2 && song.ax[s][AX_MARK] == AX_INIT) for (int k = 0; k < AX_N; k++) if (eng[LT_DEEP + k] != 0 || ov_eng[LT_DEEP + k] >= 0) { ax_range(k, &lo, &hi); m_ax[s][k] = mod_byte((int)lrintf(BASE(ov_eng[LT_DEEP + k], song.ax[s][k])), eng[LT_DEEP + k] * (hi - lo), lo, hi); }
-        if (t->type == 1 && song.gx[s][GX_MARK] == GX_INIT) for (int k = 0; k < GX_N; k++) if (eng[LT_DEEP + k] != 0 || ov_eng[LT_DEEP + k] >= 0) { gx_range(k, &lo, &hi); m_gx[s][k] = mod_byte((int)lrintf(BASE(ov_eng[LT_DEEP + k], song.gx[s][k])), eng[LT_DEEP + k] * (hi - lo), lo, hi); }
         for (int i = 0; i < NINS; i++) { m_ins[s][i] = song.mix.pad[s].ins[i]; FxSlot *f = &m_ins[s][i];
             for (int k = 0; k < 6; k++) if (ins[i][k] != 0 || ov_ins[i][k] >= 0) { fx_range(f->type, k, &lo, &hi); f->p[k] = mod_byte((int)lrintf(BASE(ov_ins[i][k], f->p[k])), ins[i][k] * (hi - lo), lo, hi); } }
 #undef BASE
@@ -278,11 +280,19 @@ void song_defaults(void) {
         Track *t = &song.t[i];
         for (int p = 0; p < NPAT; p++) pattern_clear(&t->pat[p]);
         t->queued = -1; t->vol = 75; t->end = 1000; t->root = -1;
-        cx_defaults(song.cx[i]); ax_defaults(song.ax[i]); gx_defaults(song.gx[i]);
+        cx_defaults(song.cx[i]); ax_defaults(song.ax[i]);
     }
     mix_defaults(&song.mix);
     for (int s = 0; s < NSLOT; s++) for (int q = 0; q < NPAT; q++) for (int a = 0; a < NAUTO; a++) memset(song.aut[s][q][a].v, AUTO_EMPTY, NSTEP);
+    engine_wave_init();                  // the first call (UI thread, before the device): the tables
 }
+void engine_wave_init(void) {
+    if (wave_ready) return;
+    wt_build_all(&wstore);
+    for (int s = 0; s < NSLOT; s++) wv_init(&wave[s]);
+    __atomic_store_n(&wave_ready, 1, __ATOMIC_RELEASE);
+}
+const void *engine_wstore(void) { return &wstore; }
 
 // ---------- per-slot helpers (s = the sample the caller's thread sees) ----------
 static const Track *trk(int slot) { return slot < NSLOT ? &song.t[slot] : &preview_track; }
@@ -389,11 +399,11 @@ static void slice_bounds(int slot, const Sample *s, int n, int slice, double *lo
     }
 }
 static int synth_gate = -1;              // frames a sequencer step holds a synth note; -1: an eighth note
-// ARP (GRAND DEEP): the notes a GRAND pad holds, played one by one in tempo (2026-11-10)
+// ARP: the notes a WAVE pad holds, played one by one in tempo (2026-11-10 for GRAND; 2026-11-25 WAVE's bytes WP_ARP..)
 #define ARPN 16
 typedef struct { float semis, vel; int left, wait, tag, seq; } ArpNote;   // left: frames to its end (-1 held by a key), wait: frames to its start
 static ArpNote arp[NSLOT][ARPN]; static int arp_n[NSLOT], arp_seq[NSLOT], arp_idx[NSLOT], arp_emit, arp_last = -1; static double arp_t[NSLOT];
-static int arp_on(int s) { return s >= 0 && s < NSLOT && song.t[s].type == 1 && song.gx[s][GX_MARK] == GX_INIT && song.gx[s][GX_ARP]; }
+static int arp_on(int s) { return s >= 0 && s < NSLOT && song.t[s].type == 1 && song.wv[s][WP_MARK] == WP_INIT && song.wv[s][WP_ARP]; }
 static void arp_add(int s, float vel, float semis, int delay, int gate) {
     int live = 0; for (int i = 0; i < arp_n[s]; i++) if (arp[s][i].left != 0) live = 1;
     if (!live) { arp_n[s] = 0; arp_t[s] = delay; arp_idx[s] = 0; }   // the first note: the arpeggio starts with it
@@ -402,6 +412,9 @@ static void arp_add(int s, float vel, float semis, int delay, int gate) {
     arp[s][i] = (ArpNote){semis, vel, delay + gate, delay, 0, ++arp_seq[s]};
     arp_last = s * ARPN + i;
 }
+#define NWHOLD 32                        // WAVE notes held by keys: the tag that lets each go
+typedef struct { int tag, slot; float note; } WHold;
+static WHold whold[NWHOLD];
 static int roll_gate = -1;               // a piano-roll note: frames until a sample voice fades out (-1 not a roll note)
 static unsigned roll_age;                // voices younger than this were started by the same roll tick (a chord)
 #define MAX_POLY 8                       // voices one pad may hold: a new one takes the pad's oldest
@@ -425,7 +438,6 @@ static int pick_voice(int slot) {
     }
     return fr >= 0 ? fr : fading >= 0 ? fading : old >= 0 ? old : 0;
 }
-static float synth_last[NSLOT];          // the pitch each pad's mono line was last at (Hz): GLIDE starts there
 static int acid_flags = -1;              // the step being started: its ACCENT/SLIDE bits; -1 not a step (keys, pads)
 static int acid_slid[NSLOT];             // the last ACID note of this pad slides into the next one
 static void start_acid(int slot, float vel, float semis, int delay) {   // always mono, as the original
@@ -471,39 +483,30 @@ static void start_cloud(int slot, float vel, float semis, int delay) {
     cl_start(&v->cl, (float)pow(2.0, (t->pitch + t->fine / 100.0 + semis) / 12.0), vel, gate, age_ctr * 2654435761u);
     last_voice = best;
 }
-static void start_synth(int slot, float vel, float semis, int delay) {
+static int wave_hold;                    // the note being started is held by a key (gate -1 until its release)
+static float wave_note = -1000;         // the note start_wave just played (-1000 none): CMD_TRIG_HELD ties it to the key
+static const int8_t *wave_par(int s) {   // what a WAVE pad plays with now: its LFOs and automation, then the CPU guard
+    const int8_t *wp = has_mod[s] ? m_wv[s] : song.wv[s];
+    int cap = load_avg > 0.7f ? 4 : load_avg > 0.5f ? 6 : WV_POLY;   // under load fewer voices (as pick_voice), no HIGH, unison halved
+    if (wp[WP_POLY] <= cap && (load_avg <= 0.6f || (!wp[WP_QUALITY] && wp[WP_A + WO_UNI] <= 2 && wp[WP_B + WO_UNI] <= 2))) return wp;
+    memcpy(wv_cap, wp, sizeof wv_cap); if (wv_cap[WP_POLY] > cap) wv_cap[WP_POLY] = (int8_t)cap;
+    if (load_avg > 0.6f) { wv_cap[WP_QUALITY] = 0; for (int o = 0; o < 2; o++) if (wv_cap[o * 16 + WO_UNI] > 2) wv_cap[o * 16 + WO_UNI] = (int8_t)((wv_cap[o * 16 + WO_UNI] + 1) / 2); }
+    return wv_cap;
+}
+// WAVE (2026-11-25): GRAND's pitch (C3 + the pad's key, PITCH, FINE), GRAND's gate (a step's length, else an eighth).
+static void start_wave(int slot, float vel, float semis, int delay) {
     const Track *t = trk(slot);
-    if (t->mute) return;
+    if (t->mute || slot >= NSLOT || !wave_ready || song.wv[slot][WP_MARK] != WP_INIT) return;
+    int gate = wave_hold ? -1 : synth_gate > 0 ? synth_gate : (int)(SR * 30.0 / (song.tempo * tempo_mul));
     if (!arp_emit && arp_on(slot)) { arp_add(slot, vel, semis, delay, synth_gate > 0 ? synth_gate : (int)(SR * 30.0 / (song.tempo * tempo_mul))); return; }   // ARP: held, played by arp_run
-    float freq = (float)(440 * pow(2.0, (48 + track_key(slot) + t->pitch + t->fine / 100.0 + semis - 69) / 12.0));
-    int gate = synth_gate > 0 ? synth_gate : (int)(SR * 30.0 / (song.tempo * tempo_mul));
-    if (t->voice == 0)                    // GATE = mono: the line stays on one voice, legato and GLIDE
-        for (int i = 0; i < NVOICE; i++) {
-            Voice *o = &voices[i];
-            if (!o->on || o->synth != 1 || o->slot != slot || o->fstep) continue;
-            if (o->delay > 0) { o->on = 0; continue; }   // not started yet: the new note replaces it
-            o->sy.pf = freq; o->sy.pv = vel; o->sy.pg = gate; o->sy.pat = delay; o->age = ++age_ctr; o->held = 0;
-            synth_last[slot] = freq;
-            last_voice = i; return;
-        }
-    if (slot < NSLOT && song.gx[slot][GX_VCA] == 2 && song.gx[slot][GX_MARK] == GX_INIT)   // DRONE: a new note takes over, the old drones let go
-        for (int i = 0; i < NVOICE; i++) if (voices[i].on && voices[i].synth == 1 && voices[i].slot == slot && voices[i].sy.stage == 3) voices[i].sy.stage = 4;
-    int best = pick_voice(slot);
-    float g = slot < NSLOT ? 1.f : t->vol / 100.f, p = slot < NSLOT ? 0.f : t->pan / 50.f, a = (p + 1) * (float)M_PI / 4;   // pads: VOL/PAN on the mixer strip
-    Voice *v = &voices[best];
-    memset(v, 0, sizeof *v);
-    v->gl = g * cosf(a) * 1.41421f; v->gr = g * sinf(a) * 1.41421f; v->fade = 1; v->slot = slot; v->on = 1;
-    v->delay = delay; v->cut_in = -1; v->age = ++age_ctr; v->synth = 1;
-    synth_start(&v->sy, freq, vel, gate, 0);
-    // As on the original, the pitch remembers the last note: after a rest the next one still glides from it.
-    if (t->voice == 0 && t->sp[SP_GLIDE] > 0 && synth_last[slot] > 0) v->sy.freq = synth_last[slot];
-    if (t->voice == 0) synth_last[slot] = freq;
-    last_voice = best;
+    float note = 48 + track_key(slot) + t->pitch + t->fine / 100.f + semis;
+    wv_note_on(&wave[slot], wave_par(slot), note, vel, gate, delay);
+    wave_note = note;
 }
 static void arp_run(int s, int n) {      // plays the arpeggio's notes that fall in this buffer, then ages the held set
     if (!arp_on(s)) { arp_n[s] = 0; return; }
-    const int8_t *gx = song.gx[s];
-    double step = div_beats[gx[GX_ARATE] % NDIV] * 60.0 / (song.tempo * tempo_mul) * SR; if (step < 64) step = 64;
+    const int8_t *wa = song.wv[s];
+    double step = div_beats[wa[WP_ARP_RATE] % NDIV] * 60.0 / (song.tempo * tempo_mul) * SR; if (step < 64) step = 64;
     while (arp_t[s] < n) {
         int at = (int)arp_t[s]; ArpNote *cand[ARPN]; int c = 0;
         for (int i = 0; i < arp_n[s]; i++) { ArpNote *e = &arp[s][i]; if (e->wait <= at && (e->left < 0 || e->left > at)) cand[c++] = e; }
@@ -512,17 +515,18 @@ static void arp_run(int s, int n) {      // plays the arpeggio's notes that fall
             if (nx == 1 << 30) { arp_t[s] = n; arp_idx[s] = 0; break; }
             arp_t[s] = nx; arp_idx[s] = 0; continue;
         }
-        int mode = gx[GX_AMODE] & 3;
+        int mode = wa[WP_ARP_MODE] & 3;
         for (int i = 1; i < c; i++) for (int j = i; j > 0; j--) {   // a few notes: insertion sort by pitch (ORDER: as played)
             int sw = mode == 2 ? cand[j]->seq < cand[j - 1]->seq : cand[j]->semis < cand[j - 1]->semis;
             if (!sw) break; ArpNote *x = cand[j]; cand[j] = cand[j - 1]; cand[j - 1] = x; }
-        int len = c * (gx[GX_AOCT] % 3 + 1), pos = arp_idx[s]++, i;
+        int len = c * (wa[WP_ARP_OCT] % 3 + 1), pos = arp_idx[s]++, i;
         if (mode == 1) i = len - 1 - pos % len;
         else if (mode == 3) { int per = len > 1 ? 2 * len - 2 : 1, q = pos % per; i = q < len ? q : per - q; }
         else i = pos % len;
         ArpNote *e = cand[i % c]; int keep = synth_gate;
-        synth_gate = (int)(step * gx[GX_AGATE] / 100.0); if (synth_gate < 1) synth_gate = 1;
-        arp_emit = 1; start_synth(s, e->vel, e->semis + 12 * (i / c), at); arp_emit = 0; synth_gate = keep;
+        synth_gate = (int)(step * wa[WP_ARP_GATE] / 100.0); if (synth_gate < 1) synth_gate = 1;
+        int hk = wave_hold; wave_hold = 0;
+        arp_emit = 1; start_wave(s, e->vel, e->semis + 12 * (i / c), at); arp_emit = 0; synth_gate = keep; wave_hold = hk;
         arp_t[s] += step;
     }
     arp_t[s] -= n;
@@ -535,10 +539,10 @@ static void arp_run(int s, int n) {      // plays the arpeggio's notes that fall
     arp_n[s] = m;
 }
 static void start_voice(int slot, float vel, float semis, int slice, int delay) {
-    last_voice = -1; arp_last = -1;
+    last_voice = -1; arp_last = -1; wave_note = -1000;
     if (slot < NSLOT) lfo_note[slot] = 1;    // LFOs set to NOTE start again
     if (slot == frz_seq) return;             // a frozen pad's clip: the note still counts for sidechains, the recording is its sound
-    if (slot < NSLOT && song.t[slot].type == 1) { start_synth(slot, vel, semis, delay); return; }
+    if (slot < NSLOT && song.t[slot].type == 1) { start_wave(slot, vel, semis, delay); return; }
     if (slot < NSLOT && song.t[slot].type == 3) { start_cloud(slot, vel, semis, delay); return; }
     if (slot < NSLOT && song.t[slot].type == 2) {   // a slice number from the UI carries a step's ACCENT/SLIDE bits (audition)
         if (acid_flags < 0 && slice >= 0) { acid_flags = slice & 3; start_acid(slot, vel, semis, delay); acid_flags = -1; }
@@ -850,13 +854,19 @@ static void callback(void *u, Uint8 *stream, int len) {
         case CMD_TRIG_CHAIN: trig_chain(c.slot, c.a, c.b, (int)(intptr_t)c.p, 0); break;
         case CMD_TRIG_HELD: {   // p: slice in the low 16 bits (signed), the key's tag above (0 = OPTION's tag 1)
             intptr_t pv = (intptr_t)c.p; int tag = (int)(pv >> 16); if (!tag) tag = 1;
-            start_voice(c.slot, c.a, c.b, (int16_t)(pv & 0xffff), 0);
+            wave_hold = 1; start_voice(c.slot, c.a, c.b, (int16_t)(pv & 0xffff), 0); wave_hold = 0;
             if (arp_last >= 0) { ArpNote *e = &arp[arp_last / ARPN][arp_last % ARPN]; e->tag = tag; e->left = -1; arp_last = -1; break; }   // ARP: held while the key is
+            if (wave_note > -999) {      // WAVE: the key lets this note go
+                int j = 0; while (j < NWHOLD && whold[j].tag) j++;
+                if (j == NWHOLD) { wv_note_off(&wave[whold[0].slot], song.wv[whold[0].slot], whold[0].note); memmove(whold, whold + 1, sizeof whold[0] * (NWHOLD - 1)); j = NWHOLD - 1; }
+                whold[j] = (WHold){tag, c.slot, wave_note}; wave_note = -1000; break; }
             if (last_voice >= 0 && voices[last_voice].synth == 3) { voices[last_voice].held = tag; voices[last_voice].cl.gate = -1; }
             else if (last_voice >= 0) { voices[last_voice].held = tag; if (voices[last_voice].synth) { if (voices[last_voice].sy.pat >= 0) voices[last_voice].sy.pg = -1; else voices[last_voice].sy.gate = -1; } }
             break; }
         case CMD_RELEASE:
             for (int s = 0; s < NSLOT; s++) for (int j = 0; j < arp_n[s]; j++) if (arp[s][j].tag && arp[s][j].tag == (c.slot ? c.slot : 1)) { arp[s][j].left = 0; arp[s][j].tag = 0; }
+            for (int j = 0; j < NWHOLD; j++) if (whold[j].tag && whold[j].tag == (c.slot ? c.slot : 1)) {
+                wv_note_off(&wave[whold[j].slot], song.wv[whold[j].slot], whold[j].note); memmove(whold + j, whold + j + 1, sizeof whold[0] * (NWHOLD - 1 - j)); whold[NWHOLD - 1].tag = 0; j--; }
             for (int i = 0; i < NVOICE; i++) if (voices[i].on && voices[i].held && voices[i].held == (c.slot ? c.slot : 1)) {
                 voices[i].held = 0;
                 if (voices[i].synth == 3) voices[i].cl.stage = 3;
@@ -880,7 +890,10 @@ static void callback(void *u, Uint8 *stream, int len) {
             for (int s = 0; s < NSLOT; s++) { play_step[s] = -1; skip_step[s] = 0; anchor[s] = 0; want[s] = -1; anchor_set[s] = 0; }
             if (c.slot > 0 && c.slot <= NSLOT) skip_step[c.slot - 1] = (int)c.b + 1;   // a hit that started it: heard already
             break;
-        case CMD_STOP_ALL: for (int s = 0; s < NSLOT; s++) arp_n[s] = 0;
+        case CMD_WTABLE:                 // a user table into its slot; the one it replaces is freed on the UI thread
+            if (c.slot >= WT_NBUILT && c.slot < WT_SLOTS && c.p) { WaveTable *nt = c.p, old = wstore.t[c.slot]; wstore.t[c.slot] = *nt; *nt = old; q_push(&trashq, (Cmd){CMD_WTABLE, 0, 0, 0, nt}); }
+            break;
+        case CMD_STOP_ALL: for (int s = 0; s < NSLOT; s++) { arp_n[s] = 0; wv_kill(&wave[s]); } memset(whold, 0, sizeof whold);
             for (int i = 0; i < NVOICE; i++) if (voices[i].on) { voices[i].fout = 0; if (voices[i].delay > 0) voices[i].on = 0; else if (voices[i].cut_in < 0) voices[i].cut_in = 0; } break;   // a stop is at once, whatever FADE OUT says
         }
     }
@@ -908,24 +921,6 @@ static void callback(void *u, Uint8 *stream, int len) {
         else { pos32 = 0; next32 = 0; }
     }
     for (int s = 0; s < NSLOT; s++) if (arp_n[s]) arp_run(s, n);   // ARP: this buffer's notes
-    for (int s = 0; s < NSLOT; s++) {      // GRAND DEEP: each GRAND pad's LFO, shared by its voices as on the mono original
-        const int8_t *gx = has_mod[s] ? m_gx[s] : song.gx[s]; const uint8_t (*gp)[2] = (const uint8_t (*)[2])song.gp[s];
-        gp_on[s] = song.t[s].type == 1 && gp_any(gp);
-        gl_on[s] = song.t[s].type == 1 && (gx_lfo_on(gx) || (gp_on[s] && (gp_uses(gp, JO_LFO) || gp_uses(gp, JO_SH))));
-        if (!gl_on[s]) continue;
-        double hz = gx[GX_LSYNC] ? tempo / 60.0 / div_beats[(gx[GX_LSYNC] - 1) % NDIV] : gx_lfo_hz(gx[GX_LRATE]), inc = hz / SR;
-        if (gp_on[s]) for (int c = 0; c < 8; c++) if (gp[c][1] == JI_LRATE && gp[c][0]) {   // a cable into LFO RATE: the newest voice's value, 1.0 = 3 octaves faster
-            float lr = 0; unsigned ag = 0; for (int i = 0; i < NVOICE; i++) if (voices[i].on && voices[i].synth == 1 && voices[i].slot == s && voices[i].age >= ag) { ag = voices[i].age; lr = voices[i].sy.lri; }
-            if (lr > 2) lr = 2; if (lr < -2) lr = -2; inc *= exp2(3.0 * lr); if (inc > 200.0 / SR) inc = 200.0 / SR; break; }
-        for (int k = 0; k < n && k < 1024; k++) {
-            double ph = gl_ph[s]; float y;
-            switch (gx[GX_LWAVE] % 5) { case 0: y = (float)(ph < 0.5 ? 4 * ph - 1 : 3 - 4 * ph); break; case 1: y = ph < 0.5 ? 1.f : -1.f; break;
-                case 2: y = (float)(1 - 2 * ph); break; case 3: y = (float)(2 * ph - 1); break; default: y = gl_sh[s]; }
-            gl_buf[s][k] = y; gl_ph[s] += inc;
-            if (gl_ph[s] >= 1) { gl_ph[s] -= 1; gl_sh[s] = (float)((rand() % 2001) - 1000) / 1000.f; }   // S&H: a new value each cycle
-        }
-        gl_now[s] = gl_buf[s][0];
-    }
     int active = 0;
     for (int i = 0; i < NVOICE; i++) {
         Voice *v = &voices[i];
@@ -942,11 +937,6 @@ static void callback(void *u, Uint8 *stream, int len) {
         double tr = v->wbpm > 0 ? tempo / v->wbpm : 1;   // warp follows the live tempo
         if (v->warp == 2) v->rate = v->base * tr * (v->rate < 0 ? -1 : 1);
         const float *d = v->s ? v->s->d : NULL;
-        // GRAND: what this voice needs, decided once per buffer, not per frame
-        const int8_t *vgx = v->synth == 1 && v->slot < NSLOT ? (has_mod[v->slot] ? m_gx[v->slot] : song.gx[v->slot]) : NULL;
-        int vpatch = vgx && gp_on[v->slot]; const float *vlfo = vgx && gl_on[v->slot] ? gl_buf[v->slot] : NULL; float vsh = vgx ? gl_sh[v->slot] : 0;
-        if (vgx && vgx[GX_MARK] != GX_INIT) vgx = gx_def;
-        if (vgx && vgx[GX_VCA] == 2 && v->sy.stage == 3 && !v->held && (!playing || !song.t[v->slot].on)) v->sy.stage = 4;   // DRONE lasts while the clip plays
         float *b = bus[v->slot <= NSLOT ? v->slot : NSLOT]; bus_live[v->slot <= NSLOT ? v->slot : NSLOT] = 1;
         double einv = 0; int smp_v = !v->synth, cutf = smp_v && v->fout > FADE_FRAMES ? v->fout : FADE_FRAMES;
         if (smp_v) { v->adv = v->warp >= 3 ? tr : fabs(v->rate) * (v->slot < NSLOT ? mod_pitch[v->slot] : 1); if (v->fout > 0 && v->adv > 0) einv = 1.0 / (v->adv * v->fout); }
@@ -971,9 +961,7 @@ static void callback(void *u, Uint8 *stream, int len) {
                 float x;
                 int md = v->slot < NSLOT && has_mod[v->slot]; float pm = md ? pmk : 1, f0 = v->sy.freq;
                 if (pm != 1) { v->sy.freq = f0 * pm; v->sy.target *= pm; if (v->sy.pat >= 0) v->sy.pf *= pm; }   // pitch modulation around the note: GLIDE keeps working underneath
-                int alive = v->synth == 2 ? acid_frame(&v->sy, md ? m_ap[v->slot] : trk(v->slot)->ap, md ? m_ax[v->slot] : song.ax[v->slot], &x)
-                          : vpatch ? synth_frame_patch(&v->sy, md ? m_sp[v->slot] : trk(v->slot)->sp, vgx, (const uint8_t (*)[2])song.gp[v->slot], vlfo ? vlfo[k] : 0, vsh, &x)
-                          : synth_frame(&v->sy, md ? m_sp[v->slot] : trk(v->slot)->sp, vgx, vlfo ? vlfo[k] : 0, &x);
+                int alive = v->synth == 2 && acid_frame(&v->sy, md ? m_ap[v->slot] : trk(v->slot)->ap, md ? m_ax[v->slot] : song.ax[v->slot], &x);
                 if (pm != 1) { v->sy.freq /= pm; v->sy.target /= pm; if (v->sy.pat >= 0) v->sy.pf /= pm; }
                 if (!alive) { v->on = 0; break; }
                 l = r = x;
@@ -1019,6 +1007,14 @@ static void callback(void *u, Uint8 *stream, int len) {
             b[2 * k] += l * v->gl * eg; b[2 * k + 1] += r * v->gr * eg;
             if (v->fstep) { v->fade -= v->fstep; if (v->fade <= 0) { v->on = 0; break; } }
         }
+    }
+    for (int s = 0; s < NSLOT; s++) {      // WAVE: each pad's instrument into its bus (its strip, inserts and sends follow)
+        WaveInst *w = &wave[s];
+        if (!wave_ready || !wv_active(w)) continue;
+        if (song.t[s].type != 1 || song.wv[s][WP_MARK] != WP_INIT) { wv_init(w); continue; }   // the engine changed under it
+        if (song.t[s].mute) wv_kill(w);   // mute also stops what already sounds
+        w->bpm = (float)tempo; w->tune = 12.f * log2f(mod_pitch[s] > 0 ? mod_pitch[s] : 1);   // the pad's LFOs / automation on PITCH
+        wv_render(w, wave_par(s), &wstore, bus[s], n); bus_live[s] = 1; active += wv_active(w);
     }
     {   // NORMALIZE: the pad's sample brought up to level, before the sidechain copies and the strip; a change glides over one buffer
         static float ng[NSLOT];
@@ -1077,12 +1073,10 @@ static void callback(void *u, Uint8 *stream, int len) {
         float tl = g * cosf(pa) * 1.41421f, tr = g * sinf(pa) * 1.41421f;
         float ea = pm->send_a / 100.f + m_sa[s], eb = pm->send_b / 100.f + m_sb[s]; ea = ea < 0 ? 0 : ea > 1 ? 1 : ea; eb = eb < 0 ? 0 : eb > 1 ? 1 : eb;
         float ta = ea * ea, tb = eb * eb;
-        int spr_on = t->type == 1 && song.gx[s][GX_MARK] == GX_INIT && song.gx[s][GX_SPRING] > 0;
         int idle = 0;
         int space = 0; for (int i = 0; i < NINS; i++) space |= fx_live[s][i] && (pm->ins[i].type == FX_REVERB || pm->ins[i].type == FX_DELAY);
-        if (bus_live[s]) { strip_tail[s] = space ? SR * 10 : 4096; spr_tail[s] = spr_on ? SR * 4 : 0; }   // a REVERB / DELAY insert rings on after the last note
+        if (bus_live[s]) strip_tail[s] = space ? SR * 10 : 4096;   // a REVERB / DELAY insert rings on after the last note
         else if (strip_tail[s] > 0 && (fxs[s][0].xf > 0 || fxs[s][1].xf > 0)) strip_tail[s] -= n;
-        else if (spr_on && spr_tail[s] > 0) spr_tail[s] -= n;   // the spring rings on after the last note
         else { strip_tail[s] = 0; idle = 1; }
         if (idle && fcap_s == s && fcap_buf) { long m = fcap_max - fcap_n < n ? fcap_max - fcap_n : n; if (m > 0) { memset(fcap_buf + 2 * fcap_n, 0, sizeof(float) * 2 * m); fcap_n += m; } }
         if (idle && !frz_snd[s]) { strip_gl[s] = tl; strip_gr[s] = tr; send_ga[s] = ta; send_gb[s] = tb; continue; }
@@ -1090,7 +1084,6 @@ static void callback(void *u, Uint8 *stream, int len) {
         if (!idle) {                           // (a frozen pad's inserts run only for what is played by hand on top)
         for (int i = 0; i < NINS; i++) fx_key[i] = NULL;
         for (int i = 0; i < NINS; i++) { int kp = song.mbx[s][i][5]; if (fx_keyed(pm->ins[i].type) && kp > 0 && kp <= NSLOT && kp - 1 != s) fx_key[i] = keyb[kp - 1]; }   // a compressor listening to another pad (sidechain), a ring modulated by one
-        if (spr_on) spring_run(&spr[s], b, n, has_mod[s] ? m_gx[s][GX_SPRING] : song.gx[s][GX_SPRING]);
         for (int i = 0; i < NINS; i++) { fx_keybuf = fx_key[i]; fx_insert_ex(&fxs[s][i], has_mod[s] ? &m_ins[s][i] : &pm->ins[i], song.mbx[s][i], fx_live[s][i], b, n, tempo); fx_keybuf = NULL; }
         { float chk = 0; for (int k = 0; k < 2 * n; k += 16) chk += b[k];
           if (!isfinite(chk)) { memset(b, 0, sizeof(float) * 2 * n); memset(fxs[s], 0, sizeof fxs[s]); } }   // an effect blew up: silence, start clean
@@ -1169,7 +1162,7 @@ int engine_watchdog(uint32_t now) {
 }
 
 int engine_start(int buffer_frames) {
-    engine_warm(); cl_tables();
+    engine_warm(); cl_tables(); engine_wave_init();
     for (int s = 0; s < NSLOT; s++) play_step[s] = -1;
     SDL_AudioSpec want = {0}, got;
     want.freq = SR; want.format = AUDIO_F32SYS; want.channels = 2; want.samples = buffer_frames;
@@ -1195,8 +1188,26 @@ int engine_synth_live(int slot, float *env, float *fc) {   // the newest soundin
     if (best < 0) return 0;
     const SynthV *y = &voices[best].sy;
     *env = voices[best].synth == 2 ? y->menv : y->env;
-    *fc = voices[best].synth == 2 ? acid_cutoff(trk(slot)->ap, song.ax[slot], y->menv, y->accap) : sy_cutoff(trk(slot)->sp, y->env, y->freq);
+    *fc = acid_cutoff(trk(slot)->ap, song.ax[slot], y->menv, y->accap);
     return 1;
+}
+int engine_wave_live(int slot, float *lvl, float *env, float *fc, float *pos) {   // UI reads, may race harmlessly
+    if (slot < 0 || slot >= NSLOT || !wave_ready) return 0;
+    const WaveInst *w = &wave[slot]; int n = 0, best = -1; unsigned age = 0;
+    for (int i = 0; i < WV_POLY; i++) { const WaveV *v = &w->v[i]; if (lvl) lvl[i] = v->on ? v->amp : 0; if (v->on && v->delay <= 0) { n++; if (v->age >= age) { age = v->age; best = i; } } }
+    if (best >= 0) { const WaveV *v = &w->v[best];
+        if (env) for (int j = 0; j < 3; j++) env[j] = v->e[j].lvl;
+        if (fc) *fc = v->cfc * (v->hq ? 2.f * SR : (float)SR);   // cfc: the cutoff as a share of the filter's rate
+        if (pos) for (int o = 0; o < 2; o++) pos[o] = v->o[o].i0 < 0 ? -1 : v->o[o].i0 + v->o[o].mf; }
+    return n;
+}
+int engine_wave_table(int k, const char *path) {   // UI thread: read the file into a fresh table, the audio thread swaps it in
+    if (k < WT_NBUILT || k >= WT_SLOTS || !wave_ready) return -9;
+    WaveTable *t = calloc(1, sizeof *t); if (!t) return -8;
+    int r = wt_load_wav(t, path); if (r <= 0) { wt_free(t); free(t); return r < 0 ? r : -3; }   // r: the frames read
+    if (dev) send((Cmd){CMD_WTABLE, k, 0, 0, t});
+    else { WaveTable old = wstore.t[k]; wstore.t[k] = *t; *t = old; wt_free(t); free(t); }   // no device (tests, export): at once
+    return 0;
 }
 int engine_sample_live(int slot, float *pos, int max) {   // UI reads, may race harmlessly
     int n = 0;
@@ -1231,7 +1242,6 @@ void engine_freeze_on(int slot, int on) { frz_act[slot] = (uint8_t)on; if (!on) 
 void engine_capture(int slot, float *buf, long max) { fcap_s = slot; fcap_buf = buf; fcap_max = max; fcap_n = 0; }
 long engine_captured(void) { return fcap_n; }
 void engine_render(float *out, int frames) { callback(0, (Uint8 *)out, frames * 2 * (int)sizeof(float)); }
-float engine_glfo(int slot) { return slot >= 0 && slot < NSLOT && gl_on[slot] ? gl_now[slot] : 0; }
 int engine_want(int slot) { return slot >= 0 && slot < NSLOT ? want[slot] : -1; }
 uint32_t engine_anchor(int slot) { return slot >= 0 && slot < NSLOT ? anchor[slot] : 0; }
 void engine_set_anchor(int slot, uint32_t pos) { if (slot >= 0 && slot < NSLOT) { anchor_req[slot] = pos; anchor_set[slot] = 1; } }
@@ -1240,7 +1250,7 @@ int engine_stop_pending(void) { return __atomic_load_n(&stop_pending, __ATOMIC_A
 void engine_queue_stop(int pending) { __atomic_store_n(&stop_pending, pending, __ATOMIC_RELEASE); }
 void engine_transport(int play) { send((Cmd){CMD_TRANSPORT, 0, (float)play, 0, 0}); }
 void engine_stop_all(void) { send((Cmd){CMD_STOP_ALL, 0, 0, 0, 0}); }
-void engine_collect_garbage(void) { Cmd c; while (q_pop(&trashq, &c)) sample_free(c.p); }
+void engine_collect_garbage(void) { Cmd c; while (q_pop(&trashq, &c)) { if (c.type == CMD_WTABLE) { wt_free(c.p); free(c.p); } else sample_free(c.p); } }
 float engine_peak(void) { float p = peak_acc; peak_acc = 0; return p; }
 float engine_master_gr(void) { return master_gr; }
 float engine_lfo(int s, int j) { return lfo_view[s][j]; }

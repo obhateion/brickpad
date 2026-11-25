@@ -223,7 +223,7 @@ static int ui_window(void) {             // a window over the screens: no popup,
     return exporting || naming || browsing || slicing || rolling || chording || prbing || randing || picking || presetting || theming || iconing || ducking;
 }
 static int ui_over(void) { return ui_window() && !((rolling || chording) && !randing && !presetting && !naming && !exporting); }   // v3: a real popup; the roll and the chords are PATTERN's pages
-static void ui_path(char *b, int n) {    // NEON > INSTRUMENT > 06 GRAND > DEEP
+static void ui_path(char *b, int n) {    // NEON > INSTRUMENT > 06 WAVE > OSC A
     int l = snprintf(b, n, "%s", prj_cur[0] ? prj_cur : "UNTITLED");
 #define UI_ADD(...) (l += snprintf(b + l, l < n ? n - l : 0, " > " __VA_ARGS__))
     if (picking) { snprintf(b + l, l < n ? n - l : 0, " > %02d -", sel + 1); return; }   // the empty pad (A03)
@@ -246,7 +246,7 @@ static void ui_path(char *b, int n) {    // NEON > INSTRUMENT > 06 GRAND > DEEP
     else if (v2_fx()) { const FxSlot *f = &song.mix.pad[fx_unit].ins[fx2_slot]; UI_ADD("FX > %s", f->type ? fx_name[f->type] : "EMPTY"); }
     else if (ui_cat >= 0 && !(tab == T_PAT) && !(ui_cat == PC_SOUND && cl_deep)) UI_ADD("%s", cat_name[ui_cat]);
     else if (tab == T_PAT) UI_ADD("PATTERN > SELECT");
-    else if (tab == T_SEQ && srow >= 3 && cl_deep) UI_ADD("%s%s", ui_cat == PC_SOUND ? "SOUND > " : "", song.t[sel].type == 1 && cl_deep == 2 ? "PATCH" : "DEEP");
+    else if (tab == T_SEQ && srow >= 3 && cl_deep) UI_ADD("%s%s", ui_cat == PC_SOUND ? "SOUND > " : "", "DEEP");
     else if (tab == T_FX && fx_page && fx_unit < NSLOT) UI_ADD("MOD");
 #undef UI_ADD
 }

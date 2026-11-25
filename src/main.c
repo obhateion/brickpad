@@ -3,12 +3,14 @@
 // arrows cursor · EDIT (B) act, EDIT+arrows value · OPTION (A) listen, OPTION+EDIT delete,
 // OPTION+<> slot · patterns on the pattern field of SEQ+INST · SHIFT+OPTION copy, SHIFT+EDIT paste · PLAY transport.
 #include "bp.h"
-#include "synth.h"
+#include "synth.h"                       // ACID's voice; GRAND's old parameters (read once, to convert)
+#include "wave.h"
 #include "acid.h"
 #include "cloud.h"
 #include "fx.h"
 #include "presets.h"
-_Static_assert(sizeof(Song) == 301612 + NSLOT * NPAT * 6 + NSLOT * NLFO * 8 + NSLOT * NPAT * NAUTO * (2 + NSTEP) + NSLOT * 16 + NSLOT * (1 + 32 + 16) + NSLOT * NPAT * NAUTO * NSTEP + NSLOT * NINS * 6 + NSLOT * 16 + NSLOT * 8 + NSLOT * 8 + NSLOT * 16 + NSUB * 20 + NJMP * 12, "Song changed size: bump STATE_MAGIC and convert the previous format in load_state");
+#include "wpresets.h"
+_Static_assert(sizeof(Song) == 301612 + NSLOT * NPAT * 6 + NSLOT * NLFO * 8 + NSLOT * NPAT * NAUTO * (2 + NSTEP) + NSLOT * 16 + NSLOT * (1 + 32 + 16) + NSLOT * NPAT * NAUTO * NSTEP + NSLOT * NINS * 6 + NSLOT * 16 + NSLOT * 8 + NSLOT * 8 + NSLOT * 16 + NSUB * 20 + NJMP * 12 + NSLOT * 256, "Song changed size: bump STATE_MAGIC and convert the previous format in load_state");
 static int len_lo(void) { return 1; }      // MIN/MAX LENGTH are gone (2026-11-09): a clip may be 1..NSTEP steps
 static int len_hi(void) { return NSTEP; }
 #define GROW_MAX 64                      // v3: the cursor grows a clip a bar at a time up to here (LENGTH still goes to NSTEP)
@@ -63,7 +65,7 @@ static const Col th_preset[TH_PRESETS][TC_N] = {
 };
 static Col th_cur[TC_N] = {RGB(0x0B0C10), RGB(0x161820), RGB(0x2A2E3A), RGB(0x3D4250), RGB(0x80879A), RGB(0xE8E8E8), RGB(0xFFD23F), RGB(0xFF5A5A), RGB(0x23263A), RGB(0x7CFF6B),
      RGB(0x3FE0D0), RGB(0xFF4FA3), RGB(0xFFD23F), RGB(0x5AA0FF), RGB(0x7CFF6B), RGB(0xFFD23F), RGB(0xFF4FA3), RGB(0x5AA0FF), RGB(0xFF8A3D)};
-#define C_ENG(t) th_cur[TC_SMP + ((t) & 3)]   // an engine by Track.type: SAMPLER GRAND ACID CLOUD
+#define C_ENG(t) th_cur[TC_SMP + ((t) & 3)]   // an engine by Track.type: SAMPLER WAVE ACID CLOUD
 #define C_PLAY th_cur[TC_PLAY]
 #define C_BG th_cur[TC_BG]
 #define C_CELL th_cur[TC_CELL]
@@ -479,14 +481,11 @@ static void song_sanitize(void) {
         KEEP(t->pitch, -24, 24); KEEP(t->fine, -50, 50); KEEP(t->vol, 0, 100); KEEP(t->pan, -50, 50);
         if (t->start < 0 || t->end > 1000 || t->start >= t->end) { t->start = 0; t->end = 1000; }
         KEEP(t->rev, 0, 1); KEEP(t->voice, 0, 1); KEEP(t->root, -1, 11); KEEP(t->warp, 0, 5); KEEP(t->type, 0, 3);
-        if (t->type == 1 && t->sp[SP_MARK] != SP_INIT) synth_defaults(t->sp);
         if (t->type == 2 && t->ap[AP_MARK] != AP_INIT) acid_defaults(t->ap);
         if (t->type == 3 && t->cp[CP_MARK] != CP_INIT) cl_defaults(t->cp);
         if (song.cx[s][CX_MARK] != CX_INIT) cx_defaults(song.cx[s]);
         if (song.ax[s][AX_MARK] != AX_INIT) ax_defaults(song.ax[s]);
-        if (song.gx[s][GX_MARK] != GX_INIT) gx_defaults(song.gx[s]);
-        for (int k = 0; k < GX_N; k++) { int lo, hi; gx_range(k, &lo, &hi); KEEP(song.gx[s][k], lo, hi); }
-        for (int c = 0; c < NCABLE; c++) if (song.gp[s][c][0] >= JO_N || song.gp[s][c][1] >= JI_N) song.gp[s][c][0] = song.gp[s][c][1] = 0;
+        if (song.wv[s][WP_MARK] == WP_INIT) for (int k = 0; k < WP_N - 1; k++) { int lo, hi; wp_range(k, &lo, &hi); KEEP(song.wv[s][k], lo, hi); }   // a spare byte stays 0
         KEEP(song.lnote[s], -48, 48);
         for (int k = 0; k < AX_N; k++) { int lo, hi; ax_range(k, &lo, &hi); KEEP(song.ax[s][k], lo, hi); }
         if (s == 0) { mix_sanitize(&song.mix); memset(song.sub, 0, sizeof song.sub);   // 2026-11-24: SUB is gone, its cells with it (user: not kept)
@@ -509,7 +508,7 @@ static void song_sanitize(void) {
         if (song.dkx[s][DX_MARK] == DX_INIT) { int8_t *dx = song.dkx[s]; KEEP(dx[DX_MODE], 0, DM_N - 1); KEEP(dx[DX_LEN], 0, DK_NLEN - 1); KEEP(dx[DX_GRID], 0, DK_NLEN - 1); KEEP(dx[DX_SMOOTH], 0, 100); KEEP(dx[DX_THRESH], 0, 100);
             for (int k = 0; k < 16; k++) if (song.dkc[s][k] > 100) song.dkc[s][k] = 100; }
         for (int k = 0; k < AP_N; k++) { int lo, hi; ap_range(k, &lo, &hi); KEEP(t->ap[k], lo, hi); }
-        for (int k = 0; k < SP_N; k++) { int lo, hi; sp_range(k, &lo, &hi); KEEP(t->sp[k], lo, hi); } KEEP(t->bars, 0, 16);
+        KEEP(t->bars, 0, 16);
         if (t->bpm < 0 || t->bpm > 300) t->bpm = 0;
         KEEP(t->grain, 0, 120); KEEP(t->flux, 0, 100); KEEP(t->scale, 0, NSCALE); KEEP(t->key, 0, 12); track_set_icon(t, clampi(track_icon(t), 0, IC_N));
         t->path[sizeof t->path - 1] = 0;
@@ -533,15 +532,85 @@ static void song_sanitize(void) {
         }
     }
 }
+// ---------- GRAND -> WAVE (2026-11-25, user: WAVE replaces GRAND as type 1) ----------
+// An old project's GRAND pad becomes a WAVE sound close to it: each oscillator's wave as a table position (TRI SAW on
+// BASIC, SQR and PULSE on PWM so the width can move), TUNE 2 / DETUNE as OSC B's SEMI / FINE, MIX as the two levels,
+// NOISE, the ladder as LADDER with ENV2 for its envelope, the one ADSR as ENV1 and ENV2, GLIDE, MONO / POLY; from GRAND
+// DEEP the octave ranges, HARD SYNC (OSC B on A's pitch with the SYNC warp), KB TRACK, VCA GATE, the LFO (as LFO1 through
+// the matrix) and the ARP. Gone with nothing in its place: the HP filter, SPRING, the PATCH cables.
+#define WV_GRAND_LEVEL 98                // MASTER for a converted pad: about GRAND's level (measured on NEON, qa/qa_wave_ui.c)
+static int wv_t(float sec) { return clampi((int)lrint(100 * log(sec / 0.0005) / log(20000.0)), 0, 100); }   // seconds -> a WAVE time
+static int wv_sync_of(int gs) {          // GRAND's LFO division (0 FREE, else div_beats[gs - 1]) -> WAVE's (wv_sync_beats)
+    if (gs <= 0) return 0; float b = div_beats[(gs - 1) % NDIV]; int best = 1; float bd = 1e9f;
+    for (int i = 1; i < WV_NSYNC; i++) { float d = (float)fabs(log(wv_sync_beats[i] / b)); if (d < bd) { bd = d; best = i; } }
+    return best;
+}
+static void wv_from_grand(int8_t *wp, const int8_t *sp0, int voice, const int8_t *gx0) {
+    int8_t sp[16], gx[32]; int lo, hi;
+    memcpy(sp, sp0, 16); if (sp[SP_MARK] != SP_INIT) synth_defaults(sp);
+    memcpy(gx, gx0, 32); if (gx[GX_MARK] != GX_INIT) gx_defaults(gx);
+    for (int k = 0; k < SP_N; k++) { sp_range(k, &lo, &hi); sp[k] = (int8_t)clampi(sp[k], lo, hi); }
+    for (int k = 0; k < GX_N; k++) { gx_range(k, &lo, &hi); gx[k] = (int8_t)clampi(gx[k], lo, hi); }
+    wp_defaults(wp);
+    static const int8_t tab[4] = {0, 0, 1, 1}, pos[4] = {33, 67, 0, 85};   // TRI, SAW on BASIC; SQR (50 %), PULSE (10 %) on PWM
+    float m = sp[SP_MIX] / 100.f;
+    for (int o = 0; o < 2; o++) { int8_t *q = wp + 16 * o; int w = sp[o ? SP_OSC2 : SP_OSC1] & 3;
+        q[WO_ON] = o ? m > 0.005f : m < 0.995f; q[WO_TABLE] = tab[w]; q[WO_POS] = pos[w];
+        q[WO_LEVEL] = (int8_t)lrintf(100 * (o ? m : 1 - m)); q[WO_RAND] = 0; q[WO_UNI] = 1; }
+    wp[WP_A + WO_OCT] = (int8_t)(gx[GX_O1OCT] - 2); wp[WP_B + WO_OCT] = (int8_t)(gx[GX_O2OCT] - 1);
+    wp[WP_B + WO_SEMI] = sp[SP_TUNE2]; wp[WP_B + WO_FINE] = sp[SP_DETUNE];
+    if (gx[GX_SYNC]) {                   // HARD SYNC: OSC B restarts with A, so it plays at A's pitch and reads its cycle (ratio) times
+        double r = exp2((wp[WP_B + WO_OCT] - wp[WP_A + WO_OCT]) + (sp[SP_TUNE2] + sp[SP_DETUNE] / 100.0) / 12.0);
+        if (r > 1.01) { wp[WP_B + WO_OCT] = wp[WP_A + WO_OCT]; wp[WP_B + WO_SEMI] = 0; wp[WP_B + WO_FINE] = 0; wp[WP_B + WO_WARP] = WW_SYNC;
+            wp[WP_B + WO_WAMT] = (int8_t)clampi((int)lrint((r - 1) / 15 * 100), 1, 100); } }
+    wp[WP_NOISE_LEVEL] = sp[SP_NOISE];
+    wp[WP_F_TYPE] = WF_LADDER; wp[WP_F_CUT] = (int8_t)clampi((int)lrintf(sp[SP_CUTOFF] * 0.98f), 0, 100);   // GRAND: 9.8 octaves over the knob, WAVE: 10
+    wp[WP_F_RES] = (int8_t)clampi((int)lrintf(sp[SP_RESO] * 4.2f / 3.9f), 0, 100); wp[WP_F_KEY] = (int8_t)(gx[GX_KBT] * 50);
+    wp[WP_F_ENV] = (int8_t)clampi((int)lrintf(sp[SP_ENV] * 0.75f), -100, 100);   // GRAND +-6 octaves, WAVE +-8
+    for (int j = 0; j < 2; j++) { int8_t *e = wp + (j ? WP_ENV2 : WP_ENV1);   // GRAND's decay and release are exponential: about 1.4x the time on WAVE's RC curve
+        e[WE_ATT] = (int8_t)wv_t(sy_time(sp[SP_ATTACK])); e[WE_DEC] = (int8_t)wv_t(1.4f * sy_time(sp[SP_DECAY]));
+        e[WE_SUS] = sp[SP_SUSTAIN]; e[WE_REL] = (int8_t)wv_t(1.4f * sy_time(sp[SP_RELEASE])); e[WE_CURVE] = 70; }
+    if (gx[GX_VCA]) { wp[WP_ENV1 + WE_ATT] = (int8_t)wv_t(0.002f); wp[WP_ENV1 + WE_SUS] = 100; }   // VCA GATE / DRONE: full while held
+    wp[WP_GLIDE] = sp[SP_GLIDE]; wp[WP_POLY] = voice ? 8 : 1; wp[WP_LEGATO] = 0; wp[WP_VELSENS] = 100; wp[WP_MASTER] = WV_GRAND_LEVEL;
+    if (gx[GX_LPITCH] || gx[GX_LCUT] || gx[GX_LPWM]) {   // GRAND DEEP's LFO: LFO1, free running (one per pad, as GRAND's)
+        static const int8_t shp[5] = {WLS_TRI, WLS_SQUARE, WLS_SAWDN, WLS_SAWUP, WLS_SH};
+        int8_t *l = wp + WP_LFO1; l[WL_SHAPE] = shp[gx[GX_LWAVE] % 5]; l[WL_SYNC] = (int8_t)wv_sync_of(gx[GX_LSYNC]);
+        l[WL_RATE] = (int8_t)clampi((int)lrint(100 * log(0.05 * pow(1000.0, gx[GX_LRATE] / 100.0) / 0.02) / log(2500.0)), 0, 100);
+        int ms = 0;
+#define WV_MOD(dst, amt) do { int8_t *x_ = wp + WP_MTX + 4 * ms++; x_[WM_SRC] = WS_LFO1; x_[WM_DST] = (int8_t)((dst) + 1); x_[WM_AMT] = (int8_t)clampi(amt, -100, 100); x_[WM_MODE] = 1; } while (0)
+        if (gx[GX_LPITCH]) { int a = (int)lrintf(gx[GX_LPITCH] * 0.25f); WV_MOD(WP_A + WO_SEMI, a); WV_MOD(WP_B + WO_SEMI, a); }   // +-v/100 octaves; SEMI's range is 48
+        if (gx[GX_LCUT]) WV_MOD(WP_F_CUT, (int)lrintf(gx[GX_LCUT] * 0.3f));   // +-0.03 v octaves; 10 CUTOFF = an octave
+        if (gx[GX_LPWM]) for (int o = 0; o < 2; o++) if (wp[16 * o + WO_ON] && wp[16 * o + WO_TABLE] == 1) WV_MOD(16 * o + WO_POS, (int)lrintf(gx[GX_LPWM] * 0.85f));   // the width on the PWM table
+#undef WV_MOD
+    }
+    wp[WP_ARP] = gx[GX_ARP]; wp[WP_ARP_MODE] = gx[GX_AMODE]; wp[WP_ARP_OCT] = gx[GX_AOCT]; wp[WP_ARP_RATE] = gx[GX_ARATE]; wp[WP_ARP_GATE] = gx[GX_AGATE];
+}
+static int wv_tg_of(int tg) {            // a GRAND pad's LFO / automation target -> the same on WAVE (0: nothing there)
+    static const int8_t map[SP_N] = {-1, -1, WP_B + WO_SEMI, WP_B + WO_FINE, WP_B + WO_LEVEL, WP_NOISE_LEVEL, WP_F_CUT, WP_F_RES, WP_F_ENV,
+                                     WP_ENV1 + WE_ATT, WP_ENV1 + WE_DEC, WP_ENV1 + WE_SUS, WP_ENV1 + WE_REL, -1};
+    if (tg < LT_ENG) return tg;
+    int k = tg - LT_ENG; return k < SP_N && map[k] >= 0 ? LT_ENG + map[k] : 0;   // GRAND DEEP (LT_DEEP + k) has no place on WAVE
+}
+static void wave_fix(Song *g) {          // every WAVE pad has its block: an old GRAND pad's is made from its settings, once
+    for (int s = 0; s < NSLOT; s++) {
+        if (g->t[s].type != 1 || g->wv[s][WP_MARK] == WP_INIT) continue;
+        if (g->t[s].sp[SP_MARK] == SP_INIT || g->gx[s][GX_MARK] == GX_INIT) wv_from_grand(g->wv[s], g->t[s].sp, g->t[s].voice, g->gx[s]);
+        else wpreset_apply(g->wv[s], 0);
+        g->t[s].voice = g->wv[s][WP_POLY] > 1;
+        for (int j = 0; j < NLFO; j++) { Lfo *L = &g->lfo[s][j]; if (L->target >= LT_ENG) { int k = L->target - LT_ENG; L->target = (uint8_t)wv_tg_of(L->target);
+            if (k == SP_DETUNE) L->depth = (int8_t)(L->depth / 4); } }   // DETUNE 0..50 -> FINE -100..100
+        for (int q = 0; q < NPAT; q++) for (int a = 0; a < NAUTO; a++) { AutoLane *al = &g->aut[s][q][a]; if (al->target >= LT_ENG) al->target = (uint8_t)wv_tg_of(al->target); }
+    }
+}
 static size_t file_song_sz = sizeof(Song);   // the size of one scene in the file load_from read last (0F: without SUB)
 static void load_from(const char *path) {   // state.bin or a project file
     song_defaults();
     FILE *f = fopen(path, "rb");
     static Song tmp; memset(&tmp, 0, sizeof tmp);    // zero: fields a shorter file does not have
     size_t got = f ? fread(&tmp, 1, sizeof tmp, f) : 0; uint32_t m0 = tmp.magic;   // the file's own format, before it is brought up to date
-    file_song_sz = tmp.magic == 0xB2B2000F ? offsetof(Song, sub) : tmp.magic == 0xB2B20010 ? offsetof(Song, jmp) : sizeof(Song);   // where a project file's scenes begin
+    file_song_sz = tmp.magic == 0xB2B2000F ? offsetof(Song, sub) : tmp.magic == 0xB2B20010 ? offsetof(Song, jmp) : tmp.magic == 0xB2B20011 || tmp.magic == 0xB2B20012 ? offsetof(Song, wv) : sizeof(Song);   // where a project file's scenes begin
     {   // a file from before the mixer (6) or before follow actions (7): the same layout, shorter; the rest starts at zero
-        size_t end = tmp.magic == 0xB2B20006 ? offsetof(Song, mix) : tmp.magic == 0xB2B20007 ? offsetof(Song, fol) : tmp.magic == 0xB2B20008 ? offsetof(Song, lfo) : tmp.magic == 0xB2B20009 ? offsetof(Song, aut) : tmp.magic == 0xB2B2000A ? offsetof(Song, ax) : tmp.magic == 0xB2B2000B ? offsetof(Song, lnote) : tmp.magic == 0xB2B2000C ? offsetof(Song, acurve) : tmp.magic == 0xB2B2000D ? offsetof(Song, acurve) : tmp.magic == 0xB2B2000E ? offsetof(Song, pname) : tmp.magic == 0xB2B2000F ? offsetof(Song, sub) : tmp.magic == 0xB2B20010 ? offsetof(Song, jmp) : tmp.magic == 0xB2B20011 ? sizeof(Song) : 0;   // 0E: before pad names, SAMPLER DEEP and the DUCK window (only appended)
+        size_t end = tmp.magic == 0xB2B20006 ? offsetof(Song, mix) : tmp.magic == 0xB2B20007 ? offsetof(Song, fol) : tmp.magic == 0xB2B20008 ? offsetof(Song, lfo) : tmp.magic == 0xB2B20009 ? offsetof(Song, aut) : tmp.magic == 0xB2B2000A ? offsetof(Song, ax) : tmp.magic == 0xB2B2000B ? offsetof(Song, lnote) : tmp.magic == 0xB2B2000C ? offsetof(Song, acurve) : tmp.magic == 0xB2B2000D ? offsetof(Song, acurve) : tmp.magic == 0xB2B2000E ? offsetof(Song, pname) : tmp.magic == 0xB2B2000F ? offsetof(Song, sub) : tmp.magic == 0xB2B20010 ? offsetof(Song, jmp) : tmp.magic == 0xB2B20011 || tmp.magic == 0xB2B20012 ? offsetof(Song, wv) : 0;   // 0E: before pad names, SAMPLER DEEP and the DUCK window (only appended)
         if (end && got >= offsetof(Song, t) && (got <= end || tmp.magic >= 0xB2B2000F)) {   // (a 0F project file goes on with its scenes after the song) notes_deg = tmp.magic <= 0xB2B2000C;   // files before 0x0D have degrees in their steps
             memset((char *)&tmp + end, 0, sizeof tmp - end);
             if (tmp.magic < 0xB2B2000E)     // (a 0E file has its bends; it only lacks what was appended, and stays where it is)
@@ -563,6 +632,7 @@ static void load_from(const char *path) {   // state.bin or a project file
     if (old || (got >= offsetof(Song, t) && tmp.magic == song.magic)) {
         if (!old) song = tmp;
         if (m0 < 0xB2B20012) roll_x3(&song);   // roll notes from 1/128 to 1/384 ticks
+        wave_fix(&song);                 // GRAND pads become WAVE (a file from before 0x13)
         song_sanitize();
         if (short_file && !strcmp(path, STATE)) keep_damaged();        // an older format or a cut file: load what is there, keep the original too
         if (short_file && got < offsetof(Song, cut)) toast("PROJECT FILE WAS CUT, COPY KEPT");
@@ -785,7 +855,7 @@ static uint32_t frz_sum(int s) {         // everything the recording of pad s wa
     static Track tt; tt = song.t[s]; tt.on = tt.queued = tt.cur = tt.mute = 0; tt.vol = tt.pan = 0; tt.icon = tt.icon_hi = 0;
     uint32_t h = fnv(2166136261u, &tt, sizeof tt);
     h = fnv(h, &song.cut[s], sizeof song.cut[s]); h = fnv(h, song.cx[s], sizeof song.cx[s]); h = fnv(h, song.ax[s], sizeof song.ax[s]);
-    h = fnv(h, song.gx[s], sizeof song.gx[s]); h = fnv(h, song.gp[s], sizeof song.gp[s]); h = fnv(h, song.lfo[s], sizeof song.lfo[s]);
+    h = fnv(h, song.wv[s], sizeof song.wv[s]); h = fnv(h, song.lfo[s], sizeof song.lfo[s]);
     h = fnv(h, song.aut[s], sizeof song.aut[s]); h = fnv(h, song.acurve[s], sizeof song.acurve[s]); h = fnv(h, song.mbx[s], sizeof song.mbx[s]);
     h = fnv(h, song.mix.pad[s].ins, sizeof song.mix.pad[s].ins); h = fnv(h, &song.mix.pad[s].spare[PM_NORM], 1); h = fnv(h, song.smx[s], sizeof song.smx[s]);
     uint8_t sp = engine_sample(s) != NULL; float tm = tempo_mul;   // (the sample itself is its path, in the track: the sum must be the same after a restart)
@@ -1245,18 +1315,28 @@ static int in_scale(int s, int m) {      // a pitch belongs to the pad's scale
 static void note_str(int m, char *b) { snprintf(b, 8, "%s%d", note_name[m % 12], m / 12 - 1); }
 static const char *div_name[6] = {"1/32", "1/16", "1/8", "1/4", "1/2", "1/1"};
 enum { P_SAMPLE, P_PITCH, P_FINE, P_VOL, P_PAN, P_START, P_END, P_DIR, P_VOICE, P_ROOT, P_SLICES, P_WARP, P_BARS, P_BPM, P_GRAIN, P_FLUX, P_TYPE,
-       P_SRC, P_NORM, P_SX, P_SY = P_SX + SX_N, P_AC = P_SY + SP_N, P_CL = P_AC + AP_N, P_CX = P_CL + CP_N, P_AX = P_CX + CX_N, P_GX = P_AX + AX_N, P_PT = P_GX + GX_N, P_SLWAY = P_PT + 32, P_N };   // P_PT + jack: PATCH (outputs 1.., inputs 16 + ..)   // P_GX + GX_*: GRAND DEEP (Song.gx)   // P_AX + AX_*: ACID DEEP (Song.ax)   // P_CX + CX_*: CLOUD DEEP (Song.cx)   // P_SRC: CLOUD's sample; P_CL + CP_*: CLOUD (Track.cp)   // P_SY + SP_*: GRAND (Track.sp); P_AC + AP_*: ACID (Track.ap)
+       P_SRC, P_NORM, P_SX, P_AC = P_SX + SX_N, P_CL = P_AC + AP_N, P_CX = P_CL + CP_N, P_AX = P_CX + CX_N, P_WV = P_AX + AX_N, P_SLWAY = P_WV + WP_N, P_WENV, P_WLFO, P_WTGT, P_N };   // P_WENV / P_WLFO: which ENV / LFO WAVE's page shows; P_WTGT: where that LFO goes (the matrix)   // P_WV + k: WAVE's wp[k] (Song.wv, 2026-11-25: in GRAND's place, P_SY / P_GX / P_PT)   // P_AX + AX_*: ACID DEEP (Song.ax)   // P_CX + CX_*: CLOUD DEEP (Song.cx)   // P_SRC: CLOUD's sample; P_CL + CP_*: CLOUD; P_AC + AP_*: ACID; P_SX + SX_*: SAMPLER DEEP
 static const char *par_name[P_N] = {"SAMPLE", "PITCH", "FINE", "VOLUME", "PAN", "START", "END", "DIR", "VOICE", "ROOT", "SLICES", "WARP", "BARS", "BPM", "GRAIN", "FLUX", "TYPE", "SOURCE", "NORM", "FADE IN", "FADE OUT", "XFADE",
-    "OSC 1", "OSC 2", "TUNE 2", "DETUNE", "MIX", "NOISE", "CUTOFF", "RESO", "ENV", "ATTACK", "DECAY", "SUSTAIN", "RELEASE", "GLIDE",
     "WAVE", "TUNING", "CUTOFF", "RESO", "ENV MOD", "DECAY", "ACCENT", "DIST", "DRIVE", "TONE", "MIX",
     "POSITION", "SPRAY", "SIZE", "DENSITY", "SHIMMER", "MOTION",
     "SIZE RND", "WINDOW", "REVERSE", "PITCH", "FINE", "PITCH RND", "INTERVALS", "SYNC", "TIME RND", "WIDTH", "SCAN", "FREEZE", "ATTACK", "RELEASE", "TONE",
     "SUB", "SUB OCT", "SUB WAVE", "PULSE W", "NOISE", "ATTACK", "RELEASE", "SLIDE", "RANGE", "TRACK", "RESO HP", "BASS", "ACC ATK", "ACC DEC", "CLIP",
-    "RATE", "SYNC", "WAVE", "PITCH AMT", "CUTOFF AMT", "PWM AMT", "OSC 1 RANGE", "OSC 2 RANGE", "HARD SYNC", "HP CUTOFF", "KB TRACK", "VCA", "SPRING", "ARP", "MODE", "OCTAVES", "ARP RATE", "ARP GATE", "ATTENUATOR",
-    "", "LFO OUT", "S&H OUT", "OSC 1 OUT", "OSC 2 OUT", "NOISE OUT", "MIX OUT", "FILTER OUT", "ENV OUT", "VCA OUT", "KB PITCH", "KB GATE", "VELOCITY", "ATTEN OUT", "", "",
-    "", "OSC 1 PITCH", "OSC 2 PITCH", "PWM", "LIN FM", "MIX OSC 1", "MIX OSC 2", "MIX NOISE", "FILTER IN", "CUTOFF", "RESO", "VCA IN", "VCA AMT", "ATTEN IN", "LFO RATE", "", [P_SLWAY] = "METHOD"};
+    [P_SLWAY] = "METHOD", [P_WENV] = "ENVELOPE", [P_WLFO] = "LFO", [P_WTGT] = "TARGET"};   // P_WV + k: wv_names() fills them from wave.h
+__attribute__((constructor)) static void wv_names(void) {   // (before main: every screen reads par_name)             // WAVE's card names: wp_name, shortened where a card is narrow
+    static char nb[WP_N][16];
+    for (int k = 0; k < WP_N; k++) { const char *n = wp_name(k); if (!n) { par_name[P_WV + k] = ""; continue; }
+        if (k < WP_SUB_LEVEL && (k & 15) != WO_ON) n += 2;   // OSC A / B: the page says which ("A POS" -> "POS")
+        else if (k >= WP_ENV1 && k < WP_LFO1) n += 5;        // ENV1 ATT -> ATT (the tab says which envelope)
+        else if (k >= WP_LFO1 && k < WP_POLY) n += 5;        // LFO2 RATE -> RATE
+        else if (k >= WP_MTX && k < WP_MTX + 64) n += (k - WP_MTX) / 4 >= 9 ? 4 : 3;   // M12 AMT -> AMT
+        snprintf(nb[k], sizeof nb[k], "%s", n); par_name[P_WV + k] = nb[k]; }
+    par_name[P_WV + WP_SUB_LEVEL] = "SUB"; par_name[P_WV + WP_SUB_SHAPE] = "SHAPE"; par_name[P_WV + WP_SUB_OCT] = "OCTAVE"; par_name[P_WV + WP_SUB_PAN] = "SUB PAN";
+    par_name[P_WV + WP_SUB_DIRECT] = "SUB DIRECT"; par_name[P_WV + WP_NOISE_LEVEL] = "NOISE"; par_name[P_WV + WP_NOISE_TYPE] = "COLOUR"; par_name[P_WV + WP_NOISE_DIRECT] = "NS DIRECT";
+    par_name[P_WV + WP_A + WO_ON] = "OSC A"; par_name[P_WV + WP_B + WO_ON] = "OSC B"; par_name[P_WV + WP_F_TYPE] = "TYPE";
+    par_name[P_WV + WP_ARP] = "ARP"; par_name[P_WV + WP_ARP_MODE] = "MODE"; par_name[P_WV + WP_ARP_OCT] = "OCTAVES"; par_name[P_WV + WP_ARP_RATE] = "RATE"; par_name[P_WV + WP_ARP_GATE] = "GATE";
+}
 static const char *dist_name[4] = {"DIODE", "TRANSISTOR", "TUBE", "FUZZ"};
-static const char *type_name[4] = {"SAMPLER", "GRAND", "ACID", "CLOUD"}, *wave_name[4] = {"TRI", "SAW", "SQR", "PULSE"};
+static const char *type_name[4] = {"SAMPLER", "WAVE", "ACID", "CLOUD"};
 static int is_synth(int s) { return song.t[s].type != 0; }   // either synth: no sample, a drawn panel
 static int has_sound(int s) { return engine_sample(s) || is_synth(s); }
 static const char *slot_name(int s) { const Sample *x = engine_sample(s);   // the pad's own name (SHIFT+X on GRID), else its instrument or sample
@@ -1282,6 +1362,18 @@ static int roll_add(Pattern *p, int start, int len, int note, int vel); static v
 static void pat_switch(int np); static void pat_open(void);
 static int seq_cols(int r) { return r < 0 ? 2 : r == 1 || r == 2 ? 16 : r == 0 ? (is_auto(lane) ? 5 : 4) : 2; }   // row -1: the name and the pattern; row 0: LENGTH STEP PAGE MODE
 
+static void wave_new(int s);             // a pad becomes WAVE (below, with the presets)
+static int wv_env, wv_lfo;               // WAVE: the envelope (0..2) and LFO (0..3) the ENV and LFO pages show
+static int learn_wv = -1;                // LEARN for WAVE's matrix: 0..15 the slot whose DEST is pointed at, 16 + j: LFO j's TARGET (a new slot)
+static int wv_is_pair(int p) {           // a WAVE switch (two states): a tap flips it, UP / DOWN pick a side
+    int k = p - P_WV; if (p < P_WV || p >= P_WV + WP_N) return 0;
+    return k == WP_A + WO_ON || k == WP_B + WO_ON || k == WP_SUB_DIRECT || k == WP_NOISE_DIRECT || k == WP_LEGATO || k == WP_ARP || k == WP_NOISE_TYPE || k == WP_QUALITY || k == WP_SUB_OCT;
+}
+static int wv_is_list(int p) {           // a WAVE value that is a name from a long list (a card shows the name, big)
+    int k = p - P_WV; if (p < P_WV || p >= P_WV + WP_N) return 0;
+    int o = k < WP_SUB_LEVEL ? k & 15 : -1, l = k >= WP_LFO1 && k < WP_POLY ? (k - WP_LFO1) % WL_N : -1;
+    return o == WO_TABLE || o == WO_WARP || k == WP_F_TYPE || l == WL_SHAPE || l == WL_SYNC || k == WP_ARP_RATE;
+}
 static const char *const slway_name[3] = {"EQUAL", "TRANSIENTS", "BY HAND"};   // P_SLWAY: how SLICES cuts (A09)
 static int par_visible(int p) {          // hide what the current mode does not use
     const Track *t = &song.t[sel];
@@ -1303,26 +1395,16 @@ static const int8_t par_col_sampler[2][PROWS] = {
     {P_WARP, P_BARS, P_BPM, P_GRAIN, P_FLUX, -1, -1, -1, -1},
 };
 #define par_col par_col_sampler
-// GRAND's page is a drawn panel (draw_gb): the controls sit where the panel shows them, the arrows go to
-// the nearest one in their direction. srow 3 = the panel, gb_cur = the control. The SAMPLE place is the
-// instrument switch on both pages (EDIT+UP/DOWN), so TYPE has no row of its own.
+// The 1.2 panels are lists of controls (the cursor and LFO learn walk them; the v2 SOUND pages draw the cards).
+// srow 3 = the panel, gb_cur = the control. WAVE (2026-11-25) has no drawn panel: its list is its main cards.
 enum { GB_KNOBC, GB_WAVE, GB_SLIDER, GB_TOGGLE, GB_SELECT };
 typedef struct { int16_t p, x, y; int8_t kind, r; } GbCtl;
-#define GB_SX0 16
-#define GB_SX1 (GB_SX0 + 304)               // MIXER
-#define GB_SX2 (GB_SX1 + 124)               // FILTER
-#define GB_SX3 (GB_SX2 + 224)               // ENVELOPE
-#define GB_SX4 (GB_SX3 + 204)               // OUTPUT, to 1008
 static const GbCtl gb_ctl[] = {
     {P_SAMPLE, 208, 273, GB_SELECT, 0},
-    {P_SY + SP_OSC1, GB_SX0 + 75, 470, GB_WAVE, 0}, {P_SY + SP_OSC2, GB_SX0 + 225, 470, GB_WAVE, 0},
-    {P_SY + SP_TUNE2, GB_SX0 + 75, 596, GB_KNOBC, 26}, {P_SY + SP_DETUNE, GB_SX0 + 225, 596, GB_KNOBC, 26},
-    {P_SY + SP_MIX, GB_SX1 + 60, 420, GB_KNOBC, 26}, {P_SY + SP_NOISE, GB_SX1 + 60, 580, GB_KNOBC, 26},
-    {P_SY + SP_CUTOFF, GB_SX2 + 110, 470, GB_KNOBC, 34}, {P_SY + SP_RESO, GB_SX2 + 55, 604, GB_KNOBC, 24}, {P_SY + SP_ENV, GB_SX2 + 165, 604, GB_KNOBC, 24},
-    {P_SY + SP_ATTACK, GB_SX3 + 25, 540, GB_SLIDER, 0}, {P_SY + SP_DECAY, GB_SX3 + 75, 540, GB_SLIDER, 0},
-    {P_SY + SP_SUSTAIN, GB_SX3 + 125, 540, GB_SLIDER, 0}, {P_SY + SP_RELEASE, GB_SX3 + 175, 540, GB_SLIDER, 0},
-    {P_VOICE, GB_SX4 + 68, 372, GB_TOGGLE, 0}, {P_SY + SP_GLIDE, GB_SX4 + 68, 460, GB_KNOBC, 20},
-    {P_PITCH, GB_SX4 + 68, 544, GB_KNOBC, 20}, {P_VOL, GB_SX4 + 68, 628, GB_KNOBC, 20},
+    {P_WV + WP_A + WO_TABLE, 80, 420, GB_SELECT, 0}, {P_WV + WP_A + WO_POS, 240, 420, GB_KNOBC, 26}, {P_WV + WP_B + WO_POS, 400, 420, GB_KNOBC, 26},
+    {P_WV + WP_F_CUT, 560, 420, GB_KNOBC, 26}, {P_WV + WP_F_RES, 720, 420, GB_KNOBC, 26}, {P_WV + WP_F_ENV, 880, 420, GB_KNOBC, 26},
+    {P_WV + WP_ENV1 + WE_ATT, 80, 600, GB_KNOBC, 22}, {P_WV + WP_ENV1 + WE_DEC, 240, 600, GB_KNOBC, 22}, {P_WV + WP_ENV1 + WE_SUS, 400, 600, GB_KNOBC, 22},
+    {P_WV + WP_ENV1 + WE_REL, 560, 600, GB_KNOBC, 22}, {P_WV + WP_GLIDE, 720, 600, GB_KNOBC, 22}, {P_VOL, 880, 600, GB_KNOBC, 22},
 };
 #define GB_N_GB ((int)(sizeof gb_ctl / sizeof gb_ctl[0]))
 // ACID's panel: OSC | FILTER (the five knobs of the original) | DISTORTION (black, with its lamp) | OUTPUT
@@ -1368,37 +1450,6 @@ static const GbCtl ad_ctl[] = {
     {P_AX + AX_ACCATK, AD_S3 + 75, 396, GB_KNOBC, 24}, {P_AX + AX_ACCDEC, AD_S3 + 75, 518, GB_KNOBC, 24},
     {P_AX + AX_CLIP, AD_S4 + 71, 396, GB_KNOBC, 24},
 };
-// GRAND DEEP (Y on GRAND's panel): MODULATION, OSCILLATORS, FILTER, VCA
-#define GD_SA 320                           // ARP
-#define GD_S1 524                           // OSCILLATORS
-#define GD_S2 728                           // FILTER
-#define GD_S3 868                           // VCA, to 1008
-static const GbCtl gd_ctl[] = {
-    {P_SAMPLE, 208, 273, GB_SELECT, 0},
-    {P_GX + GX_LRATE, 60, 396, GB_KNOBC, 24}, {P_GX + GX_LWAVE, 160, 400, GB_WAVE, 0},
-    {P_GX + GX_LPITCH, 66, 560, GB_KNOBC, 22}, {P_GX + GX_LCUT, 166, 560, GB_KNOBC, 22}, {P_GX + GX_LPWM, 266, 560, GB_KNOBC, 22},
-    {P_GX + GX_LSYNC, 166, 660, GB_SELECT, 0},
-    {P_GX + GX_ARP, GD_SA + 44, 400, GB_TOGGLE, 0}, {P_GX + GX_AMODE, GD_SA + 152, 400, GB_WAVE, 0},
-    {P_GX + GX_ARATE, GD_SA + 50, 566, GB_KNOBC, 22}, {P_GX + GX_AGATE, GD_SA + 150, 566, GB_KNOBC, 22}, {P_GX + GX_AOCT, GD_SA + 100, 660, GB_SELECT, 0},
-    {P_GX + GX_O1OCT, GD_S1 + 64, 400, GB_WAVE, 0}, {P_GX + GX_O2OCT, GD_S1 + 154, 400, GB_WAVE, 0}, {P_GX + GX_SYNC, GD_S1 + 100, 590, GB_TOGGLE, 0},
-    {P_GX + GX_HP, GD_S2 + 68, 410, GB_KNOBC, 26}, {P_GX + GX_KBT, GD_S2 + 68, 590, GB_WAVE, 0},
-    {P_GX + GX_VCA, GD_S3 + 56, 400, GB_TOGGLE, 0}, {P_GX + GX_SPRING, GD_S3 + 70, 600, GB_KNOBC, 26},
-};
-// PATCH (page 3 of GRAND): the jacks by module, as the columns of a patch bay
-#define PJ(o) (P_PT + (o))
-#define PI_(i) (P_PT + 16 + (i))
-static const GbCtl pt_ctl[] = {
-    {P_SAMPLE, 208, 273, GB_SELECT, 0},
-    {PJ(JO_LFO), 80, 372, GB_SELECT, 16}, {PJ(JO_SH), 80, 456, GB_SELECT, 16}, {PI_(JI_LRATE), 80, 540, GB_SELECT, 16},
-    {PI_(JI_P1), 200, 372, GB_SELECT, 16}, {PI_(JI_P2), 200, 456, GB_SELECT, 16}, {PI_(JI_PWM), 200, 540, GB_SELECT, 16}, {PI_(JI_FM), 200, 624, GB_SELECT, 16},
-    {PJ(JO_OSC1), 320, 372, GB_SELECT, 16}, {PJ(JO_OSC2), 320, 456, GB_SELECT, 16}, {PJ(JO_NOISE), 320, 540, GB_SELECT, 16},
-    {PI_(JI_M1), 440, 372, GB_SELECT, 16}, {PI_(JI_M2), 440, 456, GB_SELECT, 16}, {PI_(JI_MN), 440, 540, GB_SELECT, 16}, {PJ(JO_MIX), 440, 624, GB_SELECT, 16},
-    {PI_(JI_FIN), 560, 372, GB_SELECT, 16}, {PI_(JI_CUT), 560, 456, GB_SELECT, 16}, {PI_(JI_RES), 560, 540, GB_SELECT, 16}, {PJ(JO_FILT), 560, 624, GB_SELECT, 16},
-    {PI_(JI_VIN), 680, 372, GB_SELECT, 16}, {PI_(JI_VAMT), 680, 456, GB_SELECT, 16}, {PJ(JO_ENV), 680, 540, GB_SELECT, 16}, {PJ(JO_VCA), 680, 624, GB_SELECT, 16},
-    {PJ(JO_KBP), 800, 372, GB_SELECT, 16}, {PJ(JO_GATE), 800, 456, GB_SELECT, 16}, {PJ(JO_VEL), 800, 540, GB_SELECT, 16},
-    {PI_(JI_ATT), 930, 372, GB_SELECT, 16}, {P_GX + GX_ATTEN, 930, 480, GB_KNOBC, 22}, {PJ(JO_ATT), 930, 600, GB_SELECT, 16},
-};
-static int pt_pick;                       // PATCH: the output a cable is being carried from (0 none)
 // CLOUD's panel: SOURCE, the sample with the cloud on it, six knobs and VOLUME in a row
 static const GbCtl cl_ctl[] = {
     {P_SAMPLE, 208, 273, GB_SELECT, 0}, {P_SRC, 208, 318, GB_SELECT, 0},
@@ -1430,8 +1481,6 @@ static const GbCtl *pctl(int *n) {        // the controls of the open pad's pane
     if (song.t[sel].type == 3 && cl_deep) { *n = (int)(sizeof cd_ctl / sizeof cd_ctl[0]); return cd_ctl; }
     if (song.t[sel].type == 3) { *n = (int)(sizeof cl_ctl / sizeof cl_ctl[0]); return cl_ctl; }
     if (song.t[sel].type == 2 && cl_deep) { *n = (int)(sizeof ad_ctl / sizeof ad_ctl[0]); return ad_ctl; }
-    if (song.t[sel].type == 1 && cl_deep == 2) { *n = (int)(sizeof pt_ctl / sizeof pt_ctl[0]); return pt_ctl; }
-    if (song.t[sel].type == 1 && cl_deep) { *n = (int)(sizeof gd_ctl / sizeof gd_ctl[0]); return gd_ctl; }
     if (song.t[sel].type == 2) { *n = (int)(sizeof ab_ctl / sizeof ab_ctl[0]); return ab_ctl; }
     if (song.t[sel].type == 0) { *n = (int)(sizeof sm_ctl / sizeof sm_ctl[0]); return sm_ctl; }
     *n = GB_N_GB; return gb_ctl;
@@ -1497,9 +1546,22 @@ static float norm_gain(int s) {          // what the pad's sample is multiplied 
     const Sample *x = engine_sample(s); int m = song.mix.pad[s].spare[PM_NORM];
     float g = x && m > 0 ? (m == 1 ? x->npk : x->nld) : 1.f; return g > 0 ? g : 1.f;
 }
+static void wv_time_str(float sec, char *b, int n) { if (sec < 0.1f) snprintf(b, n, "%.1fMS", sec * 1000); else if (sec < 1) snprintf(b, n, "%dMS", (int)(sec * 1000 + 0.5f)); else snprintf(b, n, "%.2fS", sec); }
+static void wv_par_str(int pad, int k, int v, char *b, int n) {   // WAVE's values as the cards read them
+    const int8_t *wp = song.wv[pad]; int lf = k >= WP_LFO1 && k < WP_POLY ? (k - WP_LFO1) % WL_N : -1, o = k < WP_SUB_LEVEL ? k & 15 : -1;
+    if (k >= WP_ENV1 && k < WP_LFO1 && (k - WP_ENV1) % WE_N != WE_SUS && (k - WP_ENV1) % WE_N != WE_CURVE) wv_time_str(wv_time(v), b, n);
+    else if (k == WP_F_CUT) { float hz = wv_cut_hz(v); if (hz < 1000) snprintf(b, n, "%dHZ", (int)hz); else snprintf(b, n, "%.1fKHZ", hz / 1000); }
+    else if (k == WP_GLIDE) { if (!v) snprintf(b, n, "OFF"); else wv_time_str(wv_glide_s(v), b, n); }
+    else if (lf == WL_RATE) { int sy = wp[k - WL_RATE + WL_SYNC]; if (sy > 0 && sy < WV_NSYNC) snprintf(b, n, "%s", wv_sync_names[sy]); else { float hz = wv_lfo_hz(v); snprintf(b, n, hz < 1 ? "%.2fHZ" : "%.1fHZ", hz); } }
+    else if (k == WP_ARP_RATE) snprintf(b, n, "%s", div_label[v % NDIV]);
+    else if (o == WO_SEMI) snprintf(b, n, v ? "%+d ST" : "0 ST", v);
+    else if (o == WO_POS || o == WO_LEVEL || o == WO_DET || o == WO_WIDTH || o == WO_WAMT || o == WO_RAND || k == WP_F_DRIVE || k == WP_F_KEY || k == WP_SUB_LEVEL || k == WP_NOISE_LEVEL || k == WP_VELSENS) snprintf(b, n, "%d%%", v);
+    else if (k == WP_F_ENV || k == WP_F_RES || k == WP_MASTER) snprintf(b, n, k == WP_F_ENV && v ? "%+d" : "%d", v);
+    else wp_str(k, v, b, n, (const WaveStore *)engine_wstore());
+}
 static void par_str(int pad, int p, char *b, int n) {
     Track *t = &song.t[pad]; const Sample *s = engine_sample(pad);
-    if (p == P_SLWAY) { snprintf(b, n, "%s", t->slices ? slway_name[t->slices == 5 ? 1 : t->slices == 6 ? 2 : 0] : "--"); return; }   // past P_PT: before the jacks
+    if (p == P_SLWAY) { snprintf(b, n, "%s", t->slices ? slway_name[t->slices == 5 ? 1 : t->slices == 6 ? 2 : 0] : "--"); return; }   // past P_WV
     switch (p) {
     case P_SAMPLE: snprintf(b, n, "%.20s", is_synth(pad) ? type_name[t->type % 4] : s ? s->name : "--"); break;
     case P_PITCH: snprintf(b, n, t->pitch ? "%+d" : "0", t->pitch); break;
@@ -1533,38 +1595,13 @@ static void par_str(int pad, int p, char *b, int n) {
         if (bpm > 0) snprintf(b, n, "%s%d", t->bars ? "" : "AUTO ", track_bars(pad));
         else snprintf(b, n, t->bars ? "%d" : "AUTO", t->bars); break; }
     }
-    if (p >= P_PT) {                     // a jack: where its cables go
-        int j = p - P_PT, isin = j >= 16, id = isin ? j - 16 : j, k = 0; b[0] = 0;
-        for (int c = 0; c < NCABLE; c++) { const uint8_t *g = song.gp[pad][c]; if (!g[0] || !g[1]) continue;
-            if (isin ? g[1] == id : g[0] == id) { int l = (int)strlen(b); snprintf(b + l, n - l, "%s%s", k++ ? ", " : isin ? "FROM " : "TO ", par_name[isin ? P_PT + g[0] : P_PT + 16 + g[1]]); } }
-        if (!k) snprintf(b, n, isin ? (id == JI_M1 ? "NORMAL: OSC 1" : id == JI_M2 ? "NORMAL: OSC 2" : id == JI_MN ? "NORMAL: NOISE" : id == JI_FIN ? "NORMAL: MIX" : id == JI_VIN ? "NORMAL: FILTER" : id == JI_VAMT ? "NORMAL: ENV" : id == JI_ATT ? "NORMAL: +1" : "FREE") : "FREE");
-        return;
-    }
-    if (p >= P_GX) {                     // GRAND DEEP
-        int k = p - P_GX, v = song.gx[pad][k];
-        static const char *const wn[5] = {"TRIANGLE", "SQUARE", "SAW", "RAMP", "S&H"}, *const o1[4] = {"32'", "16'", "8'", "4'"}, *const o2[4] = {"16'", "8'", "4'", "2'"}, *const kb[3] = {"OFF", "HALF", "FULL"};
-        switch (k) {
-        case GX_LRATE: { float hz = gx_lfo_hz(v); if (song.gx[pad][GX_LSYNC]) snprintf(b, n, "SYNCED"); else if (hz < 1) snprintf(b, n, "%.2fHZ", hz); else snprintf(b, n, "%.1fHZ", hz); break; }
-        case GX_LSYNC: snprintf(b, n, "%s", v ? div_label[(v - 1) % NDIV] : "FREE"); break;
-        case GX_LWAVE: snprintf(b, n, "%s", wn[v % 5]); break;
-        case GX_O1OCT: snprintf(b, n, "%s", o1[v & 3]); break;
-        case GX_O2OCT: snprintf(b, n, "%s", o2[v & 3]); break;
-        case GX_SYNC: snprintf(b, n, v ? "ON" : "OFF"); break;
-        case GX_KBT: snprintf(b, n, "%s", kb[v % 3]); break;
-        case GX_VCA: snprintf(b, n, v == 2 ? "DRONE" : v ? "GATE" : "ENV"); break;
-        case GX_HP: if (v) snprintf(b, n, "%.0fHZ", 20 * powf(100.f, v / 100.f)); else snprintf(b, n, "OFF"); break;
-        case GX_LPITCH: snprintf(b, n, v ? "+-%.1f ST" : "OFF", v * 0.12f); break;
-        case GX_ARP: snprintf(b, n, v ? "ON" : "OFF"); break;
-        case GX_AMODE: { static const char *const am[4] = {"UP", "DOWN", "ORDER", "UP/DOWN"}; snprintf(b, n, "%s", am[v & 3]); break; }
-        case GX_AOCT: snprintf(b, n, "%d OCT", v % 3 + 1); break;
-        case GX_ARATE: snprintf(b, n, "%s", div_label[v % NDIV]); break;
-        case GX_AGATE: snprintf(b, n, "%d%%", v); break;
-        case GX_ATTEN: snprintf(b, n, "%+d%%", v); break;
-        case GX_LCUT: snprintf(b, n, v ? "+-%.1f OCT" : "OFF", v * 0.03f); break;
-        default: if (v) snprintf(b, n, "%d%%", v); else snprintf(b, n, "OFF");
-        }
-        return;
-    }
+    if (p == P_WENV) { snprintf(b, n, "ENV%d", wv_env + 1); return; } if (p == P_WLFO) { snprintf(b, n, "LFO%d", wv_lfo + 1); return; }
+    if (p == P_WTGT) {                   // where the LFO goes: its matrix slots' destinations
+        const int8_t *wp = song.wv[pad]; int k = 0; b[0] = 0;
+        for (int i = 0; i < WM_SLOTS; i++) { const int8_t *m = wp + WP_MTX + 4 * i; if (m[WM_SRC] != WS_LFO1 + wv_lfo || !m[WM_DST] || !m[WM_AMT]) continue;
+            int l = (int)strlen(b); snprintf(b + l, n - l, "%s%s", k++ ? ", " : "", wp_name(m[WM_DST] - 1)); }
+        if (!k) snprintf(b, n, "NONE: EDIT"); return; }
+    if (p >= P_WV && p < P_SLWAY) { wv_par_str(pad, p - P_WV, song.wv[pad][p - P_WV], b, n); return; }
     if (p >= P_AX) {                     // ACID DEEP
         const int8_t *ax = song.ax[pad]; int k = p - P_AX, v = ax[k];
         static const char *const sw[3] = {"SQUARE", "SINE", "TRIANGLE"};
@@ -1622,27 +1659,15 @@ static void par_str(int pad, int p, char *b, int n) {
         else snprintf(b, n, "%d", v);
         return;
     }
-    if (p >= P_SY) {
-        int k = p - P_SY, v = t->sp[k];
-        if (k == SP_OSC1 || k == SP_OSC2) snprintf(b, n, "%s", wave_name[v & 3]);
-        else if (k == SP_TUNE2 || k == SP_ENV) snprintf(b, n, v ? "%+d" : "0", v);
-        else if (k == SP_DETUNE) snprintf(b, n, "%d CT", v);
-        else if (k == SP_ATTACK || k == SP_DECAY || k == SP_RELEASE || k == SP_GLIDE) {
-            float ms = k == SP_GLIDE ? v * v * 0.2f : sy_time(v) * 1000;   // GLIDE: (v/100)^2 * 2 s
-            if (k == SP_GLIDE && t->voice) snprintf(b, n, "%s MONO ONLY", v ? "ON" : "OFF");   // POLY: glide does nothing
-        else if (k == SP_GLIDE && !v) snprintf(b, n, "OFF");
-            else if (ms < 1000) snprintf(b, n, "%dMS", (int)(ms + 0.5f)); else snprintf(b, n, "%.1fS", ms / 1000);
-        } else snprintf(b, n, "%d", v);
-    }
 }
 #include "params.h"
 static void par_adjust(int pad, int p, int d, int big) {
     Track *t = &song.t[pad];
     if (p == P_SAMPLE) return;            // v3: the engine is switched on the section strip (EDIT held on SOUND), never by an arrow here
     if (p == P_TYPE) {
-        int nt = ((t->type + d) % 4 + 4) % 4; if (nt == t->type) return;   // SAMPLER, GRAND, ACID, CLOUD
+        int nt = ((t->type + d) % 4 + 4) % 4; if (nt == t->type) return;   // SAMPLER, WAVE, ACID, CLOUD
         edit_begin(); t->type = (int8_t)nt;
-        if (nt == 1 && t->sp[SP_MARK] != SP_INIT) synth_defaults(t->sp);   // the first time: a sound that plays at once
+        if (nt == 1) wave_new(pad);       // the first time: a sound that plays at once
         if (nt == 2 && t->ap[AP_MARK] != AP_INIT) acid_defaults(t->ap);
         if (nt == 3 && t->cp[CP_MARK] != CP_INIT) cl_defaults(t->cp);
         return;
@@ -1654,10 +1679,9 @@ static void par_adjust(int pad, int p, int d, int big) {
         if (d > 0 && !song.cut[pad].n && par_get(pad, p) == 1) toast("BY HAND: EDIT ON THE PICTURE MAKES THE POINTS"); return; }
     if (p == P_SLICES && (t->slices == 5 || t->slices == 6)) {   // a count on TRANSIENTS / BY HAND: back to EQUAL slices
         int k = track_nslices(pad), e = k <= 4 ? 1 : k <= 8 ? 2 : k <= 16 ? 3 : 4; t->slices = (int8_t)clampi(e + (d > 0) - (d < 0), 1, 4); relayout(pad); toast("EQUAL SLICES"); return; }
-    if (p >= P_PT) return;                // jacks are plugged, not turned
     switch (p) {                          // what is not a plain number in a range
     case P_DIR: t->rev = !t->rev; return;
-    case P_VOICE: t->voice = !t->voice; return;
+    case P_VOICE: t->voice = !t->voice; if (t->type == 1) song.wv[pad][WP_POLY] = t->voice ? WV_POLY : 1; return;   // WAVE: VOICES 8 or MONO
     case P_GRAIN: { int g = t->grain ? t->grain : t->warp == 4 ? 90 : 30; t->grain = clampi(g + d * (big ? 10 : 1), 5, 120); return; }
     case P_FLUX: { int f = t->flux ? t->flux : 40; t->flux = clampi(f + d * (big ? 10 : 1), 1, 100); return; }
     case P_BPM: { int cur = t->bpm ? t->bpm : (int)(track_bpm(pad) + 0.5f);
@@ -1686,14 +1710,12 @@ static void par_default(int pad, int p) {
     case P_SAMPLE: if (is_synth(pad)) t->type = 0; else set_slot_file(pad, ""); break;   // a synth goes back to the sampler
     case P_TYPE: t->type = 0; break;
     }
-    if (p >= P_PT && p < P_SLWAY) { int j = p - P_PT, isin = j >= 16, id = isin ? j - 16 : j;   // OPT+EDIT on a jack: its cables out
-        for (int c = 0; c < NCABLE; c++) { uint8_t *g = song.gp[pad][c]; if (isin ? g[1] == id : g[0] == id) g[0] = g[1] = 0; } pt_pick = 0; }
-    else if (p >= P_GX) song.gx[pad][p - P_GX] = gx_def[p - P_GX];
+    if (p >= P_WV + WP_MTX && p < P_WV + WP_MTX + 64) memset(song.wv[pad] + WP_MTX + (p - P_WV - WP_MTX) / 4 * 4, 0, 4);   // MATRIX: the whole slot
+    else if (p >= P_WV && p < P_SLWAY) { int8_t d0[WP_N]; wp_defaults(d0); par_put(pad, p, d0[p - P_WV]); }
     else if (p >= P_AX) song.ax[pad][p - P_AX] = ax_def[p - P_AX];
     else if (p >= P_CX) { int8_t d0[16]; cx_defaults(d0); song.cx[pad][p - P_CX] = d0[p - P_CX]; }
     else if (p >= P_CL) { int8_t d0[7]; cl_defaults(d0); t->cp[p - P_CL] = d0[p - P_CL]; }
     else if (p >= P_AC) { int8_t d0[12]; acid_defaults(d0); t->ap[p - P_AC] = d0[p - P_AC]; }
-    else if (p >= P_SY) { int8_t d0[16]; synth_defaults(d0); t->sp[p - P_SY] = d0[p - P_SY]; }
 }
 static void step_audition(int st);
 static void step_reset(Pattern *p, int st);
@@ -1756,8 +1778,8 @@ static void seq_edit_arrow(int k) {     // EDIT + arrows
         } else step_adjust(st, d, big);
     } else {
         int pr = cur_par();
-        if (big && (pr == P_SY + SP_OSC1 || pr == P_SY + SP_OSC2 || pr == P_AC + AP_DTYPE || pr == P_WARP || pr == P_AX + AX_SUBWAVE || pr == P_GX + GX_LWAVE || pr == P_GX + GX_O1OCT || pr == P_GX + GX_O2OCT || pr == P_GX + GX_KBT || pr == P_GX + GX_AMODE)) { d = -d; big = 0; }
-        if (big && (pr == P_GX + GX_SYNC || pr == P_GX + GX_VCA || pr == P_GX + GX_ARP)) { d = k == K_DOWN ? 1 : -1; big = 0; }   // levers: UP the first, DOWN the second
+        if (big && (pr == P_AC + AP_DTYPE || pr == P_WARP || pr == P_AX + AX_SUBWAVE || wv_is_list(pr))) { d = -d; big = 0; }   // the lists run down: UP the one above
+        if (big && wv_is_pair(pr)) { d = k == K_DOWN ? 1 : -1; big = 0; }   // levers: UP the first, DOWN the second
         if (big && pr == P_AX + AX_SUBOCT) { d = k == K_DOWN ? 1 : -1; big = 0; }   // the lists run down: UP goes to the top one
         if (big && pr == P_DIR) {                                    // the sampler's lever: UP FWD, DOWN REV
             if (song.t[sel].rev != (k == K_DOWN)) { edit_begin(); song.t[sel].rev = k == K_DOWN; }
@@ -1800,7 +1822,7 @@ static void seq_move(int k) {
         int n = gb_nav(k);
         {                                     // the DEEP pages lie below the panel, as the next screen down (the sampler's too, 2026-11-12)
             int nc; const GbCtl *c = pctl(&nc); int x = c[clampi(gb_cur, 0, nc - 1)].x;
-            if (cl_deep < (song.t[sel].type == 1 ? 2 : 1) && k == K_DOWN && n < 0) {
+            if (cl_deep < 1 && song.t[sel].type != 1 && k == K_DOWN && n < 0) {   // (WAVE has no DEEP page: its pages are the tabs)
                 cl_deep++; const GbCtl *d = pctl(&nc); int best = 1, bd = 1 << 30;
                 for (int i = 1; i < nc; i++) if (d[i].y < 420) { int dd = abs(d[i].x - x); if (dd < bd) { bd = dd; best = i; } }
                 gb_cur = best; return;
@@ -1859,12 +1881,11 @@ static void move_cursor(int k);
 static int auto_bind_target(int p) {     // the LT_* code a panel control is automated through, -1 none
     int ty = song.t[sel].type, tg = -1;
     if (p == P_PITCH) tg = LT_PITCH; else if (p == P_VOL) tg = LT_VOL; else if (p == P_PAN) tg = LT_PAN;
-    else if (ty == 1 && p >= P_SY && p < P_SY + SP_N) tg = LT_ENG + p - P_SY;
+    else if (ty == 1 && p >= P_WV && p < P_WV + LT_ENGN) tg = LT_ENG + p - P_WV;   // WAVE: wp 0..55 (OSC A B, SUB, NOISE, FILTER, ENV1)
     else if (ty == 2 && p >= P_AC && p < P_AC + AP_N) tg = LT_ENG + p - P_AC;
     else if (ty == 3 && p >= P_CL && p < P_CL + CP_N) tg = LT_ENG + p - P_CL;
     else if (ty == 3 && p >= P_CX && p < P_CX + CX_N) tg = LT_ENG + CP_N + p - P_CX;
     else if (ty == 2 && p >= P_AX && p < P_AX + AX_N) tg = LT_ENG + LT_DEEP + p - P_AX;   // ACID DEEP
-    else if (ty == 1 && p >= P_GX && p < P_GX + GX_N) tg = LT_ENG + LT_DEEP + p - P_GX;   // GRAND DEEP
     if (tg < 0) return -1;
     int t[256], n = lfo_targets(sel, t); for (int i = 0; i < n; i++) if (t[i] == tg) return tg;   // only what the engine can move
     return -1;
@@ -1877,10 +1898,31 @@ static void learn_start(void) {
     seq_clamp();
 }
 static int fx_page; static int lcol, lrow; static int fx_unit; static void set_tab(int t);
+static void wv_learn_back(int m);       // below sound.h: back on the page the pointing began from
+static int wv_seq_tap(void);             // below sound.h: EDIT on WAVE's pictures, TARGET, a matrix DEST; 1 = done
+static void snd_page_go(int i);
 static void learn_end(void) {
+    if (learn_wv >= 0) { int m = learn_wv; learn_wv = -1; learning = 0; wv_learn_back(m); return; }   // WAVE
     ui_cat = PC_MOD;                     // UI v2: the cards of SOUND were shown for the pointing
     if (learn_lfo >= 0) { int j = learn_lfo; learn_lfo = -1; set_tab(T_FX); fx_unit = sel; fx_page = 1; lcol = j; lrow = 0; learning = 0; return; }   // back on the MOD page
     learning = 0; lane = learn_lane; srow = 0; scol = 4;
+}
+static void wv_learn_start(int m) {     // WAVE: EDIT on a matrix slot's DEST (m = slot) or an LFO's TARGET (m = 16 + j): point at a card
+    learning = 1; learn_wv = m; learn_lfo = -1; learn_lane = lane; snd_page_go(0); toast("POINT AT A CARD: EDIT TAKES IT, Y CANCELS");
+}
+static void wv_learn_take(int p) {
+    int k = p - P_WV; char b[48];
+    if (p < P_WV || k >= WP_NP || !wp_info[k].mod) { toast("THAT ONE CANNOT BE MODULATED: ANOTHER CARD"); return; }
+    int8_t *wp = song.wv[sel]; edit_begin(); int sl = learn_wv;
+    if (sl >= 16) {                      // an LFO's TARGET: a new slot (or the one this LFO already has to it)
+        int src = WS_LFO1 + (sl - 16), fr = -1; sl = -1;
+        for (int i = 0; i < WM_SLOTS; i++) { int8_t *m = wp + WP_MTX + 4 * i; if (m[WM_SRC] == src && m[WM_DST] == k + 1) { sl = i; break; } if (fr < 0 && !m[WM_SRC] && !m[WM_DST]) fr = i; }
+        if (sl < 0) sl = fr;
+        if (sl < 0) { toast("THE MATRIX IS FULL: CLEAR A SLOT"); learn_end(); return; }
+        int8_t *m = wp + WP_MTX + 4 * sl; m[WM_SRC] = (int8_t)src; if (!m[WM_AMT]) m[WM_AMT] = 25; m[WM_MODE] = 1;
+    }
+    wp[WP_MTX + 4 * sl + WM_DST] = (int8_t)(k + 1);
+    snprintf(b, sizeof b, "M%d %s -> %s", sl + 1, wv_src_names[wp[WP_MTX + 4 * sl + WM_SRC] % WS_N], wp_name(k)); learn_end(); toast(b);
 }
 static void learn_lfo_start(int u, int j) {   // EDIT on an LFO's TARGET: point at a knob on the pad's panel
     sel = u; set_tab(T_SEQ); ui_cat = PC_SOUND; toast("POINT AT A PARAMETER: EDIT TAKES IT"); learn_lane = lane; learning = 1; learn_lfo = j; int tg = song.lfo[u][j].target, n;
@@ -1892,6 +1934,7 @@ static int learn_key(int k, int down) {   // keys while LEARN waits; 1 = used
     if (tab != T_SEQ || browsing || slicing || rolling) { learning = 0; return 0; }
     if (k == K_OPT || k == K_Y) { if (down) { used[k] = 1; learn_end(); toast("NO TARGET TAKEN"); } return 1; }
     if (k == K_EDIT) {
+        if (!down && !used[K_EDIT] && learn_wv >= 0) { wv_learn_take(cur_par()); return 1; }   // WAVE's matrix
         if (!down && !used[K_EDIT]) {
             int pr = cur_par(), tg = auto_bind_target(pr); char b[48];
             if (tg < 0) { snprintf(b, sizeof b, "%s CANNOT BE AUTOMATED YET", pr >= 0 ? par_name[pr] : "THIS"); toast(b); return 1; }
@@ -1904,21 +1947,6 @@ static int learn_key(int k, int down) {   // keys while LEARN waits; 1 = used
     }
     if (down && (k == K_UP || k == K_DOWN || k == K_LEFT || k == K_RIGHT)) { move_cursor(k); if (srow < 3) { learn_end(); toast("NO TARGET TAKEN"); } return 1; }
     return 0;                            // L1/R1 (the pages), PLAY and the rest as usual
-}
-static void pt_tap(int j) {               // PATCH: EDIT on an output carries a cable from it; on an input plugs it (or picks its cable up)
-    uint8_t (*gp)[2] = song.gp[sel];
-    if (j < 16) { pt_pick = pt_pick == j ? 0 : j; if (pt_pick) toast("CABLE: EDIT ON AN INPUT PLUGS IT, Y DROPS IT"); return; }
-    int id = j - 16;
-    if (!pt_pick) {                      // an input with a cable: take it out, carry it on
-        for (int c = 0; c < NCABLE; c++) if (gp[c][1] == id && gp[c][0]) { edit_begin(); pt_pick = gp[c][0]; gp[c][0] = gp[c][1] = 0; toast("CABLE TAKEN OUT: PLUG IT ELSEWHERE OR Y"); return; }
-        toast("AN OUTPUT FIRST: EDIT ON IT, THEN HERE"); return;
-    }
-    edit_begin(); int free = -1;
-    for (int c = 0; c < NCABLE; c++) if (gp[c][1] == id) { gp[c][0] = gp[c][1] = 0; }   // one cable per input: the new one replaces it
-    for (int c = 0; c < NCABLE; c++) if (!gp[c][0] || !gp[c][1]) { free = c; break; }
-    if (free < 0) { toast("8 CABLES ALREADY: TAKE ONE OUT"); return; }
-    gp[free][0] = (uint8_t)pt_pick; gp[free][1] = (uint8_t)id; pt_pick = 0;
-    char b[64]; snprintf(b, sizeof b, "%s -> %s", par_name[P_PT + gp[free][0]], par_name[P_PT + 16 + id]); toast(b);
 }
 static void seq_tap(void) {
     if (srow == 0 && scol == 3) { roll_mode(); return; }
@@ -1949,7 +1977,8 @@ static void seq_tap(void) {
         p->trig[st] = !p->trig[st];
         // 2026-11-11 (user): a new step is the tonic of the pad's key (NOTE_NONE plays exactly that and follows the key), and its name shows at once
         if (!p->trig[st]) step_reset(p, st);   // (a new step sounded when B went down)           // a removed step forgets its note, velocity, chance, repeats, slice
-    } else if (srow >= 3 && cur_par() == P_SAMPLE && is_synth(sel)) preset_open();   // EDIT on the instrument: its presets
+    } else if (song.t[sel].type == 1 && wv_seq_tap()) return;   // WAVE: the tables, TARGET, a matrix DEST
+    else if (srow >= 3 && cur_par() == P_SAMPLE && is_synth(sel)) preset_open();   // EDIT on the instrument: its presets
     else if (srow >= 3 && cur_par() == P_SRC) browse_slot();   // CLOUD: EDIT on SOURCE opens the browser
     else if (srow >= 3 && song.t[sel].type == 0 && cur_par() == P_BPM) {   // the loop's tempo by tapping (besides AUTO and EDIT+arrows)
         static Uint32 tt[8]; static int tn; int b = tap_bpm(tt, &tn); char m[32];
@@ -1957,8 +1986,7 @@ static void seq_tap(void) {
         toast(m); }
     else if (srow >= 3 && is_synth(sel) && cur_par() == P_AC + AP_WAVE) { edit_begin(); song.t[sel].ap[AP_WAVE] ^= 1; }   // a tap flips the lever
     else if (srow >= 3 && is_synth(sel) && cur_par() == P_CX + CX_FREEZE) { edit_begin(); song.cx[sel][CX_FREEZE] ^= 1; }
-    else if (srow >= 3 && cur_par() >= P_PT && cur_par() < P_PT + 32) pt_tap(cur_par() - P_PT);
-    else if (srow >= 3 && is_synth(sel) && (cur_par() == P_GX + GX_SYNC || cur_par() == P_GX + GX_VCA || cur_par() == P_GX + GX_ARP)) { edit_begin(); { int8_t *gv = &song.gx[sel][cur_par() - P_GX]; *gv = cur_par() == P_GX + GX_VCA ? (*gv + 1) % 3 : *gv ^ 1; } song.gx[sel][GX_MARK] = GX_INIT; }
+    else if (srow >= 3 && is_synth(sel) && wv_is_pair(cur_par())) { int lo, hi, st, bg; par_limits(sel, cur_par(), &lo, &hi, &st, &bg); edit_begin(); par_put(sel, cur_par(), par_get(sel, cur_par()) == lo ? hi : lo); }   // WAVE: a tap flips a switch
     else if (srow >= 3 && is_synth(sel) && cur_par() == P_AX + AX_SUBOCT) { edit_begin(); song.ax[sel][AX_SUBOCT] ^= 1; song.ax[sel][AX_MARK] = AX_INIT; }   // a tap flips the lever
     else if (srow >= 3 && is_synth(sel) && cur_par() != P_VOICE) return;   // B on a knob plays it, the value stays
     else if (srow < 0 && scol == 1) pat_open();   // EDIT on the pattern: into the pattern window
@@ -2131,7 +2159,7 @@ static int scn_same(const Song *a, const Song *b, int s) {
     if (x->type != y->type) return 0;
     if (x->type == 0 || x->type == 3) return x->path[0] && !strcmp(x->path, y->path);
     if (a->pname[s][0] || b->pname[s][0]) return !strcmp(a->pname[s], b->pname[s]);
-    return x->type == 1 ? !memcmp(x->sp, y->sp, sizeof x->sp) : !memcmp(x->ap, y->ap, sizeof x->ap);
+    return x->type == 1 ? !memcmp(a->wv[s], b->wv[s], sizeof a->wv[s]) : !memcmp(x->ap, y->ap, sizeof x->ap);
 }
 static int scn_mix_copy(Song *d, const Song *g, int s) {   // 1 = something changed
     Track *t = &d->t[s]; PadMix *p = &d->mix.pad[s], *q = (PadMix *)&g->mix.pad[s];
@@ -2217,9 +2245,10 @@ static void scene_save(void) {            // only what changed: every scene has 
     if (fflush(f) || fsync(fileno(f))) ok = 0; fclose(f);
     if (ok) { memset(scn_dirty, 0, sizeof scn_dirty); scn_hdr = 0; }
 }
-static int scene_up(Song *g, long one) {   // a scene of an older file brought up to date (0F: shorter; 11: roll ticks x3); always 0
+static int scene_up(Song *g, long one) {   // a scene of an older file brought up to date (0F: shorter; 11: roll ticks x3; 12: GRAND); always 0
     uint32_t m = g->magic;
-    if (m >= 0xB2B2000F && m < STATE_MAGIC && (one < (long)sizeof(Song) || m == 0xB2B20011)) { g->magic = STATE_MAGIC; roll_x3(g); }
+    if (m >= 0xB2B2000F && m < STATE_MAGIC && (one < (long)sizeof(Song) || m == 0xB2B20011)) { g->magic = STATE_MAGIC; if (m < 0xB2B20012) roll_x3(g); }
+    wave_fix(g);
     return 0;
 }
 static void scenes_read(const char *path, long off) {   // after the playing scene was loaded: the others, from this file
@@ -2280,7 +2309,7 @@ static void leave_screen(void) {         // what a key held across a screen chan
 // name of the theme in use. Colours changed but not saved stay on the screen until another theme is chosen.
 static const char *th_preset_name[TH_PRESETS] = {"COSMIC", "MATRIX", "BLOOD CONCRETE", "AMBER", "GAMEBOY"};
 static const char *th_color_name[TC_N] = {"BACKGROUND", "PANEL", "LINE", "FAINT", "DIM TEXT", "TEXT", "ACCENT", "WARN", "SELECTION", "PLAYING",
-    "SAMPLER", "GRAND", "ACID", "CLOUD", "PATTERN", "SOUND", "FX", "MOD", "MIX"};
+    "SAMPLER", "WAVE", "ACID", "CLOUD", "PATTERN", "SOUND", "FX", "MOD", "MIX"};
 #define TH_MAXU 64
 typedef struct { char name[20]; Col c[TC_N]; } UserTheme;
 static UserTheme th_usr[TH_MAXU]; static int th_nu, th_sel, th_dirty, th_mod;   // th_mod: the colours on screen differ from the saved theme
@@ -2682,7 +2711,7 @@ static void pad_reset(int s, int m) {    // the parts m of pad s as in an empty 
         memcpy(t->pat, k.pat, sizeof t->pat); t->cur = k.cur; t->queued = k.queued; t->on = k.on; t->mute = k.mute;
         t->vol = k.vol; t->pan = k.pan; t->icon = k.icon; t->icon_hi = k.icon_hi;
         song.cut[s] = dz->cut[s]; memcpy(song.cx[s], dz->cx[s], sizeof song.cx[s]); memcpy(song.ax[s], dz->ax[s], sizeof song.ax[s]);
-        memcpy(song.gx[s], dz->gx[s], sizeof song.gx[s]); memcpy(song.gp[s], dz->gp[s], sizeof song.gp[s]); memcpy(song.smx[s], dz->smx[s], sizeof song.smx[s]);
+        memcpy(song.wv[s], dz->wv[s], sizeof song.wv[s]); memcpy(song.smx[s], dz->smx[s], sizeof song.smx[s]);
         song.lnote[s] = 0; pm->spare[PM_NORM] = pz->spare[PM_NORM]; pm->spare[PM_FRZ] = 0;
     }
     if (m & PP_FX) { memcpy(pm->ins, pz->ins, sizeof pm->ins); memcpy(song.mbx[s], dz->mbx[s], sizeof song.mbx[s]); }
@@ -2851,7 +2880,7 @@ static void step_listen(int st) {        // only this step's slice, with its not
     flash[sel] = SDL_GetTicks();
     rec_hit(sel, sl, note);
 }
-static void set_tab(int t) { leave_screen(); if (browsing) browse_close(); slicing = 0; roll_leave(); randing = 0; learning = 0; learn_lfo = -1; pt_pick = 0; if (picking) pick_close(); if (presetting) preset_close(1); theming = 0; iconing = 0; ducking = 0; prbing = 0; if (chording) chord_leave(); perform = 0; tab = t; scening = 0; if (t == T_GRID || t == T_PRJ) ui_cat = -1; }
+static void set_tab(int t) { leave_screen(); if (browsing) browse_close(); slicing = 0; roll_leave(); randing = 0; learning = 0; learn_lfo = -1; if (picking) pick_close(); if (presetting) preset_close(1); theming = 0; iconing = 0; ducking = 0; prbing = 0; if (chording) chord_leave(); perform = 0; tab = t; scening = 0; if (t == T_GRID || t == T_PRJ) ui_cat = -1; }
 // KEYS: the pad gets its own tonality, the project's stays. Coming back to the project's value means following the project again.
 static void pad_tonality(int k) {
     Track *t = &song.t[sel]; char b[48];
@@ -3491,16 +3520,16 @@ static int lcol, lrow;                   // the LFO column and its row
 enum { LR_TARGET, LR_SHAPE, LR_SYNC, LR_RATE, LR_DEPTH, LR_TRIG, LR_PHASE, LR_POL, LR_N };   // POL (2026-11-25, Serum): BIPOLAR / UNIPOLAR
 static const char *const lr_name[LR_N] = {"TARGET", "SHAPE", "CLOCK", "RATE", "DEPTH", "START", "PHASE", "POLARITY"};
 static const char *const ls_name[LS_N] = {"SINE", "TRIANGLE", "SAW UP", "SAW DOWN", "SQUARE", "S&H", "SMOOTH", "DUCK"};
-static const char *const gb_pn[14] = {"OSC 1", "OSC 2", "TUNE 2", "DETUNE", "MIX", "NOISE", "CUTOFF", "RESO", "ENV", "ATTACK", "DECAY", "SUSTAIN", "RELEASE", "GLIDE"};
 static const char *const ab_pn[11] = {"WAVE", "TUNE", "CUTOFF", "RESO", "ENV MOD", "DECAY", "ACCENT", "DIST TYPE", "DRIVE", "DIST TONE", "DIST MIX"};
 static const char *const cl_pn[21] = {"POSITION", "SPRAY", "SIZE", "DENSITY", "SHIMMER", "MOTION", "SIZE RND", "WINDOW", "REVERSE", "GRAIN PITCH", "GRAIN FINE", "PITCH RND", "INTERVALS", "SYNC", "TIME RND", "WIDTH", "SCAN", "FREEZE", "ATTACK", "RELEASE", "TONE"};
 static int lfo_targets(int s, int *out) {   // what an LFO on this pad can move, in order
     int n = 0, ty = song.t[s].type; out[n++] = LT_NONE;
     if (ty != 3) out[n++] = LT_PITCH;
     out[n++] = LT_VOL; out[n++] = LT_PAN; out[n++] = LT_SENDA; out[n++] = LT_SENDB;
-    int ne = ty == 1 ? SP_N : ty == 2 ? AP_N : ty == 3 ? CP_N + CX_N : 0;
+    int ne = ty == 2 ? AP_N : ty == 3 ? CP_N + CX_N : 0;
     for (int k = 0; k < ne; k++) out[n++] = LT_ENG + k;
-    int nd = ty == 1 ? GX_N : ty == 2 ? AX_N : 0;   // the DEEP page's knobs
+    if (ty == 1) for (int k = 0; k < LT_ENGN; k++) if (wp_info[k].name && wp_info[k].mod) out[n++] = LT_ENG + k;   // WAVE: what its matrix may move, OSC A .. ENV1
+    int nd = ty == 2 ? AX_N : 0;   // the DEEP page's knobs
     for (int k = 0; k < nd; k++) out[n++] = LT_ENG + LT_DEEP + k;
     for (int i = 0; i < NINS; i++) { const FxSlot *f = &song.mix.pad[s].ins[i];
         if (f->type) for (int k = 0; k < 6; k++) if (fx_pname[f->type][k][0]) out[n++] = (i ? LT_INS2 : LT_INS1) + k; }
@@ -3512,8 +3541,9 @@ static void lfo_tname(int s, int tg, char *b) {
     else if (tg == LT_PAN) snprintf(b, 24, "PAN"); else if (tg == LT_SENDA) snprintf(b, 24, "SEND A"); else if (tg == LT_SENDB) snprintf(b, 24, "SEND B");
     else if (tg >= LT_INS1 && tg < LT_ENG) { int i = tg >= LT_INS2, k = tg - (i ? LT_INS2 : LT_INS1); const FxSlot *f = &song.mix.pad[s].ins[i];
         snprintf(b, 24, "%s %s", fx_short[f->type], f->type ? fx_pname[f->type][k] : "?"); }
-    else if (tg >= LT_ENG + LT_DEEP) { int k = tg - LT_ENG - LT_DEEP; snprintf(b, 24, "%s", ty == 1 && k < GX_N ? par_name[P_GX + k] : ty == 2 && k < AX_N ? par_name[P_AX + k] : "?"); }
-    else { int k = tg - LT_ENG; snprintf(b, 24, "%s", ty == 1 && k < 14 ? gb_pn[k] : ty == 2 && k < 11 ? ab_pn[k] : ty == 3 && k < 21 ? cl_pn[k] : "?"); }
+    else if (ty == 1 && tg >= LT_ENG) { const char *nm = wp_name(tg - LT_ENG); snprintf(b, 24, "%s", nm ? nm : "?"); }   // WAVE: "A POS", "CUTOFF"
+    else if (tg >= LT_ENG + LT_DEEP) { int k = tg - LT_ENG - LT_DEEP; snprintf(b, 24, "%s", ty == 2 && k < AX_N ? par_name[P_AX + k] : "?"); }
+    else { int k = tg - LT_ENG; snprintf(b, 24, "%s", ty == 2 && k < 11 ? ab_pn[k] : ty == 3 && k < 21 ? cl_pn[k] : "?"); }
 }
 static void lfo_value(int d, int big) {
     Lfo *L = &song.lfo[fx_unit][lcol]; edit_begin();
@@ -3548,10 +3578,11 @@ static void fx_unit_step(int d) { fx_unit = (fx_unit + d + NSLOT + 3) % (NSLOT +
 // ---------- PRESETS (2026-11-09): factory catalogue (src/presets.h from tools/mkpresets.py) + the user's own (presets.cfg) ----------
 #define PRESET_FILE "presets.cfg"
 #define NUSERP 96
-typedef struct { char name[16]; uint8_t engine; int8_t v[PRESET_N]; } UserPreset;
+typedef struct { char name[16]; uint8_t engine; int8_t v[WP_N]; } UserPreset;   // v: PRESET_N values, or a WAVE block (WP_N)
+#define PR_MAX (NPRESET + NWPRESET + NUSERP + 1)   // the rows a list may have: SAVE CURRENT, the user's, the factory's
 static UserPreset upre[NUSERP]; static int nupre;
 static int presetting, pr_cur, pr_top, pr_heard;   // the window, cursor, first row shown, OPTION note
-static Track pr_keep; static int8_t pr_keep_cx[16], pr_keep_x[PRESET_N];   // the pad as it was when the window opened: Y puts it back
+static Track pr_keep; static int8_t pr_keep_cx[16], pr_keep_x[WP_N];   // the pad as it was when the window opened: Y puts it back
 static void presets_load(void) {
     nupre = 0; FILE *f = fopen(PRESET_FILE, "r"); if (!f) return;
     char line[640];
@@ -3559,17 +3590,21 @@ static void presets_load(void) {
         UserPreset *u = &upre[nupre]; int e, n = 0, pos = 0; char nm[32];
         if (sscanf(line, "%d %31[^|]|%n", &e, nm, &pos) < 2 || e < 1 || e > 3) continue;
         memset(u, 0, sizeof *u); u->engine = (uint8_t)e; snprintf(u->name, sizeof u->name, "%s", nm);
-        const char *p = line + pos; int v, k;
-        while (n < PRESET_N && sscanf(p, "%d%n", &v, &k) == 1) { u->v[n++] = (int8_t)clampi(v, -128, 127); p += k; }
+        const char *p = line + pos; int v, k, wave = e == 1 && *p == 'W';   // "W": a WAVE block (2026-11-25); engine 1 without it: GRAND's
+        if (wave) p++;
+        while (n < (wave ? WP_N : PRESET_N) && sscanf(p, "%d%n", &v, &k) == 1) { u->v[n++] = (int8_t)clampi(v, -128, 127); p += k; }
+        if (e == 1 && !wave) { int8_t sp[16] = {0}, gx[32]; memcpy(sp, u->v, SP_N); sp[SP_MARK] = SP_INIT; memcpy(gx, u->v + 24, 32);   // an old GRAND preset: its WAVE sound
+            int voice = u->v[14]; wv_from_grand(u->v, sp, voice, gx); }
+        else if (e == 1) u->v[WP_MARK] = WP_INIT;
         nupre++;
     }
     fclose(f);
 }
 static void presets_save(void) {
-    static char b[NUSERP * 400]; int n = 0;
+    static char b[NUSERP * 1100]; int n = 0;
     for (int i = 0; i < nupre; i++) {
-        n += snprintf(b + n, sizeof b - n, "%d %s|", upre[i].engine, upre[i].name);
-        int last = PRESET_N; while (last > 24 && !upre[i].v[last - 1]) last--;   // a preset with no DEEP data stays short
+        n += snprintf(b + n, sizeof b - n, "%d %s|%s", upre[i].engine, upre[i].name, upre[i].engine == 1 ? "W" : "");
+        int last = upre[i].engine == 1 ? WP_N - 1 : PRESET_N; while (last > 24 && !upre[i].v[last - 1]) last--;   // a preset with no DEEP data stays short (WAVE: the mark is set on load)
         for (int k = 0; k < last; k++) n += snprintf(b + n, sizeof b - n, " %d", upre[i].v[k]);
         n += snprintf(b + n, sizeof b - n, "\n");
     }
@@ -3577,9 +3612,8 @@ static void presets_save(void) {
 }
 static void preset_apply(int s, const int8_t *v) {   // values are clamped to the engine's ranges: a hand-edited file stays safe
     Track *t = &song.t[s]; int lo, hi;
-    if (t->type == 1) { for (int k = 0; k < SP_N; k++) { sp_range(k, &lo, &hi); t->sp[k] = (int8_t)clampi(v[k], lo, hi); } t->voice = v[14] ? 1 : 0; t->sp[SP_MARK] = SP_INIT; gx_defaults(song.gx[s]); memset(song.gp[s], 0, sizeof song.gp[s]);
-        if (v[24 + GX_MARK] == GX_INIT) { for (int k = 0; k < GX_N; k++) { gx_range(k, &lo, &hi); song.gx[s][k] = (int8_t)clampi(v[24 + k], lo, hi); }   // its GRAND DEEP and cables
-            for (int c = 0; c < 8; c++) { int o = (uint8_t)v[56 + 2 * c], i = (uint8_t)v[57 + 2 * c]; if (o && i && o < 32 && i < 32) { song.gp[s][c][0] = (uint8_t)o; song.gp[s][c][1] = (uint8_t)i; } } } }
+    if (t->type == 1) { int8_t *wp = song.wv[s]; for (int k = 0; k < WP_N - 1; k++) { wp_range(k, &lo, &hi); wp[k] = (int8_t)clampi(v[k], lo, hi); }   // WAVE: the whole block
+        wp[WP_MARK] = WP_INIT; t->voice = wp[WP_POLY] > 1; }
     else if (t->type == 2) { for (int k = 0; k < AP_N; k++) { ap_range(k, &lo, &hi); t->ap[k] = (int8_t)clampi(v[k], lo, hi); } t->ap[AP_MARK] = AP_INIT; ax_defaults(song.ax[s]);
         if (v[24 + AX_MARK] == AX_INIT) for (int k = 0; k < AX_N; k++) { ax_range(k, &lo, &hi); song.ax[s][k] = (int8_t)clampi(v[24 + k], lo, hi); } }
     else if (t->type == 3) { for (int k = 0; k < CP_N; k++) t->cp[k] = (int8_t)clampi(v[k], 0, 100); t->cp[CP_MARK] = CP_INIT;
@@ -3587,7 +3621,7 @@ static void preset_apply(int s, const int8_t *v) {   // values are clamped to th
 }
 static void preset_capture(int s, int8_t *v) {
     const Track *t = &song.t[s]; memset(v, 0, PRESET_N);
-    if (t->type == 1) { memcpy(v, t->sp, SP_N); v[14] = t->voice; memcpy(v + 24, song.gx[s], 32); memcpy(v + 56, song.gp[s], 16); }
+    if (t->type == 1) memcpy(v, song.wv[s], WP_N);   // v holds WP_N here
     else if (t->type == 2) { memcpy(v, t->ap, AP_N); memcpy(v + 24, song.ax[s], 16); }
     else if (t->type == 3) { memcpy(v, t->cp, CP_N); memcpy(v + 6, song.cx[s], CX_N); }
 }
@@ -3596,14 +3630,21 @@ static int pr_list(int *idx, int max) {
     int e = song.t[sel].type, n = 0; idx[n++] = -1;
     for (int i = 0; i < nupre && n < max; i++) if (upre[i].engine == e) idx[n++] = 1000 + i;
     for (int i = 0; i < NPRESET && n < max; i++) if (presets[i].engine == e) idx[n++] = i;
+    if (e == 1) for (int i = 0; i < NWPRESET && n < max; i++) idx[n++] = 2000 + i;   // WAVE's factory presets (wpresets.h)
     return n;
 }
-static void pr_restore(void) { Track *t = &song.t[sel]; memcpy(t->sp, pr_keep.sp, 16); memcpy(t->ap, pr_keep.ap, 12); memcpy(t->cp, pr_keep.cp, 7); t->voice = pr_keep.voice; memcpy(song.cx[sel], pr_keep_cx, 16);
-    if (t->type == 1) { memcpy(song.gx[sel], pr_keep_x + 24, 32); memcpy(song.gp[sel], pr_keep_x + 56, 16); } else if (t->type == 2) memcpy(song.ax[sel], pr_keep_x + 24, 16); }
+static const char *pr_name(int i) { return i >= 2000 ? wpresets[i - 2000].name : i >= 1000 ? upre[i - 1000].name : i >= 0 ? presets[i].name : ""; }
+static void wave_new(int s) {            // a pad becomes WAVE: its own block if it had one, else the INIT preset (two saws)
+    if (song.wv[s][WP_MARK] != WP_INIT) wpreset_apply(song.wv[s], 0);
+    song.t[s].voice = song.wv[s][WP_POLY] > 1;
+}
+static void pr_restore(void) { Track *t = &song.t[sel]; memcpy(t->ap, pr_keep.ap, 12); memcpy(t->cp, pr_keep.cp, 7); t->voice = pr_keep.voice; memcpy(song.cx[sel], pr_keep_cx, 16);
+    if (t->type == 1) memcpy(song.wv[sel], pr_keep_x, WP_N); else if (t->type == 2) memcpy(song.ax[sel], pr_keep_x + 24, 16); }
 static void pr_try(void) {               // the row under the cursor sounds on the pad at once (Y gives the old sound back)
-    int idx[NPRESET + NUSERP + 1], n = pr_list(idx, NPRESET + NUSERP + 1); pr_cur = clampi(pr_cur, 0, n - 1);
+    int idx[PR_MAX], n = pr_list(idx, PR_MAX); pr_cur = clampi(pr_cur, 0, n - 1);
     int i = idx[pr_cur];
-    if (i >= 1000) preset_apply(sel, upre[i - 1000].v); else if (i >= 0) preset_apply(sel, presets[i].v);
+    if (i >= 2000) { wpreset_apply(song.wv[sel], i - 2000); song.t[sel].voice = song.wv[sel][WP_POLY] > 1; }
+    else if (i >= 1000) preset_apply(sel, upre[i - 1000].v); else if (i >= 0) preset_apply(sel, presets[i].v);
     else pr_restore();                   // SAVE CURRENT: the sound it had when opened
 }
 static void preset_open(void) {
@@ -3617,7 +3658,7 @@ static void preset_close(int keep) {
     presetting = 0;
 }
 static void preset_key(int k, int down) {
-    int idx[NPRESET + NUSERP + 1], n = pr_list(idx, NPRESET + NUSERP + 1);
+    int idx[PR_MAX], n = pr_list(idx, PR_MAX);
     if (!down) {
         if (k == K_OPT && pr_heard) { engine_release_key(302); pr_heard = 0; }
         if (k == K_EDIT && !used[K_EDIT]) {
@@ -3631,7 +3672,7 @@ static void preset_key(int k, int down) {
                 nupre++; presets_save(); char b[40]; snprintf(b, sizeof b, "SAVED AS %s", u->name); toast(b); pr_cur = 1; pr_try();
                 return;
             }
-            const char *nm = i >= 1000 ? upre[i - 1000].name : presets[i].name; char b[40]; snprintf(b, sizeof b, "PRESET %s", nm); toast(b);
+            const char *nm = pr_name(i); char b[40]; snprintf(b, sizeof b, "PRESET %s", nm); toast(b);
             preset_close(1);
         }
         return;
@@ -3641,7 +3682,7 @@ static void preset_key(int k, int down) {
     if ((k == K_EDIT && held[K_OPT]) || (k == K_OPT && held[K_EDIT])) {   // OPT+EDIT on a user preset: delete it
         used[K_EDIT] = used[K_OPT] = 1; if (pr_heard) { engine_release_key(302); pr_heard = 0; }
         int i = idx[clampi(pr_cur, 0, n - 1)];
-        if (i >= 1000) { int j = i - 1000; char b[40]; snprintf(b, sizeof b, "DELETED %s", upre[j].name);
+        if (i >= 1000 && i < 2000) { int j = i - 1000; char b[40]; snprintf(b, sizeof b, "DELETED %s", upre[j].name);
             memmove(&upre[j], &upre[j + 1], sizeof *upre * (size_t)(nupre - j - 1)); nupre--; presets_save(); toast(b); pr_try(); }
         else toast("ONLY USER PRESETS CAN BE DELETED");
         return;
@@ -3650,15 +3691,11 @@ static void preset_key(int k, int down) {
     if (k == K_UP || k == K_DOWN || k == K_L1 || k == K_R1) {
         int d = k == K_DOWN ? 1 : k == K_UP ? -1 : 0;
         if (k == K_L1 || k == K_R1) {    // UI v2 (A12): L1/R1 between the two tabs, FACTORY and MINE
-            int mine = idx[clampi(pr_cur, 0, n - 1)] < 0 || idx[clampi(pr_cur, 0, n - 1)] >= 1000, j = 0;
-            if (mine) { while (j < n && (idx[j] < 0 || idx[j] >= 1000)) j++; if (j >= n) j = 0; }
+            int ic = idx[clampi(pr_cur, 0, n - 1)], mine = ic < 0 || (ic >= 1000 && ic < 2000), j = 0;
+            if (mine) { while (j < n && (idx[j] < 0 || (idx[j] >= 1000 && idx[j] < 2000))) j++; if (j >= n) j = 0; }
             pr_cur = j; pr_try(); return;
         }
         if (0) {
-            int i0 = idx[clampi(pr_cur, 0, n - 1)], c0 = i0 >= 0 && i0 < 1000 ? presets[i0].cat : -1, j = pr_cur;
-            if (k == K_R1) { while (j < n - 1 && (idx[j] < 0 || idx[j] >= 1000 || presets[idx[j]].cat == c0)) j++; }
-            else { j--; while (j > 0 && idx[j] >= 0 && idx[j] < 1000 && presets[idx[j]].cat == presets[idx[clampi(j - 1, 0, n - 1)]].cat && idx[j - 1] >= 0 && idx[j - 1] < 1000) j--; if (j < 0) j = 0; }
-            pr_cur = j;
         } else pr_cur = clampi(pr_cur + d, 0, n - 1);
         pr_try();
         if (pr_heard) { engine_release_key(302); engine_trig_key(sel, 1.f, 0, -1, 302); }   // OPTION held: the new sound at once
@@ -3757,6 +3794,15 @@ static float mx_show[NSLOT + 3]; static void mx_meters(void); static void meter_
 #include "simple.h"
 #include "ctx.h"
 static void xy_key(int k);
+static void wv_learn_back(int m) { if (m < 16) { snd_page_go(snd_page_of(GF_WMTX)); sp_cur = 4 * m + WM_DST; } else { snd_page_go(snd_page_of(GF_WLFO)); sp_cur = 6; } }
+static int wv_seq_tap(void) {
+    if (!v2_sound()) return 0;
+    const SndPage *pg = snd_page(); int p = cur_par();
+    if (sp_cur < 0 && (pg->gfx == GF_WTA || pg->gfx == GF_WTB)) { wtb_open(pg->gfx == GF_WTB); return 1; }   // the picture of an oscillator: its tables
+    if (p == P_WTGT) { wv_learn_start(16 + wv_lfo); return 1; }
+    if (pg->gfx == GF_WMTX) { if (sp_cur >= 0 && sp_cur % 4 == WM_DST) wv_learn_start(sp_cur / 4); return 1; }   // the other fields: EDIT+arrows
+    return 0;
+}
 static void key_event1(int k, int down) {
     if (k < 0) return;
     if ((k == K_X || k == K_Y) && !sim_on && !perform && !ui_simple) { if (down) xy_key(k); return; }   // 2026-11-21 (user): Y back everywhere, X the quick bar and its drawer
@@ -3875,6 +3921,7 @@ static void key_event1(int k, int down) {
     if (chording) { chord_key(k, down); return; }
     if (rolling) { roll_key(k, down); return; }
     if (picking) { pick_key(k, down); return; }
+    if (wtbing) { wtb_key(k, down); return; }
     if (presetting) { preset_key(k, down); return; }
     if (theming) { theme_key(k, down); return; }
     if (iconing) { icon_key(k, down); return; }
@@ -3952,8 +3999,7 @@ static void key_event1(int k, int down) {
     if (k == K_PLAY && tab == T_PAT) { pat_play(); return; }
     if (k == K_PLAY) { play_key(); return; }
     if (k == K_Y && tab == T_SEQ && srow >= 3) {   // Y opens and closes the DEEP page (the sampler's too, 2026-11-11)
-        if (pt_pick) { pt_pick = 0; toast("CABLE DROPPED"); return; }
-        cl_deep = song.t[sel].type == 1 ? (cl_deep + 1) % 3 : !cl_deep; gb_cur = cl_deep ? 1 : 0; return; }
+        cl_deep = song.t[sel].type == 1 ? 0 : !cl_deep; gb_cur = cl_deep ? 1 : 0; return; }   // WAVE: no DEEP page
     if (tab == T_PAT && k == K_Y) { pat_close(0); return; }   // the pattern window: Y goes back
     if (tab == T_GRID && k == K_Y && held[K_SHIFT]) { freeze_key(); return; }
     if (tab == T_PRJ && k == K_Y) { if (jcol) jcol = 0; else prj_leave(); return; }   // Y at the top: back where PROJECT was opened   // UI v2: Y is back, always
@@ -4086,7 +4132,7 @@ static void draw_grid(void) {
     Uint32 now = SDL_GetTicks();
     if (perform == 2) { draw_keys2(); return; }
     enum { GX = 26, GY = 86, CW = 230, CH = 193, DX = 247, DY = 210 };
-    static const char *const eng_tag[4] = {"SMP", "GRAND", "ACID", "CLOUD"};   // as the mockup writes them
+    static const char *const eng_tag[4] = {"SMP", "WAVE", "ACID", "CLOUD"};   // as the mockup writes them
     for (int i = 0; i < NSLOT; i++) {
         int x = GX + (i % 4) * DX, y = GY + (i / 4) * DY;
         Track *t = &song.t[i]; Uint32 age = now - flash[i]; int snd = has_sound(i);
@@ -4452,8 +4498,8 @@ static void unit_pstr(int unit, int k, int v, char *b) {
 // ---------- the instrument picker: EDIT on an empty pad (2026-11-09) ----------
 // Four tiles, each with a miniature of the instrument's real SEQ+INST page, drawn once when the window opens:
 // the pad is set to each instrument for a moment (only while its clip is off, so the engine plays nothing of it).
-static const char *const pick_name[4] = {"SAMPLER", "GRAND", "ACID", "CLOUD"};
-static const char *const pick_what[4] = {"SAMPLES, LOOPS, SLICES", "TWO OSCILLATORS, LADDER FILTER", "303-STYLE BASS, ACCENT, SLIDE", "GRAINS FROM A SAMPLE"};
+static const char *const pick_name[4] = {"SAMPLER", "WAVE", "ACID", "CLOUD"};
+static const char *const pick_what[4] = {"SAMPLES, LOOPS, SLICES", "WAVETABLES, UNISON, MOD MATRIX", "303-STYLE BASS, ACCENT, SLIDE", "GRAINS FROM A SAMPLE"};
 static int pk_cur; static SDL_Texture *pk_tex[4];
 enum { PK_SY = 250, PK_SH = 694 - 250 };   // what a miniature shows: the panel below the steps
 static int pk_change;                    // v3: the picker switches the engine of a pad that has one
@@ -4469,7 +4515,7 @@ static void pick_take(int i) {
     if (pk_change) {                      // v3: another engine for this pad; each engine keeps its own settings
         pk_change = 0; if (i == (song.t[sel].type & 3)) { cat_open(PC_SOUND); return; }
         Track *t = &song.t[sel]; edit_begin(); t->type = (int8_t)i;
-        if (i == 1 && t->sp[SP_MARK] != SP_INIT) synth_defaults(t->sp);
+        if (i == 1) wave_new(sel);
         if (i == 2 && t->ap[AP_MARK] != AP_INIT) acid_defaults(t->ap);
         if (i == 3 && t->cp[CP_MARK] != CP_INIT) cl_defaults(t->cp);
         cat_open(PC_SOUND); sound_sync();
@@ -4478,12 +4524,12 @@ static void pick_take(int i) {
     }
     if (i == 0) { browse_slot(); return; }
     Track *t = &song.t[sel]; edit_begin(); t->type = (int8_t)i;
-    if (i == 1 && t->sp[SP_MARK] != SP_INIT) synth_defaults(t->sp);
+    if (i == 1) wave_new(sel);
     if (i == 2 && t->ap[AP_MARK] != AP_INIT) acid_defaults(t->ap);
     if (i == 3 && t->cp[CP_MARK] != CP_INIT) cl_defaults(t->cp);
     cl_deep = 0; cat_open(PC_SOUND); sound_sync();   // v3: the engine first, so its sound comes next
     if (i == 3) browse_slot();           // grains need a sample: the browser first
-    else toast(i == 1 ? "GRAND IS ON THE PAD: OPTION PLAYS IT" : "ACID IS ON THE PAD: OPTION PLAYS IT");
+    else toast(i == 1 ? "WAVE IS ON THE PAD: OPTION PLAYS IT" : "ACID IS ON THE PAD: OPTION PLAYS IT");
 }
 static void pick_key(int k, int down) {
     if (!down) { if (k == K_EDIT && !used[K_EDIT]) pick_take(pk_cur); return; }
@@ -4968,6 +5014,7 @@ static void draw(void) {
     else if (chording) draw_chords();
     else if (rolling) draw_roll();
     else if (picking) draw_pick();
+    else if (wtbing) draw_wtb();
     else if (presetting) draw_presets2();
     else if (theming) draw_theme2();
     else if (iconing) draw_icons2();
@@ -5124,6 +5171,7 @@ int main(int argc, char **argv) {
     font_init();
     SDL_Joystick *js = SDL_NumJoysticks() > 0 ? SDL_JoystickOpen(0) : NULL;
     logmsg("joystick: %s", js ? SDL_JoystickName(js) : "none");
+    engine_wave_init(); wt_boot();       // WAVE: the built-in tables, then the user's (wavetables/slots.cfg), before the device
     if (engine_start(buffer)) { logmsg("audio: %s", SDL_GetError()); return 1; }
     logmsg("audio: %s", SDL_GetCurrentAudioDriver());
     idx_load();

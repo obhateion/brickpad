@@ -11,7 +11,7 @@ static Col sv_col(int m) { return m == 0 ? C_PLAY : m == 1 ? th_cur[TC_SMP] : C_
 typedef struct { const char *nm; int p; } SvKnob;      // in the order UP RIGHT LEFT DOWN
 static void sv_knobs(int s, SvKnob *k) {
     switch (song.t[s].type & 3) {
-    case 1: k[0] = (SvKnob){"BRIGHT", P_SY + SP_CUTOFF}; k[1] = (SvKnob){"SCREAM", P_SY + SP_RESO}; k[2] = (SvKnob){"TAIL", P_SY + SP_RELEASE}; k[3] = (SvKnob){"DIRT", P_SY + SP_NOISE}; break;
+    case 1: k[0] = (SvKnob){"BRIGHT", P_WV + WP_F_CUT}; k[1] = (SvKnob){"SCREAM", P_WV + WP_F_RES}; k[2] = (SvKnob){"TAIL", P_WV + WP_ENV1 + WE_REL}; k[3] = (SvKnob){"MORPH", P_WV + WP_A + WO_POS}; break;
     case 2: k[0] = (SvKnob){"BRIGHT", P_AC + AP_CUTOFF}; k[1] = (SvKnob){"SCREAM", P_AC + AP_RESO}; k[2] = (SvKnob){"TAIL", P_AC + AP_DECAY}; k[3] = (SvKnob){"DIRT", P_AC + AP_DRIVE}; break;
     case 3: k[0] = (SvKnob){"BRIGHT", P_CX + CX_TONE}; k[1] = (SvKnob){"SHIMMER", P_CL + CP_SHIMMER}; k[2] = (SvKnob){"TAIL", P_CX + CX_RELEASE}; k[3] = (SvKnob){"SPRAY", P_CL + CP_SPRAY}; break;
     default: k[0] = (SvKnob){"PITCH", P_PITCH}; k[1] = (SvKnob){"START", P_START}; k[2] = (SvKnob){"TAIL", P_SX + SX_FOUT}; k[3] = (SvKnob){"LOUD", P_VOL};

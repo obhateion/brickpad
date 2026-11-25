@@ -319,7 +319,7 @@ static void t_params(void) {
     int8_t wp[WP_N]; wp_defaults(wp); int named = 0; char b[32];
     for (int k = 0; k < WP_N; k++) { const char *n = wp_name(k); if (!n) continue; named++; int lo, hi; wp_range(k, &lo, &hi);
         CHECK(lo <= hi && wp[k] >= lo && wp[k] <= hi, "param %d %s default %d outside %d..%d", k, n, wp[k], lo, hi); wp_str(k, wp[k], b, sizeof b, &ws); CHECK(b[0], "param %d text", k); }
-    CHECK(named == 91 + 64, "named parameters %d", named);
+    CHECK(named == 91 + 5 + 64, "named parameters %d", named);   // + the host's ARP bytes (2026-11-25)
     CHECK(wp[WP_MARK] == WP_INIT, "mark");
     for (int m = 0; m < WT_NLV; m++) { CHECK(wt_lsz[m] == 1 << wt_lbits[m], "level %d size", m); CHECK(m == 0 || wt_loff[m] == wt_loff[m - 1] + wt_lsz[m - 1] + 3, "level %d offset", m); }
     CHECK(wt_loff[WT_NLV - 1] + wt_lsz[WT_NLV - 1] + 3 == WT_STRIDE, "stride");

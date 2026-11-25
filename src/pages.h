@@ -472,7 +472,7 @@ static void draw_scenes(void) {
         if (g && ch >= 60) for (int s2 = 0; s2 < NSLOT; s2++) { int x = 26 + s2 % 6 * 163, y = y0 + s2 / 6 * (ch + 8), has = q == scn_cur ? has_sound(s2) : g->t[s2].type || g->t[s2].path[0];
             rrect(x, y, 155, ch, 8, C_CELL); if (!has) { ftext(x + 12, y + 8, FT_S, C_DIM, "--"); continue; }
             rect(x, y, 6, ch, C_ENG(g->t[s2].type), 1); char b[40], nm[40];
-            const char *pth = g->t[s2].path, *bn = strrchr(pth, '/'); static const char *const en[4] = {"SAMPLER", "GRAND", "ACID", "CLOUD"};
+            const char *pth = g->t[s2].path, *bn = strrchr(pth, '/'); static const char *const en[4] = {"SAMPLER", "WAVE", "ACID", "CLOUD"};
             snprintf(nm, sizeof nm, "%s", g->t[s2].type ? en[g->t[s2].type & 3] : bn ? bn + 1 : pth); fit(nm, FT_MB, 135);
             snprintf(b, sizeof b, "%02d", s2 + 1); ftext(x + 14, y + 6, FT_S, C_DIM, b); ftext(x + 14, y + 30, FT_MB, C_WHITE, nm);
             snprintf(b, sizeof b, "P%d", g->t[s2].cur + 1); ftext(x + 14, y + ch - 26, FT_S, C_GREY, b); } }
@@ -500,8 +500,8 @@ static const char *const ab_rows[AB_N][19] = {
     {"EDIT a note here; on a note: delete it", "EDIT+ARROWS on a note: its length and pitch", "X+ARROWS velocity and chance", "X+EDIT a chord", "L1/R1 the grid",
      "OPT+<> the next note", "SHIFT+ARROWS a page, an octave (the jump is not here)", "SHIFT+X random", "Y back"},
     {"L1/R1 the page", "EDIT+ARROWS the value", "EDIT hear it", "OPT listen", "OPT+ARROWS listen to another note", "OPT+EDIT the default value",
-     "#ON THE PICTURE", "EDIT the file, the presets or the slice editor", "EDIT+<> the next file", "#PATCH (GRAND)", "EDIT take a cable, then EDIT on an input",
-     "OPT+EDIT pull the cables", "Y drop the cable", "#FILES", "EDIT load, or open the folder", "OPT listen", "< up a folder", "X the file menu"},
+     "#ON THE PICTURE", "EDIT the file, the presets or the slice editor", "EDIT+<> the next file", "#WAVE", "EDIT on OSC A / B's picture: the tables (wavetables/ too)",
+     "EDIT+<> there: the next table", "ENV / LFO: the first card picks which one", "LFO TARGET, MATRIX DEST: EDIT, then point at a card", "MATRIX: ^v the slot, <> the column, OPT+EDIT clears it", "#FILES", "EDIT load, or open the folder", "OPT listen", "< up a folder", "X the file menu"},
     {"#FX", "L1/R1 insert 1 / 2", "EDIT change the effect", "EDIT+<> its type", "EDIT+ARROWS the value", "X on / off", "OPT+EDIT remove, or the default",
      "#LFO", "L1/R1 LFO 1-4", "EDIT on TARGET: pick it on SOUND", "OPT+EDIT unlink, LFO off", "#AUTOMATION", "EDIT a point", "X+^v bend", "EDIT+^v its value",
      "OPT+EDIT clear", "#DUCK", "X a point, X+^v its bend", "EDIT+ARROWS level / move, L1/R1 the pad"},

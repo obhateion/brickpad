@@ -1,5 +1,5 @@
 // BrickPad - Copyright (c) 2026 Timothy Gurto (obhateion). All rights reserved. See LICENSE.
-// WAVE: a wavetable synth voice (the DSP core; not wired into engine.c / main.c yet, see docs/WAVE.md).
+// WAVE: a wavetable synth voice, Track.type 1 (2026-11-25: it replaced GRAND; engine.c plays it, docs/WAVE.md).
 // Two wavetable oscillators (2048-sample frames, up to 256 per table, POSITION morphs between neighbours, played
 // band-limited from per-octave mipmaps), each with UNISON 1..8 (detune, stereo width) and a WARP mode; a SUB
 // oscillator and NOISE; one filter per voice (SVF LP12 LP24 HP12 BP NOTCH, or a 4-pole ladder); 3 ADSR envelopes
@@ -287,6 +287,7 @@ enum { WP_A = 0, WP_B = 16,
        WP_LFO1 = 64, WP_LFO2 = 69, WP_LFO3 = 74, WP_LFO4 = 79,
        WP_POLY = 84, WP_LEGATO, WP_GLIDE, WP_BEND, WP_VELSENS, WP_MASTER, WP_QUALITY, WP_MACRO1, WP_MACRO2, WP_MACRO3,
        WP_MACRO4, WP_MODWHEEL, WP_NP,     // 96: the sound's own parameters (mod destinations come from these)
+       WP_ARP = 96, WP_ARP_MODE, WP_ARP_OCT, WP_ARP_RATE, WP_ARP_GATE, WP_HOST_N,   // 2026-11-25: the host's bytes (engine.c's arpeggiator), not the voice's
        WP_MTX = 128,                     // 16 slots x {SRC, DST, AMT, MODE}
        WP_MARK = 255, WP_N = 256 };
 #define WP_INIT 0x57
@@ -335,21 +336,27 @@ static const WpInfo wp_info[WP_NP] = {
 #define WM_NAMES(n) "M" #n " SRC", "M" #n " DEST", "M" #n " AMT", "M" #n " MODE"
 static const char *const wp_mnames[WM_SLOTS * 4] = {WM_NAMES(1), WM_NAMES(2), WM_NAMES(3), WM_NAMES(4), WM_NAMES(5), WM_NAMES(6),
     WM_NAMES(7), WM_NAMES(8), WM_NAMES(9), WM_NAMES(10), WM_NAMES(11), WM_NAMES(12), WM_NAMES(13), WM_NAMES(14), WM_NAMES(15), WM_NAMES(16)};
+// The host's bytes: ARP on, UP DOWN ORDER UP/DOWN, 1..3 octaves, a division of fx.h (div_beats), gate %
+static const WpInfo wp_hinfo[WP_HOST_N - WP_ARP] = {{"ARP", 0, 1, 0, 0}, {"ARP MODE", 0, 3, 0, 0}, {"ARP OCT", 0, 2, 0, 0}, {"ARP RATE", 0, 11, 2, 0}, {"ARP GATE", 10, 100, 50, 0}};
+static const char *const wv_amode_names[4] = {"UP", "DOWN", "ORDER", "UP/DN"};
 // A parameter's name for the UI (NULL: a spare byte).
 static const char *wp_name(int k) {
     if (k >= 0 && k < WP_NP) return wp_info[k].name;
+    if (k >= WP_ARP && k < WP_HOST_N) return wp_hinfo[k - WP_ARP].name;
     if (k >= WP_MTX && k < WP_MTX + WM_SLOTS * 4) return wp_mnames[k - WP_MTX];
     return NULL;
 }
 static void wp_range(int k, int *lo, int *hi) {
     *lo = *hi = 0;
     if (k >= 0 && k < WP_NP) { if (wp_info[k].name) { *lo = wp_info[k].lo; *hi = wp_info[k].hi; } return; }
+    if (k >= WP_ARP && k < WP_HOST_N) { *lo = wp_hinfo[k - WP_ARP].lo; *hi = wp_hinfo[k - WP_ARP].hi; return; }
     if (k >= WP_MTX && k < WP_MTX + WM_SLOTS * 4) switch ((k - WP_MTX) & 3) {
         case WM_SRC: *hi = WS_N - 1; break; case WM_DST: *hi = WP_NP; break; case WM_AMT: *lo = -100; *hi = 100; break; default: *hi = 1; }
 }
 static void wp_defaults(int8_t *wp) {
     memset(wp, 0, WP_N);
     for (int k = 0; k < WP_NP; k++) if (wp_info[k].name) wp[k] = wp_info[k].def;
+    for (int k = WP_ARP; k < WP_HOST_N; k++) wp[k] = wp_hinfo[k - WP_ARP].def;
     wp[WP_MARK] = WP_INIT;
 }
 // A value as the UI shows it. ws may be NULL (table numbers then).
@@ -364,7 +371,10 @@ static void wp_str(int k, int v, char *b, int n, const WaveStore *ws) {
     else if (k == WP_SUB_SHAPE) snprintf(b, n, "%s", wv_sub_names[v & 3]);
     else if (k == WP_SUB_OCT) snprintf(b, n, "-%d OCT", v);
     else if (k == WP_NOISE_TYPE) snprintf(b, n, v ? "PINK" : "WHITE");
-    else if (k == WP_SUB_DIRECT || k == WP_NOISE_DIRECT || k == WP_LEGATO) snprintf(b, n, v ? "ON" : "OFF");
+    else if (k == WP_SUB_DIRECT || k == WP_NOISE_DIRECT || k == WP_LEGATO || k == WP_ARP) snprintf(b, n, v ? "ON" : "OFF");
+    else if (k == WP_ARP_MODE) snprintf(b, n, "%s", wv_amode_names[v & 3]);
+    else if (k == WP_ARP_OCT) snprintf(b, n, "%d OCT", v % 3 + 1);
+    else if (k == WP_ARP_GATE) snprintf(b, n, "%d%%", v);
     else if (k == WP_QUALITY) snprintf(b, n, v ? "HIGH" : "ECO");
     else if (k == WP_POLY) { if (v <= 1) snprintf(b, n, "MONO"); else snprintf(b, n, "%d", v); }
     else if (k >= WP_LFO1 && k < WP_POLY && (k - WP_LFO1) % WL_N == WL_SHAPE) snprintf(b, n, "%s", wv_lfo_names[v % WLS_N]);
@@ -425,6 +435,7 @@ typedef struct { uint8_t src, dst, bi, nat; float amt; } WvMod;
 typedef struct {
     WaveV v[WV_POLY];
     float bend, bpm;                     // the pitch wheel -1..1 (times BEND semitones); tempo for synced LFOs
+    float tune;                          // semitones the host adds to every voice (the pad's LFOs / automation on PITCH)
     float lph[4];                        // free-running LFO phases: a new voice joins them
     unsigned age; uint32_t rng;
     float held[16]; int nheld;           // mono: keys still down, newest last
@@ -658,7 +669,7 @@ static int wv_ctl(WaveV *v, WaveInst *w, const int8_t *wp, const WaveStore *ws) 
     else { float vs = p[WP_VELSENS] * 0.01f, ms = p[WP_MASTER] * 0.01f; atg = v->e[0].lvl * (1 - vs + vs * v->vel) * ms * ms; }
     v->damp = (atg - v->amp) * (1.f / WV_BLK);
     v->hq = wp[WP_QUALITY] > 0;
-    float note = v->note + w->bend * wp[WP_BEND];
+    float note = v->note + w->bend * wp[WP_BEND] + w->tune;
     for (int o = 0; o < 2; o++) wv_osc_ctl(v, o, p, wp, ws, note);
     int wa = wp[WO_WARP]; v->order = v->o[0].nu && v->o[0].warp && (wa == WW_FM || wa == WW_AM || wa == WW_RM);   // A reads B: B goes first
     // SUB: follows the note, one or two octaves down
@@ -832,6 +843,13 @@ static void wv_note_off(WaveInst *w, const int8_t *wp, float note) {
     }
 }
 static void wv_all_off(WaveInst *w) { for (int i = 0; i < WV_POLY; i++) { wv_vrelease(&w->v[i]); if (w->v[i].pend) w->v[i].pgate = 1; } w->nheld = 0; }
+// A stop: every voice down to 0 over one block, then gone (no release); a voice still waiting for its start goes at once.
+static void wv_kill(WaveInst *w) {
+    for (int i = 0; i < WV_POLY; i++) { WaveV *v = &w->v[i]; if (!v->on) continue;
+        if (v->delay > 0) { v->on = 0; continue; }
+        v->fade = 1; v->pend = 0; v->rel = 1; for (int j = 0; j < 3; j++) v->e[j].st = 0; }
+    w->nheld = 0;
+}
 static int wv_active(const WaveInst *w) { int n = 0; for (int i = 0; i < WV_POLY; i++) n += w->v[i].on; return n; }
 // The buffer: every sounding voice added into out (interleaved stereo, n frames). Audio thread.
 static void wv_render(WaveInst *w, const int8_t *wp, const WaveStore *ws, float *out, int n) {
