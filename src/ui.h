@@ -159,7 +159,7 @@ static void ui2_header(void) {           // NEON > PADS on the left, the transpo
         ftext(W - 20 - ftext_w(FT_MB, t), y, FT_MB, C_RED, t); return;
     }
     if (tab == T_PAT && !perform) return;   // A07: nothing on the right
-    if (browsing || presetting || slicing || ducking || tab == T_PRJ) return;
+    if (browsing || presetting || wtbing || slicing || ducking || tab == T_PRJ) return;
     if (scening) { snprintf(t, sizeof t, "%d/%d", scn_cur + 1, scene_count()); ftext(W - 20 - ftext_w(FT_MB, t), y, FT_MB, th_cur[TC_SMP], t); return; }   // A11, A12: nothing on the right
     if (v2_sound()) { snd_page_count(t, sizeof t); ftext(W - 20 - ftext_w(FT_MB, t), y, FT_MB, C_ENG(song.t[sel].type), t); return; }   // A08: 1/5
     if (v2_steps() || rolling || chording) { snprintf(t, sizeof t, "P%02d", song.t[sel].cur + 1); ftext(W - 20 - ftext_w(FT_MB, t), y, FT_MB, C_ORANGE, t); return; }   // A05: the pattern
@@ -220,7 +220,7 @@ static void ui2_footer(const char *h) {  // at most three key chips: the key in 
 }
 
 static int ui_window(void) {             // a window over the screens: no popup, the path names it
-    return exporting || naming || browsing || slicing || rolling || chording || prbing || randing || picking || presetting || theming || iconing || ducking;
+    return exporting || naming || browsing || slicing || rolling || chording || prbing || randing || picking || presetting || wtbing || theming || iconing || ducking;
 }
 static int ui_over(void) { return ui_window() && !((rolling || chording) && !randing && !presetting && !naming && !exporting); }   // v3: a real popup; the roll and the chords are PATTERN's pages
 static void ui_path(char *b, int n) {    // NEON > INSTRUMENT > 06 WAVE > OSC A
@@ -230,12 +230,12 @@ static void ui_path(char *b, int n) {    // NEON > INSTRUMENT > 06 WAVE > OSC A
     int inpad = ui_cat >= 0;
     if (perform) UI_ADD("%s", perform == 2 ? "KEYS" : "PADS");
     else if (!inpad) UI_ADD("%s", tab == T_GRID ? (scening ? "SCENES" : "PADS") : tab == T_FX ? "MIXER" : tab_name[tab == T_PAT ? T_SEQ : tab]);
-    int pad = inpad || perform || tab == T_SEQ || tab == T_PAT || (browsing && !bmode) || presetting || slicing || iconing ? sel : tab == T_FX && fx_unit < NSLOT ? fx_unit : -1;
+    int pad = inpad || perform || tab == T_SEQ || tab == T_PAT || (browsing && !bmode) || presetting || wtbing || slicing || iconing ? sel : tab == T_FX && fx_unit < NSLOT ? fx_unit : -1;
     if (pad >= 0) { char nb[40]; snprintf(nb, sizeof nb, "%s", slot_name(pad) ? slot_name(pad) : "EMPTY"); fit(nb, FT_MB, 170); UI_ADD("%02d %s", pad + 1, nb); }
     else if (tab == T_FX) UI_ADD("%s", fx_unit == NSLOT ? "RETURN A" : fx_unit == NSLOT + 1 ? "RETURN B" : "MASTER");
     if (exporting) UI_ADD("EXPORT"); else if (naming) UI_ADD("NAME"); else if (browsing) UI_ADD("%s", bmode ? "FILES" : "SOUND > FILE");
     else if (slicing) UI_ADD("SOUND > SLICES > EDIT"); else if (prbing) UI_ADD("PATTERN > PRB"); else if (chording) UI_ADD("PATTERN > CHORDS"); else if (rolling) UI_ADD("PATTERN > ROLL"); else if (randing) UI_ADD("RANDOM");
-    else if (picking) UI_ADD("ENGINE"); else if (presetting) UI_ADD("SOUND > PRESETS"); else if (theming) UI_ADD("THEME");
+    else if (picking) UI_ADD("ENGINE"); else if (presetting) UI_ADD("SOUND > PRESETS"); else if (wtbing) UI_ADD("SOUND > TABLES"); else if (theming) UI_ADD("THEME");
     else if (iconing) UI_ADD("LOOK"); else if (ducking) UI_ADD("MOD > DUCK");
     else if (v2_sound()) UI_ADD("SOUND > %s", snd_page_name());
     else if (v2_steps()) UI_ADD("PATTERN > STEPS");

@@ -11,7 +11,7 @@ enum { SD_N = 8, SD_W = 112, SD_GAP = 12, SD_LX = 16, SD_RX = W - 16 - SD_W, SD_
 typedef struct { const char *name; char v1[16], v2[16]; Col vc; int lamp; Col lc; const char *hint; } SideSlot;
 
 static int side_page(void) {              // the page under the slots: the order of draw()'s chain
-    if (exporting || naming || browsing || slicing || randing || prbing || picking || presetting || theming || iconing || ducking || scening) return 0;
+    if (exporting || naming || browsing || slicing || randing || prbing || picking || presetting || wtbing || theming || iconing || ducking || scening) return 0;
     if (chording) return SD_CHORDS;
     if (rolling) return SD_ROLL;
     if (v2_steps()) return SD_STEPS;

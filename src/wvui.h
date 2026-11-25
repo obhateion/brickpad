@@ -144,7 +144,7 @@ static void draw_matrix2(Col ec) {
         snprintf(b, sizeof b, "%d", v); ftext(x + cw - 14 - ftext_w(FT_S, b), y + 6, FT_S, C_WHITE, b);
         if (on) { snprintf(b, sizeof b, "%d", v); ui_focus(m < 4 ? wp_name(WP_MACRO1 + m) : "MODWHEEL", b, v, ec); } }
     int half = sp_cur >= 32 ? 8 : 0, y0 = y + 80, rh = 58, colx[5] = {0, 70, 290, 560, 820}; static const char *const hd[4] = {"SOURCE", "DESTINATION", "AMOUNT", "MODE"};
-    for (int c = 0; c < 4; c++) ftext(wx0 + colx[c] * ww / 971 + 12, y0, FT_S, C_DIM, hd[c]);
+    for (int c = 0; c < 4; c++) ftext(wx0 + colx[c + 1] * ww / 971 + 14, y0, FT_S, C_DIM, hd[c]);
     for (int r = 0; r < 8; r++) { int sl = half + r, ry = y0 + 24 + r * rh; const int8_t *m = wp + WP_MTX + 4 * sl; int live = m[WM_SRC] && m[WM_DST] && m[WM_AMT];
         rrect(wx0, ry, ww, rh - 6, 8, sp_cur >= 0 && sp_cur / 4 == sl ? C_SELBG : C_CELL);
         snprintf(b, sizeof b, "M%d", sl + 1); ftext(wx0 + 12, ry + 14, FT_MB, live ? ec : C_DIM, b);
@@ -164,7 +164,7 @@ static void draw_matrix2(Col ec) {
 // ---- TABLE browser: EDIT on an oscillator's picture. The built-ins, then wavetables/*.wav (loaded into slots 12..31) ----
 #define WT_DIR "wavetables"
 #define WT_CFG WT_DIR "/slots.cfg"
-static int wtbing, wtb_osc, wtb_cur, wtb_n; static Entry wtb_e[128];
+static int wtb_osc, wtb_cur, wtb_n; static Entry wtb_e[128];   // (wtbing: main.c)
 static char wt_file[WT_SLOTS][200];      // the file each user slot holds (UI side; slots.cfg keeps it from run to run)
 static void wt_cfg_save(void) {
     char b[WT_SLOTS * 210]; int n = 0;
@@ -209,7 +209,7 @@ static void wtb_key(int k, int down) {
 static void draw_wtb(void) {
     Col ec = C_ENG(1); int n = WT_NBUILT + wtb_n, rows = 9, rh = 61, top = clampi(wtb_cur - rows / 2, 0, n > rows ? n - rows : 0); char b[64];
     snprintf(b, sizeof b, "OSC %c  TABLES", 'A' + wtb_osc); ftext(26, 80, FT_MB, ec, b);
-    int lw = 560;
+    int lw = 560;   // the window is full width: the side slots are hidden while it is open (side.h)
     for (int r = 0; r < rows && top + r < n; r++) { int i = top + r, y = 130 + r * rh, on = i == wtb_cur;
         if (on) rrect(26, y, lw, 50, 8, C_SELBG);
         if (i < WT_NBUILT) { snprintf(b, sizeof b, "%s", wt_bnames[i]); ftext(48, y + 12, on ? FT_LB : FT_M, C_WHITE, b); ftext(26 + lw - 20 - ftext_w(FT_S, "BUILT-IN"), y + 16, FT_S, C_DIM, "BUILT-IN"); }

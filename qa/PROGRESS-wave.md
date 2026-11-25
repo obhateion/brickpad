@@ -19,8 +19,12 @@ Branch `synth-integrate` (from workflow-v3 + synth-wave). Updated with every pus
   its lists since SUB went (qa_nav, qa_quick crashed); OPT+EDIT on a SOUND card of a roll pad cleared the roll).
 
 ## Next
-- golden NEON (levels before/after below), regenerate qa/base-0-O0.txt after the checks.
 - docs: WAVE.md (wired), CHANGELOG, README.
+
+- [x] 4b golden: the NEON export is finite and not silent (whole mix -19.0 dB RMS before, -18.8 dB after, peak 0.890 both),
+  WAVE pads audible (below); qa/base-0-O0.txt regenerated HERE, with stand-ins for NEON's four CINEMATIC samples (this
+  container has no Brick card): on the Brick run `sh qa/run.sh` once and take its output as the base. A 2000-step random
+  golden run (UI fuzz) passes; qa_wave_ui is clean under -fsanitize=address,undefined.
 
 ## NEON levels (4 bars, each pad solo; this container's stand-in samples)
 before (GRAND): pad 6 -19.3 dB, 7 -37.2, 8 -33.2, 9 -42.9

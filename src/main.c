@@ -1364,6 +1364,7 @@ static int seq_cols(int r) { return r < 0 ? 2 : r == 1 || r == 2 ? 16 : r == 0 ?
 
 static void wave_new(int s);             // a pad becomes WAVE (below, with the presets)
 static int wv_env, wv_lfo;               // WAVE: the envelope (0..2) and LFO (0..3) the ENV and LFO pages show
+static int wtbing;                       // WAVE's TABLE browser is open (wvui.h)
 static int learn_wv = -1;                // LEARN for WAVE's matrix: 0..15 the slot whose DEST is pointed at, 16 + j: LFO j's TARGET (a new slot)
 static int wv_is_pair(int p) {           // a WAVE switch (two states): a tap flips it, UP / DOWN pick a side
     int k = p - P_WV; if (p < P_WV || p >= P_WV + WP_N) return 0;
