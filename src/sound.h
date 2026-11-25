@@ -117,7 +117,7 @@ static void sound_move(int k) {          // the knobs; UP from the first row: th
     kg_move(k, c, &sp_cur);
 }
 static int sound_edit_arrow(int k) {     // EDIT+arrows on the picture: the sampler's next file; nothing else changes there
-    if (sp_cur >= 0) return 0;
+    if (sp_cur >= 0 || snd_page()->gfx == GF_WMTX) return 0;   // (MATRIX: below 0 are its macros, not a picture)
     if (snd_page()->gfx == GF_SLICES) return 0;   // SLICES: the count, as on its card
     if (song.t[sel].type == 3) return 0;          // CLOUD: its source's next file (P_SRC)
     if (!is_synth(sel) && (k == K_LEFT || k == K_RIGHT)) { edit_begin(); neighbour_file(sel, k == K_RIGHT ? 1 : -1); }

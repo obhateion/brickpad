@@ -196,10 +196,12 @@ static void wtb_apply(void) {            // the row under the cursor on the osci
     edit_begin(); song.wv[sel][16 * wtb_osc + WO_TABLE] = (int8_t)t; song.wv[sel][16 * wtb_osc + WO_ON] = 1;
 }
 static void wtb_key(int k, int down) {
-    if (!down) { if (k == K_OPT) engine_release_key(GB_TAG); return; }
+    if (!down && k == K_OPT) { engine_release_key(GB_TAG); return; }
+    if (!down && k != K_EDIT) return;
     int n = WT_NBUILT + wtb_n;
     if (k == K_Y) { wtbing = 0; return; }
-    if (k == K_EDIT) { wtb_apply(); wtbing = 0; char b[48], nm[32]; wp_str(WP_A + WO_TABLE, song.wv[sel][16 * wtb_osc + WO_TABLE], nm, sizeof nm, wv_ws()); snprintf(b, sizeof b, "OSC %c: %s", 'A' + wtb_osc, nm); toast(b); return; }
+    if (k == K_EDIT) { if (down) return;   // on the release, as the presets: the press that opened it is not this one
+        wtb_apply(); wtbing = 0; char b[48], nm[32]; wp_str(WP_A + WO_TABLE, song.wv[sel][16 * wtb_osc + WO_TABLE], nm, sizeof nm, wv_ws()); snprintf(b, sizeof b, "OSC %c: %s", 'A' + wtb_osc, nm); toast(b); return; }
     if (k == K_OPT) { wtb_apply(); engine_release_key(GB_TAG); engine_trig_key(sel, 1.f, song.lnote[sel], -1, GB_TAG); return; }
     if (k == K_UP || k == K_DOWN) wtb_cur = clampi(wtb_cur + (k == K_DOWN ? 1 : -1), 0, n - 1);
     if (k == K_L1 || k == K_R1) wtb_cur = k == K_R1 && wtb_n ? WT_NBUILT : 0;   // the two groups

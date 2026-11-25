@@ -12,12 +12,16 @@ Branch `synth-integrate` (from workflow-v3 + synth-wave). Updated with every pus
 - [x] 2 Data: `Song.wv[NSLOT][256]` appended, STATE_MAGIC 0x13; 0x11/0x12 files load whole (scenes too); `wave_fix`
   converts every type-1 pad from its GRAND settings (`wv_from_grand`, main.c) incl. its LFO / automation targets;
   20 factory presets (`src/wpresets.h`); old GRAND user presets convert on load; WAVE user presets keep the whole block.
-- [~] 3 UI: SOUND pages for WAVE (sound.h `snd_wav`, pictures and MATRIX and TABLE browser in `src/wvui.h`) — written,
-  compiling, not yet walked by a test.
+- [x] 3 UI: SOUND pages for WAVE (sound.h `snd_wav`: OSC A, OSC B, UNISON, SUB, FILTER, ENV, LFO, MATRIX, VOICE, ARP;
+  pictures, the MATRIX list and the TABLE browser in `src/wvui.h`); LFO TARGET / matrix DEST by pointing at a card
+  (LEARN); names, footers, HELP, hints say WAVE.
+- [x] 4a qa/qa_wave_ui.c ALL OK; every qa/*.c ALL OK (fixed on the way, both older than this branch: `lane_list` read past
+  its lists since SUB went (qa_nav, qa_quick crashed); OPT+EDIT on a SOUND card of a roll pad cleared the roll).
 
 ## Next
-- qa: build every qa/*.c, fix what used GRAND; add qa/qa_wave_ui.c; golden NEON (levels before/after below).
+- golden NEON (levels before/after below), regenerate qa/base-0-O0.txt after the checks.
 - docs: WAVE.md (wired), CHANGELOG, README.
 
 ## NEON levels (4 bars, each pad solo; this container's stand-in samples)
 before (GRAND): pad 6 -19.3 dB, 7 -37.2, 8 -33.2, 9 -42.9
+after (WAVE):   pad 6 -18.9 dB, 7 -39.5, 8 -33.2, 9 -40.9 (peaks 0.243/0.104/0.067/0.066 -> 0.257/0.071/0.075/0.089)

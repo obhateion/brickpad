@@ -1284,7 +1284,7 @@ static int lane_list(int *l) {           // the lanes this pad has: a sampler sl
     static const int smp_l[] = {L_TRIG, L_VEL, L_PROB, L_SLICE}, gb_l[] = {L_TRIG, L_VEL, L_PROB},   // TRIG holds the note too (2026-11-09)
                      ab_l[] = {L_TRIG, L_VEL, L_PROB, L_ACC, L_SLD};
     static const int sls_l[] = {L_SLICE, L_TRIG, L_VEL, L_PROB};   // a sliced sample: SLC first (2026-11-12, user)
-    int ty = song.t[sel].type; const int *src = ty == 2 ? ab_l : ty ? gb_l : track_nslices(sel) > 1 ? sls_l : smp_l; int n = ty == 2 ? 6 : ty ? 4 : track_nslices(sel) > 1 ? 5 : 4;   // UI v2: no SLICE lane without slices
+    int ty = song.t[sel].type; const int *src = ty == 2 ? ab_l : ty ? gb_l : track_nslices(sel) > 1 ? sls_l : smp_l; int n = ty == 2 ? 5 : ty ? 3 : track_nslices(sel) > 1 ? 4 : 3;   // UI v2: no SLICE lane without slices (2026-11-25: the counts had kept SUB's place and read past the lists)
     if (song.t[sel].pat[song.t[sel].cur].mode) n = 1;   // ROLL: the roll itself (NOTE) and the automation lanes   // CLOUD: as GRAND
     for (int i = 0; i < n; i++) l[i] = src[i];
     for (int a = 0; a < NAUTO; a++) l[n++] = L_A1 + a;   // automation lanes on every pad
@@ -1712,6 +1712,7 @@ static void par_default(int pad, int p) {
     }
     if (p >= P_WV + WP_MTX && p < P_WV + WP_MTX + 64) memset(song.wv[pad] + WP_MTX + (p - P_WV - WP_MTX) / 4 * 4, 0, 4);   // MATRIX: the whole slot
     else if (p >= P_WV && p < P_SLWAY) { int8_t d0[WP_N]; wp_defaults(d0); par_put(pad, p, d0[p - P_WV]); }
+    else if (p >= P_WV) return;          // SLWAY (above) and WAVE's selectors: nothing more (2026-11-25: SLWAY wrote past GRAND DEEP's bytes)
     else if (p >= P_AX) song.ax[pad][p - P_AX] = ax_def[p - P_AX];
     else if (p >= P_CX) { int8_t d0[16]; cx_defaults(d0); song.cx[pad][p - P_CX] = d0[p - P_CX]; }
     else if (p >= P_CL) { int8_t d0[7]; cl_defaults(d0); t->cp[p - P_CL] = d0[p - P_CL]; }
@@ -1864,6 +1865,7 @@ static void seq_delete(void) {
     Pattern *p = cur_pat(sel); edit_begin();
     if (srow == 0 && scol == 4 && is_auto(lane)) { char b[32]; cur_aut()->target = 0; snprintf(b, sizeof b, "%s UNLINKED", lane_name[lane]); toast(b); return; }   // 2026-11-12, user: the points stay
     if (srow == 0) { int l = p->len, dv = p->div, md = p->mode; pattern_clear(p); sub_drop_p(p, -1); p->len = l; p->div = dv; p->mode = md; toast("CLIP CLEARED"); }
+    else if (srow >= 3) { int pr = cur_par(); par_default(sel, pr); par_focus(pr); }   // a SOUND card: its default (2026-11-25: on a roll pad this cleared the roll)
     else if (p->mode) { for (int i = 0; i < NNOTE; i++) roll_del(p, i); toast("ROLL CLEARED"); }
     else if (srow <= 2 && is_auto(lane)) cur_aut()->v[cur_step()] = AUTO_EMPTY;
     else if (srow <= 2 && lane != L_TRIG) { char b[32]; snprintf(b, sizeof b, "ERASE ON THE %s LANE", lane_nm(L_TRIG)); toast(b); }
