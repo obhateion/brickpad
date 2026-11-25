@@ -124,6 +124,7 @@ static inline int acid_frame(SynthV *v, const int8_t *ap, const int8_t *ax, floa
         v->tlp += (w - v->tlp) * ta;
         float m = ap[AP_DMIX] / 100.f; y = y * (1 - m) + v->tlp * m;
     }
+    { float o = y - v->dcx + 0.9986f * v->dcy; v->dcx = y; v->dcy = o; y = o; }   // 2026-11-25: DIODE and TUBE are asymmetric: a 10 Hz high-pass takes their DC off (it pushed the master limiter)
     *out = y * ACID_LEVEL;   // 2026-11-09: was ~3x louder than GRAND and ran into the master limiter (crackle); after the distortion, so its sound stays
     return 1;
 }

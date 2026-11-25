@@ -16,6 +16,7 @@ typedef struct {
     unsigned rng;
     float pf, pv; int pg, pat;           // a legato note waiting: frequency, velocity, gate, frames until it (-1 none)
     float menv, accap, hp, tlp, bst;     // ACID: filter envelope, accent sweep, resonance high-pass, distortion tone, BASS
+    float dcx, dcy;                      // ACID: the DC blocker after the distortion (2026-11-25)
     int accent, slide, pacc, pslide;     // ACID: this note's accent and slide; the waiting note's
     // 2026-11-11: what costs a pow or an exp is worked out every 16 frames (knobs only: sy_ctl, acid_ctl) or every 8
     // with a straight line between (filter coefficient, LFO pitch), not on every frame: about half the CPU of a voice
