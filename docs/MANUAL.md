@@ -45,7 +45,7 @@ F1 / F2 step through **PADS**, **SCENES** and **MIXER**.
 
 Twelve tiles: number, name, engine, icon, pattern and a bar of how far the clip has played.
 
-- EDIT opens the pad. On an empty pad it first asks for an engine: SAMPLER, GRAND, ACID or CLOUD.
+- EDIT opens the pad. On an empty pad it first asks for an engine: SAMPLER, WAVE, ACID or CLOUD.
 - X starts or stops the pad's clip (a pad without notes plays its sound). PLAY starts every clip. Press again to queue a global stop on the launch grid, or press it a third time before the boundary to cancel.
 - Y mute, SHIFT+Y freeze, SHIFT+X name, SHIFT+d-pad selects several pads (PLAY or EDIT then launch them together).
 
@@ -135,7 +135,7 @@ The engine's pages, four cards each; L1 / R1 the page. EDIT+arrows turn a card, 
 OPTION+EDIT the default. The picture on top shows the wave, the filter or the envelope as they move; on a sampler EDIT
 on the picture opens the file browser, the presets or the slice editor.
 
-![GRAND](screenshots/grand.png)
+![WAVE](screenshots/wave.png)
 
 ### FX
 
@@ -173,8 +173,14 @@ it, a colour that suits any theme.
 - **SAMPLER**: WAV and OGG. Pitch, fine, root (from the name or the sound), gate or poly, direction, SLICES (OFF, 4, 8,
   16, 32) with a METHOD (EQUAL, TRANSIENTS, BY HAND), WARP to the tempo (BEATS, REPITCH, TONES, TEXTURE, COMPLEX), loop
   bars and BPM, NORMALIZE by peak or loudness, fades.
-- **GRAND**: two oscillators, noise, ladder filter, envelope, glide, MONO or POLY; LFO, sync, high-pass, key tracking,
-  spring reverb, arpeggiator; a patch bay (PATCH page: EDIT takes a cable, EDIT on an input plugs it).
+- **WAVE** (2026-11-25, in GRAND's place): two wavetable oscillators that morph through the frames of a table (POS), each
+  with UNISON 1..8 (DETUNE, WIDTH) and a WARP (SYNC, BEND, PWM, ASYM, FLIP, MIRROR, QUANT, FM, AM, RM); SUB and NOISE;
+  a filter per voice (LP12 LP24 HP12 BP NOTCH LADDER) with DRIVE, KEY TRK and ENV2; ENV1 (the volume), ENV2, ENV3; four
+  LFOs; a MATRIX of 16 slots (SRC, DEST, AMT, MODE) and four MACROs; 8 voices or MONO with LEGATO and GLIDE; QUALITY ECO
+  (light, the default) or HIGH; an arpeggiator. Pages: OSC A, OSC B, UNISON, SUB, FILTER, ENV, LFO, MATRIX, VOICE, ARP.
+  EDIT on an oscillator's picture opens the TABLES (12 built in, then the WAVs in `wavetables/` beside the app; EDIT+<>
+  there steps through them). LFO TARGET and a matrix DEST: EDIT, then point at any card and EDIT. A project with GRAND
+  pads opens with each one converted to a WAVE sound close to it (docs/WAVE.md section 11).
 - **ACID**: a 303-style line with saw or square, a filter with its envelope, ACCENT and SLIDE per step, four
   distortions, a sub oscillator and more.
 - **CLOUD** (below): a sample played as a cloud of grains: position, spray, size, density, shimmer, motion; window, reverse,

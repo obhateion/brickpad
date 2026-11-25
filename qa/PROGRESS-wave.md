@@ -18,8 +18,13 @@ Branch `synth-integrate` (from workflow-v3 + synth-wave). Updated with every pus
 - [x] 4a qa/qa_wave_ui.c ALL OK; every qa/*.c ALL OK (fixed on the way, both older than this branch: `lane_list` read past
   its lists since SUB went (qa_nav, qa_quick crashed); OPT+EDIT on a SOUND card of a roll pad cleared the roll).
 
-## Next
-- docs: WAVE.md (wired), CHANGELOG, README.
+- [x] 5 docs: docs/WAVE.md (sections 7, 8, 10, 11 as wired, with the GRAND -> WAVE table), CHANGELOG, README (EN, RU),
+  MANUAL, qa/README; docs/screenshots/wave.png replaces grand.png.
+
+## Next (not done)
+- On the Brick: `sh qa/run.sh` for the real golden base (this one was made with stand-in samples); listen to NEON's
+  pads 6..9 against GRAND; time the start-up (the 12 tables, ~1 s estimated on the A53).
+- No spring reverb, HP filter or patch cables in WAVE: a converted pad that used them sounds drier / different.
 
 - [x] 4b golden: the NEON export is finite and not silent (whole mix -19.0 dB RMS before, -18.8 dB after, peak 0.890 both),
   WAVE pads audible (below); qa/base-0-O0.txt regenerated HERE, with stand-ins for NEON's four CINEMATIC samples (this

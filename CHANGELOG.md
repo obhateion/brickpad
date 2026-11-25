@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+- WAVE replaces GRAND (Track.type 1): a wavetable synth. Two oscillators that morph through the frames of
+  a table (12 tables built in, your own WAVs from `wavetables/` beside the app), each with UNISON 1..8 and a WARP; SUB
+  and NOISE; a filter per voice (LP12 LP24 HP12 BP NOTCH LADDER); 3 envelopes, 4 LFOs, a 16-slot mod MATRIX, 4 MACROs;
+  8 voices or MONO with LEGATO and GLIDE; an arpeggiator; QUALITY ECO (default) or HIGH. Ten SOUND pages with live
+  pictures (the table at POS, the filter's curve, the envelopes, the LFO, the voices); LFO TARGET and matrix DEST by
+  pointing at a card. Pad LFOs and automation reach OSC A/B, SUB, NOISE, FILTER and ENV1. 20 factory presets.
+- Old projects: every GRAND pad opens as a WAVE sound made from its settings (waves as table positions, TUNE 2 / DETUNE,
+  MIX, NOISE, the ladder with its envelope, ADSR, GLIDE, MONO/POLY, GRAND DEEP's ranges, sync, key tracking, LFO and
+  ARP); LFOs and automation on its knobs follow. GRAND's HP filter, SPRING and PATCH cables have no counterpart. Format
+  0x13 (WAVE's 256 bytes per pad appended); GRAND user presets convert when presets.cfg is read.
+- Fixed: OPT+EDIT on a SOUND card of a pad whose clip is a piano roll cleared the roll instead of resetting the card; the
+  lane tabs read past their list since the SUB lane went (a crash in some screens).
+
 - Side slots: four buttons on each side of a pad's page, the page narrower by them. The arrow that reaches the page's
   left or right edge goes onto the slot at that height, ^v walk a side, the arrow back returns where the cursor was.
   EDIT presses, EDIT+arrows turn. PATTERN (STEPS, PIANO ROLL, CHORDS): LAYOUT, LEN/GRID (EDIT+^v a bar, EDIT+<> the

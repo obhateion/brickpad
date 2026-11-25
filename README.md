@@ -30,7 +30,7 @@ screen, no mouse, the hands stay on the device.
 |---|---|
 | **12 pads** | each pad holds one instrument and 16 patterns; a playing pattern is a clip |
 | **16 scenes** | a scene is a whole set of twelve pads with their sounds, effects, mix and patterns; it changes on the bar, without a stop |
-| **4 engines** | SAMPLER, GRAND (two-oscillator synth with a patch bay), ACID (303-style line), CLOUD (granular) |
+| **4 engines** | SAMPLER, WAVE (wavetable synth: two morphing oscillators with unison and warp, a 16-slot mod matrix), ACID (303-style line), CLOUD (granular) |
 | **Sequencer** | steps with note, velocity, chance, ratchets, slices, accent and slide, or a piano roll with note lengths; follow actions between patterns |
 | **Mixer** | 12 strips with inserts, sends and levels in dB; a drawer with reverb, delay, the master and the pad's effects |
 | **Effects** | two inserts per pad from 11 types, reverb and tempo delay, master compressor and limiter |
@@ -66,7 +66,7 @@ the same place.
 
 | | |
 |---|---|
-| ![GRAND](docs/screenshots/grand.png) | **GRAND**: two oscillators, noise, ladder filter, envelope, glide, MONO or POLY; LFO, sync, high-pass, key tracking, arpeggiator; a patch bay with cables. Live pictures of the waves, the filter and the envelope. |
+| ![WAVE](docs/screenshots/wave.png) | **WAVE**: two wavetable oscillators (12 built-in tables, or your own WAVs from `wavetables/`) that morph through their frames, each with UNISON 1..8 and a WARP (sync, bend, PWM, FM, AM, RM...); SUB and NOISE; one filter per voice (LP12, LP24, HP, BP, NOTCH, LADDER); 3 envelopes, 4 LFOs, a 16-slot mod matrix, 8 voices or mono with glide, an arpeggiator. Live pictures of the table, the filter, the envelopes and the voices. Old projects' GRAND pads become WAVE sounds. |
 | ![ACID](docs/screenshots/acid.png) | **ACID**: a 303-style line with saw or square, a filter with its envelope, ACCENT and SLIDE per step, four distortions and a sub oscillator. |
 | ![SAMPLER](docs/screenshots/sampler.png) | **SAMPLER** plays WAV and OGG: pitch, root (from the name or the sound), gate or poly, direction; SLICES (4, 8, 16, 32) by EQUAL, TRANSIENTS or BY HAND; WARP to the tempo (BEATS, REPITCH, TONES, TEXTURE, COMPLEX); loop bars and BPM; NORMALIZE; fades. The picture shows where the sample is read now. |
 | ![CLOUD](docs/screenshots/cloud.png) | **CLOUD** plays a sample as a cloud of grains: position, spray, size, density, shimmer, motion; window, reverse, pitch, intervals, sync, freeze and tone on the next pages. The picture shows the grains that sound now. |

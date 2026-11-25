@@ -691,7 +691,7 @@ static int build_clip(int s, Pattern *p, double dur, int up, double base, int un
     int dv = 0; while ((1 << dv) < d) dv++;
     p->div = dv; p->len = l / d;
     int g = rec_grid(d);
-    const Track *tr = &song.t[s];        // ROLL (user, 2026-11-08): the pattern is a roll already, a POLY GRAND, CLOUD, or notes overlap
+    const Track *tr = &song.t[s];        // ROLL (user, 2026-11-08): the pattern is a roll already, a POLY WAVE, CLOUD, or notes overlap
     if (!track_nslices(s) && (p->mode || (tr->type == 1 && tr->voice == 1) || tr->type == 3 || rec_overlap(s))) {
         p->mode = 1; for (int k = 0; k < NNOTE; k++) roll_del(p, k);
         for (int i = 0; i < rec_n; i++) if (rec_ev[i].slot == s) {
@@ -1285,7 +1285,7 @@ static int lane_list(int *l) {           // the lanes this pad has: a sampler sl
                      ab_l[] = {L_TRIG, L_VEL, L_PROB, L_ACC, L_SLD};
     static const int sls_l[] = {L_SLICE, L_TRIG, L_VEL, L_PROB};   // a sliced sample: SLC first (2026-11-12, user)
     int ty = song.t[sel].type; const int *src = ty == 2 ? ab_l : ty ? gb_l : track_nslices(sel) > 1 ? sls_l : smp_l; int n = ty == 2 ? 5 : ty ? 3 : track_nslices(sel) > 1 ? 4 : 3;   // UI v2: no SLICE lane without slices (2026-11-25: the counts had kept SUB's place and read past the lists)
-    if (song.t[sel].pat[song.t[sel].cur].mode) n = 1;   // ROLL: the roll itself (NOTE) and the automation lanes   // CLOUD: as GRAND
+    if (song.t[sel].pat[song.t[sel].cur].mode) n = 1;   // ROLL: the roll itself (NOTE) and the automation lanes   // CLOUD: as WAVE
     for (int i = 0; i < n; i++) l[i] = src[i];
     for (int a = 0; a < NAUTO; a++) l[n++] = L_A1 + a;   // automation lanes on every pad
     return n;
@@ -1388,8 +1388,6 @@ static int par_visible(int p) {          // hide what the current mode does not 
     return 1;
 }
 // Fixed places: the right column is the WARP block, its parameters only appear below WARP, nothing moves.
-// GRAND has its own page in the order of the original's panel: oscillators and mixer on the left,
-// filter and envelope on the right. TYPE keeps its place in both.
 #define WARP_ROWS 5
 static const int8_t par_col_sampler[2][PROWS] = {
     {P_SAMPLE, P_PITCH, P_FINE, P_VOL, P_PAN, P_VOICE, P_ROOT, P_SLICES, P_DIR},
@@ -4185,7 +4183,7 @@ static void slice_label(char *b, const Pattern *p, int i, int ns) {   // "16+": 
     snprintf(b, 8, "%d%s", k + 1, track_follows(sel, k + 1) ? "+" : "");
 }
 
-// ---------- GRAND panel ----------
+// ---------- drawing helpers (the 1.2 panels' parts: rings, lines) ----------
 static int ring_cut = 1 << 20, ring_top = -(1 << 20);            // gb_ring draws rows down to this (a knob's ring stays open at the bottom, over its label)
 static void gb_ring(int cx, int cy, int r, int t, Col c) {
     SDL_SetRenderDrawColor(R, c.r, c.g, c.b, 255);

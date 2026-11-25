@@ -1,7 +1,7 @@
-# WAVE: a wavetable engine for BrickPad (DSP core)
+# WAVE: BrickPad's wavetable engine
 
-Status: the sound engine, its tests and a benchmark. **Not wired into engine.c / main.c yet**: section 11 is the plan
-for that, section 10 the UI pages. Everything here was written for BrickPad: the FFT, the table generators, the
+Status (2026-11-25): **wired in. WAVE is Track.type 1 and replaces GRAND** (user's decision). Section 10 has the pages
+as built, section 11 how it is wired and how an old GRAND pad becomes a WAVE sound. Everything here was written for BrickPad: the FFT, the table generators, the
 filters (textbook TPT forms after Zavalishin, *The Art of VA Filter Design*), the envelope, the WAV reader. No code
 or data from other synths; the built-in tables are made from formulas at load time. No third-party code, so there
 is no THIRD_PARTY.md.
@@ -9,7 +9,12 @@ is no THIRD_PARTY.md.
 | file | what |
 |---|---|
 | `src/wave.h` | the engine, header-only and guarded like `synth.h`: tables, parameters, voice, instrument |
-| `tests/qa_wave.c` | the checks; prints `ALL OK` |
+| `src/engine.c` | `wave[NSLOT]`, `wstore`, `start_wave`, the render into the pad bus, the ARP, the CPU guard |
+| `src/main.c` | `Song.wv`, `wv_from_grand` / `wave_fix` (old files), presets, cards (`P_WV + k`), learn |
+| `src/sound.h`, `src/wvui.h` | the SOUND pages, the pictures, the MATRIX list, the TABLE browser |
+| `src/wpresets.h` | 20 factory presets |
+| `tests/qa_wave.c` | the DSP checks; prints `ALL OK` |
+| `qa/qa_wave_ui.c` | the pad: pages, notes, ARP, matrix learn, tables, GRAND conversion, save / load; prints `ALL OK` |
 | `bench/wave_bench.c` | CPU per voice and for the target scene |
 
 ```
@@ -143,8 +148,13 @@ BEND: `WaveInst.bend` -1..1 times BEND semitones.
 
 ## 7. Parameters
 
-`int8_t wp[WP_N]` (256 bytes): 0..95 the sound (below), 128..191 the matrix (16 x SRC 0..14, DST 0..96, AMT -100..100,
-MODE 0 UNI / 1 BI), 255 the mark (`WP_INIT` 0x57 once set up). The other bytes are spare for later (they stay 0).
+`int8_t wp[WP_N]` (256 bytes, `Song.wv[pad]`): 0..95 the sound (below), 96..100 the host's ARP (below), 128..191 the
+matrix (16 x SRC 0..14, DST 0..96, AMT -100..100, MODE 0 UNI / 1 BI), 255 the mark (`WP_INIT` 0x57 once set up). The
+other bytes are spare for later (they stay 0).
+
+The host's bytes (2026-11-25; engine.c reads them, the voice does not): 96 ARP 0..1, 97 ARP MODE 0..3 (UP DOWN ORDER
+UP/DN), 98 ARP OCT 0..2 (1..3 octaves), 99 ARP RATE 0..11 (a division of fx.h `div_beats`, default 2 = 1/16), 100 ARP
+GATE 10..100 (default 50).
 `wp_defaults` sets everything; `wp_info[k]` has name, range, default and whether it may be a matrix destination;
 `wp_name`, `wp_range` and `wp_str` (the value as text, table names from the store) cover the matrix too.
 
@@ -249,6 +259,12 @@ MODE 0 UNI / 1 BI), 255 the mark (`WP_INIT` 0x57 once set up). The other bytes a
 
 ## 8. CPU
 
+**Measured on the Brick** (2026-11-25, `wave_bench` built for it): one voice at unison 1, ECO, about 30 us per 128-frame
+buffer; the target scene (8 voices x 2 oscillators x unison 4) 21 % of one A53 core in ECO, 40 % in HIGH. So the
+defaults are QUALITY ECO and UNISON 1, and the engine's CPU guard (engine.c `wave_par`) acts under load: above 50 %
+DSP load 6 voices a pad, above 70 % 4; above 60 % QUALITY ECO and each oscillator's unison halved (only above 2).
+The estimates below were made before that measurement:
+
 `bench/wave_bench.c`, x86 (Xeon 2.1 GHz, shared VM, gcc 13 -O2), 128-frame buffers (2667 us of audio). One voice,
 both oscillators on, positions between frames (the two-frame morph read, the costly case), LP24 on. ns per voice
 per buffer, best of 5:
@@ -294,46 +310,79 @@ budget of ~25 %. This is an estimate: the bench was not run on a Brick (no aarch
 
 Also clean under `-fsanitize=address,undefined` and at -O0.
 
-## 10. UI pages (proposal)
+## 10. UI pages (as built, 2026-11-25)
 
-In the style of the SOUND category: L1 / R1 the page, a picture on top that moves with the sound, cards below in two
-rows of up to five (<= 10), EDIT+arrows turns a card, OPTION+EDIT the default, Y the DEEP side where a page has one.
-Cards a matrix slot moves carry M1..M16 (as L1-L4 for the pad LFOs).
+The SOUND section of a WAVE pad, on the v3 pages: the pages as tabs (UP from the top row onto them, <> the page), a
+picture on top, the cards below in the grid of `kg_cell` (ui.h), EDIT+arrows the value, OPT+EDIT the default. Switches
+are `toggle_draw`, 3..4 named choices `seg_draw`, long lists (TABLE, WARP, FILTER TYPE, LFO SHAPE and SYNC, ARP RATE)
+`val_draw`; every knob shows what moves it live (`mod_live` / `mod_rings`) when a pad LFO or automation lane is on it.
 
 | page | picture | cards |
 |---|---|---|
-| **OSC A** | the frame at POSITION (as a line), the table's frames as a strip with the position marked; EDIT on the picture: the table browser (built-ins, then WAVs from a `wavetables/` folder) | TABLE, POS, WARP, W.AMT, LEVEL / OCT, SEMI, FINE, UNISON, DETUNE. X: on / off (as an FX insert). DEEP: PAN, WIDTH, PHASE, RAND |
-| **OSC B** | the same | the same |
-| **SUB / NOISE** | the sub's wave, the noise's colour | SUB LEVEL, SHAPE, OCT, PAN, DIRECT / NOISE LEVEL, TYPE, DIRECT |
-| **FILTER** | the response curve, moving with ENV2 and the matrix | TYPE, CUTOFF, RESO, DRIVE, KEY TRK / ENV AMT, ENV2 ATT, DEC, SUS, REL |
-| **ENV** | the envelope with the playhead; L1 / R1 (or a tab) ENV1 / 2 / 3 | ATT, DEC, SUS, REL, CURVE |
-| **LFO** | the shape with its phase; tabs LFO1-4 | SHAPE, RATE (a division when SYNC), SYNC, TRIG, PHASE, and TARGET: EDIT, then point at any card on these pages: it fills the next free matrix slot with this LFO (BI) |
-| **MATRIX** | the 16 slots as a list, two pages of 8 | a row per slot: SRC, DEST, AMT, MODE; left / right the column, up / down the slot; EDIT on DEST then point at a card, as TARGET; OPTION+EDIT clears a slot. MACRO 1-4 and MODWHEEL as the first row |
-| **VOICE** | the voices in use (8 bars, their levels) | VOICES, LEGATO, GLIDE, BEND, VELO / MASTER, QUALITY |
+| **OSC A**, **OSC B** | the frame at POS (one cycle, morphed), the table's frames as a strip, POS as set (white) and as it plays (orange); EDIT on it: the TABLE browser; EDIT+<> on it: the next table | ON, TABLE, POS, WARP, W.AMT, LEVEL, OCT, SEMI, FINE, UNISON |
+| **UNISON** | each oscillator's voices across pitch (DETUNE) and the stereo field (WIDTH, PAN) | A / B: DETUNE, WIDTH, PAN, PHASE, RAND |
+| **SUB** | the sub's wave, the noise's colour | SUB, SHAPE, OCTAVE, SUB PAN, SUB DIRECT, NOISE, COLOUR, NS DIRECT |
+| **FILTER** | the response on 20 Hz .. 20 kHz, the cutoff as set and as it is now | TYPE, CUTOFF, RESO, DRIVE, KEY TRK, ENV AMT, ENV2 ATT DEC SUS REL |
+| **ENV** | the envelope, its level now | ENVELOPE (1 2 3: the cards follow), ATT, DEC, SUS, REL, CURVE |
+| **LFO** | two cycles of the shape from PHASE | LFO (1..4), SHAPE, RATE (a division when synced), SYNC, TRIG, PHASE, TARGET |
+| **MATRIX** | (the page is the list) MACRO 1-4 and MODWHEEL on top, then 8 of the 16 slots: SRC, DEST, AMT (a bar from the middle), MODE | ^v the slot, <> the column, EDIT+arrows the value, EDIT on DEST: point at a card, OPT+EDIT clears the slot |
+| **VOICE** | the 8 voices' levels now, the ones VOICES leaves out dim | VOICES, LEGATO, GLIDE, BEND, VELO, MASTER, QUALITY, PITCH, VOLUME |
+| **ARP** | the steps it plays | ARP, MODE, OCTAVES, RATE, GATE |
 
-## 11. Wiring it into engine.c (plan, not done here)
+TARGET (LFO page) and DEST (matrix): EDIT starts pointing (LEARN, as the pad LFOs' TARGET): the SOUND pages open on OSC A,
+any card a matrix may move takes it with EDIT (TARGET fills the next free slot with this LFO, BI, amount 25), Y cancels.
+**TABLES**: the 12 built-ins, then the WAVs in `wavetables/` beside the binary (read on the UI thread with `wt_load_wav`
+into a fresh table, swapped into a user slot 12..31 by the audio thread through the command queue, the old one freed on
+the UI thread); `wavetables/slots.cfg` keeps which file is in which slot, and they load again at start-up.
+The side slots keep LISTEN, MIDI, PRESET (20 factory presets, `src/wpresets.h`, and the user's: presets.cfg keeps a WAVE
+preset as its whole block, `1 NAME|W ...`; an old GRAND line is converted when the file is read).
 
-1. **A Track type**: `Track.type = 4` WAVE. The 256-byte parameter block goes at the end of Song
-   (`int8_t wv[NSLOT][256]`, appended: an older state.bin ends before it), `wp_defaults` when a pad becomes WAVE or
-   when `wv[s][WP_MARK] != WP_INIT`. Bump `STATE_MAGIC` as the file says.
-2. **One instrument per pad**, outside the `Voice` array (WAVE keeps its own 8 voices):
-   `static WaveInst wave[NSLOT + 1]; static WaveStore wstore;` in engine.c after `#include "wave.h"` (beside
-   `synth.h`). `wt_build_all(&wstore)` at start-up before the audio device opens (or `wt_build` lazily when a pad
-   first becomes WAVE, from the UI thread).
-3. **Notes**: a `start_wave(slot, vel, semis, delay)` beside `start_synth`, with the same pitch as GRAND:
-   `note = 48 + track_key(slot) + t->pitch + t->fine / 100.0 + semis`, gate `synth_gate > 0 ? synth_gate : -1`
-   (sequencer steps pass their frames; held keys pass -1 and send `wv_note_off` on key-up through the queue), then
-   `wv_note_on(&wave[slot], wp, note, vel, gate, delay)`. Mute / stop: `wv_all_off`. Pad VOICE MONO / POLY can set
-   `wp[WP_POLY]`.
-4. **Rendering**: in the buffer loop, for each pad of type 4 with `wv_active(&wave[s])`:
-   `wave[s].bpm = song.tempo * tempo_mul; wv_render(&wave[s], wp, &wstore, bus[s], n); bus_live[s] = 1;`
-   (it adds interleaved stereo into the pad's bus, the strip's VOL / PAN / inserts follow as for every pad).
-   Under load, pass a copy with `WP_POLY` lowered (as `pick_voice` caps voices by `load_avg`).
-5. **Pad LFOs and automation**: like `m_sp`, a `m_wv[s][256]` copy per buffer with
-   `mod_byte(..., wp_range)` for the first `LT_ENGN` (56) parameters: that covers OSC A, OSC B, SUB, NOISE, FILTER
-   and ENV1 as LFO / automation targets (`LT_ENG + k` = `wp[k]` for this type). Pitch modulation (`mod_pitch`) maps
-   to `wave[s].bend` or a SEMI offset. The engine's own matrix covers the rest.
-6. **main.c** includes `wave.h` too (the guard keeps one copy) for `wp_name / wp_range / wp_str`, the pages of
-   section 10, and the table browser (`wt_load_wav` into a spare table, swapped in via the command queue).
-7. **QA**: build `tests/qa_wave.c` with the other `qa_*` in CI; the golden NEON export is unaffected as long as no pad
-   of the demo uses WAVE.
+## 11. How it is wired (2026-11-25)
+
+1. **Type 1**: `Track.type = 1` is WAVE (GRAND's number: the user's decision that WAVE replaces it). The block is
+   `Song.wv[NSLOT][256]`, appended to Song; `STATE_MAGIC` 0xB2B20013. A file of 0x11 or 0x12 ends before it and loads
+   whole (its scenes too: `scene_up`). GRAND's bytes (`Track.sp`, `Song.gx`, `Song.gp`) keep their place and are only
+   read for the conversion.
+2. **One instrument per pad**: `static WaveInst wave[NSLOT]; static WaveStore wstore;` in engine.c. `engine_wave_init`
+   builds the 12 tables once, on the UI thread: from the first `song_defaults` (the app, every qa harness) or
+   `engine_start`, before the device opens; nothing plays a WAVE pad before (`wave_ready`).
+3. **Notes**: `start_wave(slot, vel, semis, delay)`: GRAND's pitch, `48 + track_key + PITCH + FINE / 100 + semis`, and its
+   gate (a step's length, `synth_gate`, else an eighth). A held key (`engine_trig_key`, CMD_TRIG_HELD) starts with gate -1
+   and its tag is remembered with the note (`whold`); `engine_release_key` sends `wv_note_off`. The ARP is GRAND's code
+   path (`arp_add` / `arp_run`) reading the bytes 96..100. Mute and STOP ALL: `wv_kill` (one block down to 0). The pad's
+   VOICE (MONO / POLY, used by the roll) follows VOICES.
+4. **Rendering**: after the sample / ACID / CLOUD voices, each WAVE pad with a sounding voice: `bpm` from the tempo,
+   `tune` from the pad's PITCH modulation, `wv_render` into the pad's bus (the strip, inserts, sends, duck, freeze and the
+   export follow as for every pad; freeze and export render through the same callback).
+   **CPU guard** (`wave_par`): load over 50 % 6 voices, over 70 % 4 (as `pick_voice`); over 60 % QUALITY ECO and unison
+   halved. It changes only the copy the pad plays with.
+5. **Pad LFOs and automation**: `m_wv[s]`, a copy per buffer with `mod_byte` on wp 0..55 (`LT_ENG + k`): OSC A, OSC B,
+   SUB, NOISE, FILTER, ENV1. The targets offered are the parameters marked *mod*. PITCH goes to `WaveInst.tune`.
+6. **What went with GRAND**: its DSP (`synth_frame`, the PATCH voice, the DEEP LFO, the SPRING reverb), its DEEP and PATCH
+   pages and cables, its 84 factory presets. `synth.h` keeps ACID's voice and GRAND's parameter names and ranges.
+
+### An old GRAND pad becomes WAVE (`wv_from_grand`, main.c)
+
+| GRAND | WAVE |
+|---|---|
+| OSC 1 / OSC 2 wave TRI, SAW | OSC A / B on BASIC at POS 33 (triangle), 67 (saw) |
+| SQR, PULSE | on PWM at POS 0 (50 %), 85 (10 %), so PWM can move them |
+| MIX m | A LEVEL 100 (1 - m), B LEVEL 100 m; an oscillator at 0 is off |
+| TUNE 2, DETUNE | B SEMI, B FINE (cents) |
+| OSC 1 / 2 RANGE (DEEP) | A OCT = range - 8', B OCT likewise |
+| HARD SYNC (DEEP) | B at A's pitch with WARP SYNC, W.AMT = (ratio - 1) / 15 |
+| NOISE | NOISE (white) |
+| CUTOFF, RESO | FILTER LADDER, CUTOFF x 0.98 (9.8 octaves against 10), RESO x 4.2 / 3.9 |
+| ENV | ENV AMT x 0.75 (+-6 octaves against +-8), ENV2 = GRAND's ADSR |
+| ATTACK DECAY SUSTAIN RELEASE | ENV1 and ENV2: the same seconds (decay and release x 1.4: GRAND's are exponential), CURVE 70 |
+| KB TRACK OFF / HALF / FULL (DEEP) | KEY TRK 0 / 50 / 100 |
+| VCA GATE / DRONE (DEEP) | ENV1: attack 2 ms, sustain 100 |
+| GLIDE, VOICE MONO / POLY | GLIDE, VOICES 1 / 8 (LEGATO off: GRAND attacked again from the level it was at) |
+| LFO RATE / SYNC / WAVE, PITCH / CUTOFF / PWM AMT (DEEP) | LFO1 (free running), matrix: LFO1 -> A SEMI and B SEMI, -> CUTOFF, -> POS of a PWM oscillator, BI |
+| ARP, MODE, OCTAVES, RATE, GATE (DEEP) | the host's ARP bytes |
+| pad LFO / automation on TUNE 2, DETUNE, MIX, NOISE, CUTOFF, RESO, ENV, ADSR | the same on B SEMI, B FINE (depth / 4), B LEVEL, NOISE, CUTOFF, RESO, ENV AMT, ENV1 |
+| HP, SPRING, ATTENUATOR, PATCH cables, LFO on GRAND DEEP knobs | nothing (let go) |
+
+VELO 100 (GRAND's level followed velocity 1:1), MASTER 98: NEON's four GRAND pads come out within about 2 dB of before.
+A GRAND pad that was never touched converts from GRAND's defaults. A pad that becomes WAVE in the app starts from the
+INIT preset (two saws into the LP24).
