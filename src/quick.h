@@ -271,8 +271,8 @@ static void qd_layout(void) {
     qb_ready(); memset(qd_at, 0, sizeof qd_at); memset(qd_card_at, 0, sizeof qd_card_at);
     int ids[QA_N], n = 0; for (int i = 0; i < QA_N; i++) if (!qa_hidden(i) && !qb_on(i)) ids[n++] = i;
     enum { PER = 8 }; int rows = (n + PER - 1) / PER;
-    if (n) qd_card_at[0] = (QR){18, 56, 24 + (n < PER ? n : PER) * (QT + QG) - QG, 24 + rows * (QT + 10) + 4};
-    for (int k = 0; k < n; k++) qd_at[ids[k]] = (QR){30 + k % PER * (QT + QG), 80 + k / PER * (QT + 10), QT, QT};
+    if (n) qd_card_at[0] = (QR){18, 56, 24 + (n < PER ? n : PER) * (QT + QG) - QG, 28 + rows * (QT + 10) + 4};
+    for (int k = 0; k < n; k++) qd_at[ids[k]] = (QR){30 + k % PER * (QT + QG), 84 + k / PER * (QT + 10), QT, QT};   // 84 as MASTER's: the outline clear of the title (2026-11-25 QA)
     qd_at[QA_VOL] = (QR){734, 84, 84, 410}; qd_at[QA_FILT] = (QR){826, 84, 84, 410}; qd_at[QA_TEMPO] = (QR){918, 84, 84, 410};
 }
 static int qd_item(int i) { return qd_at[i].w > 0; }

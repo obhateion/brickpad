@@ -4182,18 +4182,20 @@ static void draw_rhythm(void) {          // RHYTHM (2026-11-24, user's mockup): 
     rrect(X0, Y0, X1 - X0, Y1 - Y0, 8, C_CELL);
     for (int c = 0; c <= cols; c++) { int t = rl_v0 + c * rl_snap, x = IX + (int)((int64_t)(t - rl_v0) * IW / w);   // the grid, bars bright
         if (t > T) break;
-        if (t % bar == 0) { rect(x, TY - 6, 2, BY - TY + 6, C_GREY, 1); snprintf(b, sizeof b, "%d", t / bar + 1); ftext(x + 4, Y0 + 8, FT_MB, C_WHITE, b); }
-        else if (t % beat == 0) { rect(x, TY, 1, BY - TY, C_LINE, 1); snprintf(b, sizeof b, "%d.%d", t / bar + 1, t % bar / beat + 1); ftext(x + 3, Y0 + 10, FT_S, C_DIM, b); }
+        if (t % bar == 0) { rect(x, TY - 6, 2, BY - TY + 6, C_GREY, 1); snprintf(b, sizeof b, "%d", t / bar + 1); if (x + 4 + ftext_w(FT_MB, b) <= X1 - 4) ftext(x + 4, Y0 + 8, FT_MB, C_WHITE, b); }   // the clip's end line: no number past the card
+        else if (t % beat == 0) { rect(x, TY, 1, BY - TY, C_LINE, 1); snprintf(b, sizeof b, "%d.%d", t / bar + 1, t % bar / beat + 1); if (x + 3 + ftext_w(FT_S, b) <= X1 - 4) ftext(x + 3, Y0 + 10, FT_S, C_DIM, b); }
         else rect(x, TY + (BY - TY) / 2, 1, (BY - TY) / 2, mix(C_LINE, C_CELL, 120), 1); }
     if (T < rl_v0 + w) { int ex = IX + (int)((int64_t)(T - rl_v0) * IW / w); rect(ex, TY - 6, IX + IW - ex, BY - TY + 6, C_BG, 1); }   // past the clip's end
+    int fx0 = -1, fx1 = 0, ftop = 0; Col fc = C_CELL;   // the cursor's note: its frame over its neighbours, drawn last (2026-11-25 QA)
     for (int j = 0; j < NNOTE; j++) { const Note *n = &p->roll[j]; if (!n->len) continue;
         int a = n->start - rl_v0, e = a + n->len; if (e <= 0 || a >= w) continue;
         int x0 = IX + (int)((int64_t)(a < 0 ? 0 : a) * IW / w), x1 = IX + (int)((int64_t)(e > w ? w : e) * IW / w) - 2; if (x1 - x0 < 6) x1 = x0 + 6;
         int top = BY - (BY - TY) * n->vel / 127; Col c = n->start >= T ? C_GREY : mix(mix(ec, C_BG, 110), ec, n->vel * 2);
         rrect(x0, top, x1 - x0, BY - top, 4, c);
-        if (j == cur) rframe(x0 - 3, top - 3, x1 - x0 + 6, BY - top + 6, 6, 3, C_WHITE, c);
+        if (j == cur) { fx0 = x0; fx1 = x1; ftop = top; fc = c; }
         if (n->start % rl_snap) ftext(x0, top - 22, FT_S, C_ORANGE, "");   // off the grid
     }
+    if (fx0 >= 0) rframe(fx0 - 3, ftop - 3, fx1 - fx0 + 6, BY - ftop + 6, 6, 3, C_WHITE, fc);
     { int cx = IX + (int)((int64_t)(rl_t - rl_v0) * IW / w); rect(cx, TY - 8, 2, BY - TY + 8, C_WHITE, 1); }
     if (st >= 0) { int t = st * rl_d32[p->div % 6] * RT - rl_v0; if (t >= 0 && t < w) rect(IX + (int)((int64_t)t * IW / w), TY, 2, BY - TY, C_PLAY, 1); }
     // the whole clip, small: the view's frame on it
@@ -4245,6 +4247,8 @@ static void draw_roll(void) {
     if (st >= 0) { int t = st * rl_d32[p->div % 6] * RT - rl_v0; if (t >= 0 && t < rl_cols() * rl_snap) rect(GX + t * CW / rl_snap, GY, 2, RL_ROWS * RH, C_WHITE, 1); }
     if (i < 0) { int cx = GX + (rl_t - rl_v0) * CW / rl_snap, cy = GY + (rl_n0 + RL_ROWS - 1 - rl_n) * RH;   // the cursor on an empty place
         rect(cx, cy + 2, CW, 2, C_WHITE, 1); rect(cx, cy + RH - 5, CW, 2, C_WHITE, 1); rect(cx, cy + 2, 2, RH - 5, C_WHITE, 1); rect(cx + CW - 2, cy + 2, 2, RH - 5, C_WHITE, 1); }
+    else if (rl_t - rl_v0 >= 0 && rl_t - rl_v0 < rl_cols() * rl_snap) { int cx = GX + (rl_t - rl_v0) * CW / rl_snap, cy = GY + (rl_n0 + RL_ROWS - 1 - rl_n) * RH;   // on a note: its cell
+        rect(cx + 3, cy + RH - 11, CW - 6, 3, C_WHITE, 1); }   // 2026-11-25 QA: <> inside a long note showed nothing
     snprintf(b, sizeof b, "grid 1/%d%s \3 bar %d.%d", 384 / rl_snaps[rl_gi], rl_gtype == RG_TRIPLET ? "T" : rl_gtype == RG_DOTTED ? "D" : rl_gtype == RG_FREE ? " FREE" : "", rl_t / bar + 1, rl_t % bar / beat + 1); ftext(wx0, 694, FT_S, C_GREY, b);
     roll_name(nm, rl_n);
     if (i >= 0) { const Note *n = &p->roll[i]; int sp = rl_d32[p->div % 6] * RT;   // the length in the clip's steps
@@ -4959,6 +4963,7 @@ static void draw(void) {
     if (big && !body) { body = SDL_CreateTexture(R, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_TARGET, W, H); if (!body) logmsg("strip: no render target, BIG drawn as THIN"); }
     if (big && body && !SDL_SetRenderTarget(R, body)) { SDL_SetRenderDrawColor(R, C_BG.r, C_BG.g, C_BG.b, 255); SDL_RenderClear(R); } else big = 0;
     if (bigs) { ui_strip = STRIP_THIN; ui2_header(); ui_strip = STRIP_BIG; } else ui2_header();   // the page's own header: cut off below
+    cur_dim = qb_focus || qd_open;        // 2026-11-25 QA: the bar has the cursor; the page's white outline goes dim (one cursor)
     if (exporting) draw_export2();
     else if (naming) draw_naming2();
     else if (browsing) { if (bmode) draw_prjbrowse2(); else draw_browse2(); }
@@ -4986,6 +4991,7 @@ static void draw(void) {
     default: draw_grid(); break;      // not reached: v2_normalize gives every state a screen
     }
     side_draw();                          // the slots beside the page (side.h), scaled with it
+    cur_dim = 0;
     if (big && tab_focus) tabs_frame();   // on the page, before it is set under the strips
     if (big) { SDL_SetRenderTarget(R, NULL);
         int SY = strip_on() ? 69 : V2_HEAD, sy = bigs ? 122 : SY + 4, DY = secs ? sy + 36 : sy, sh = V2_FOOT - SY, dh = V2_FOOT - DY, dw = W * dh / sh;

@@ -73,7 +73,9 @@ static void rrect(int x, int y, int w, int h, int r, Col c) {   // a filled roun
         SDL_RenderDrawLine(R, x + in, y + i, x + w - 1 - in, y + i);
     }
 }
+static int cur_dim;                      // draw(): the cursor is on the bar, a white outline on the page is drawn dim
 static void rframe(int x, int y, int w, int h, int r, int t, Col c, Col inside) {   // a rounded outline t thick
+    if (cur_dim && t >= 2 && c.r == C_WHITE.r && c.g == C_WHITE.g && c.b == C_WHITE.b) c = C_DIM;
     rrect(x, y, w, h, r, c); rrect(x + t, y + t, w - 2 * t, h - 2 * t, r > t ? r - t : 1, inside);
 }
 static int v2_fx(void); static int fx2_slot; static int scene_count(void); static int v2_mixer(void); static int mx_pg; static int v2_lfo(void); static int v2_auto(void); static void modmenu_open(void); static void ui_path(char *b, int n); static const char *snd_page_name(void); static void snd_page_count(char *b, int n);   // sound.h
